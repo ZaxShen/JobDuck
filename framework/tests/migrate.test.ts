@@ -18,6 +18,10 @@ test('migrations apply once and are idempotent', () => {
 
 test('migration files are numbered and ordered', () => {
   expect(loadMigrations().map((m) => m.version)).toEqual([1])
+  const loaded = loadMigrations([
+    { name: '010_ten.sql', sql: 'ten' }, { name: 'notes.txt', sql: 'x' }, { name: '002_two.sql', sql: 'two' },
+  ])
+  expect(loaded).toEqual([{ version: 2, name: '002_two.sql', sql: 'two' }, { version: 10, name: '010_ten.sql', sql: 'ten' }])
 })
 
 test('schema v1 creates the expected tables', () => {

@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { templatesDir } from '../paths'
+import { TEMPLATES } from '../assets'
 import {
   type FileChange, type Host, type HostContext, applyChanges, hasJsonMcpServer, mergeMcpServersJson, onPath,
   planChange, readText, skillPointers, userHomeOf,
@@ -9,7 +9,7 @@ import {
 export function agentsPointer(ctx: HostContext): FileChange | null {
   const path = join(ctx.workspace, 'AGENTS.md')
   if (existsSync(path)) return null
-  return planChange(path, readFileSync(join(templatesDir(), 'AGENTS.md'), 'utf8'))
+  return planChange(path, TEMPLATES['AGENTS.md']!)
 }
 
 function claudeMdPointer(ctx: HostContext): FileChange | null {

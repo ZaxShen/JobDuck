@@ -1,6 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { migrationsDir } from '../paths'
+import { MIGRATIONS } from '../assets'
 import { type Db, nowIso, one, transaction } from './client'
 
 export interface Migration {
@@ -9,11 +7,11 @@ export interface Migration {
   sql: string
 }
 
-export function loadMigrations(dir = migrationsDir()): Migration[] {
-  return readdirSync(dir)
-    .map((name) => ({ name, match: /^(\d+)_.+\.sql$/.exec(name) }))
-    .filter((entry): entry is { name: string; match: RegExpExecArray } => entry.match !== null)
-    .map(({ name, match }) => ({ version: Number(match[1]), name, sql: readFileSync(join(dir, name), 'utf8') }))
+export function loadMigrations(files: { name: string; sql: string }[] = MIGRATIONS): Migration[] {
+  return files
+    .map(({ name, sql }) => ({ name, sql, match: /^(\d+)_.+\.sql$/.exec(name) }))
+    .filter((entry): entry is { name: string; sql: string; match: RegExpExecArray } => entry.match !== null)
+    .map(({ name, sql, match }) => ({ version: Number(match[1]), name, sql }))
     .sort((a, b) => a.version - b.version)
 }
 

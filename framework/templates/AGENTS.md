@@ -4,7 +4,7 @@ This workspace is connected to Job Duck, a local job-search store at `~/.jobduck
 
 - Your profile lives in `~/.jobduck/profile.md` and your permissions in `~/.jobduck/permissions.toml`.
 - Only use a Job Duck module when it is enabled under `[modules]` in `permissions.toml`. If it is off, run the setup skill instead.
-- Run `npx jobduck doctor` to check the setup.
+- Run `jobduck doctor` to check the setup.
 
 ## Skills
 

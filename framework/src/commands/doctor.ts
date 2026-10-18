@@ -1,11 +1,11 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { delimiter, join, resolve } from 'node:path'
 import { loadPermissions } from '../config/permissions'
 import { loadProfile } from '../config/profile'
 import { openDb } from '../db/client'
 import { currentVersion, loadMigrations, migrate } from '../db/migrate'
 import { type HostContext, allHosts } from '../hosts'
-import { SKILLS_VERSION_FILE, dbPath, ensureHome, installedSkillsPath, jobduckHome, skillNames } from '../paths'
+import { PACKAGE_VERSION, SKILLS_VERSION_FILE, dbPath, ensureHome, installedSkillsPath, jobduckHome, skillNames } from '../paths'
 
 export interface Check {
   name: string
@@ -21,7 +21,19 @@ export interface DoctorOptions {
   out?: (line: string) => void
 }
 
-const MIN_NODE_MAJOR = 20
+const EXECUTABLES = ['jobduck', 'jobduck.exe']
+
+function findOnPath(pathEnv: string): string | undefined {
+  for (const dir of pathEnv.split(delimiter).filter(Boolean)) {
+    for (const name of EXECUTABLES) {
+      const candidate = join(dir, name)
+      if (!existsSync(candidate)) continue
+      const stat = statSync(candidate)
+      if (stat.isFile() && (process.platform === 'win32' || (stat.mode & 0o111) !== 0)) return candidate
+    }
+  }
+  return undefined
+}
 
 function attempt(name: string, fn: () => string): Check {
   try {
@@ -36,8 +48,12 @@ export function runDoctor(options: DoctorOptions = {}): number {
   const home = jobduckHome()
   const checks: Check[] = []
 
-  const nodeMajor = Number(process.versions.node.split('.')[0])
-  checks.push({ name: 'node', ok: nodeMajor >= MIN_NODE_MAJOR, detail: `v${process.versions.node} (need >= ${MIN_NODE_MAJOR})` })
+  checks.push({ name: 'runtime', ok: true, detail: `jobduck ${PACKAGE_VERSION} on bun ${Bun.version}` })
+
+  const onPath = findOnPath(options.pathEnv ?? process.env.PATH ?? '')
+  checks.push(onPath
+    ? { name: 'path', ok: true, detail: `jobduck found at ${onPath}` }
+    : { name: 'path', ok: false, detail: 'not on PATH; hosts start the MCP server with `jobduck mcp`' })
 
   checks.push(attempt('home', () => {
     ensureHome(home)
@@ -74,10 +90,10 @@ export function runDoctor(options: DoctorOptions = {}): number {
     const versionFile = join(dir, SKILLS_VERSION_FILE)
     const names = skillNames()
     const installed = names.filter((name) => existsSync(join(dir, `${name}.md`)))
-    if (!existsSync(versionFile)) return `${installed.length} installed (run npx jobduck init to install)`
+    if (!existsSync(versionFile)) return `${installed.length} installed (run jobduck init to install)`
     const version = readFileSync(versionFile, 'utf8').trim()
     const missing = names.filter((name) => !installed.includes(name))
-    if (missing.length > 0) throw new Error(`missing ${missing.join(', ')} (version ${version}); run npx jobduck init`)
+    if (missing.length > 0) throw new Error(`missing ${missing.join(', ')} (version ${version}); run jobduck init`)
     return `${installed.length} installed (version ${version})`
   }))
 

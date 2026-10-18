@@ -30,9 +30,9 @@ Read the local application store and change statuses when the user says so. Job 
    - the user withdrew or declined an offer → `deny_by_candidate`;
    - the user decides it has gone silent → `no_response` (never decide this yourself).
 4. **Write.** Call `update_status` with `source: "user"` when the user reported it, and a short `note` with the stage, date and anything worth remembering.
-5. **Sync rejections.** When `[track] sync_url` is set, `npx jobduck sync` is how rejection emails become `deny_by_employer`: it pulls them from the user's own Apps Script, matches each to an application and closes it. Run it when the user asks to sync or before showing the pipeline; `--dry-run` previews. Emails it could not place stay in the dashboard's "Needs a match" queue.
+5. **Sync rejections.** When `[track] sync_url` is set, `jobduck sync` is how rejection emails become `deny_by_employer`: it pulls them from the user's own Apps Script, matches each to an application and closes it. Run it when the user asks to sync or before showing the pipeline; `--dry-run` previews. Emails it could not place stay in the dashboard's "Needs a match" queue.
 6. **Resolve a match on request.** If the user asks you to place an unmatched rejection, call `list_applications` (open statuses), and propose the application whose company and title fit (ID, company, title). The user confirms it with **Match** in the dashboard queue, which closes the application and clears the entry; if they would rather you close it, call `update_status` with `deny_by_employer` and `source: "user"`, then tell them to dismiss the queue entry.
-7. **Dashboard.** For notes, title/company/location overrides, deleting a duplicate, or matching rejection emails the sync could not place, tell the user to run `npx jobduck dashboard` (local page on 127.0.0.1).
+7. **Dashboard.** For notes, title/company/location overrides, deleting a duplicate, or matching rejection emails the sync could not place, tell the user to run `jobduck dashboard` (local page on 127.0.0.1).
 
 ## Never
 

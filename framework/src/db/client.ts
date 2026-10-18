@@ -1,4 +1,4 @@
-import { createRequire } from 'node:module'
+import { Database, type SQLQueryBindings } from 'bun:sqlite'
 
 export interface RunResult {
   changes: number | bigint
@@ -21,22 +21,25 @@ export interface OpenOptions {
   readonly?: boolean
 }
 
-export type Driver = (path: string, options: OpenOptions) => Db
-
-const betterSqlite3: Driver = (path, options) => {
-  const require = createRequire(import.meta.url)
-  const Database = require('better-sqlite3') as typeof import('better-sqlite3')
-  return new Database(path, { readonly: options.readonly ?? false, fileMustExist: options.readonly ?? false })
-}
-
-let defaultDriver: Driver = betterSqlite3
-
-export function setDriver(driver: Driver): void {
-  defaultDriver = driver
+function bunSqlite(path: string, options: OpenOptions): Db {
+  const db = options.readonly ? new Database(path, { readonly: true }) : new Database(path, { create: true })
+  const bind = (params: unknown[]) => params as SQLQueryBindings[]
+  return {
+    prepare: (sql) => {
+      const stmt = db.prepare(sql)
+      return {
+        run: (...params) => stmt.run(...bind(params)),
+        get: (...params) => stmt.get(...bind(params)),
+        all: (...params) => stmt.all(...bind(params)),
+      }
+    },
+    exec: (sql) => db.exec(sql),
+    close: () => db.close(),
+  }
 }
 
 export function openDb(path: string, options: OpenOptions = {}): Db {
-  const db = defaultDriver(path, options)
+  const db = bunSqlite(path, options)
   if (!options.readonly) db.exec('PRAGMA journal_mode = WAL')
   db.exec('PRAGMA foreign_keys = ON')
   return db

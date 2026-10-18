@@ -1,16 +1,18 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { Command } from 'commander'
 import { runDashboard } from './commands/dashboard'
 import { runDoctor } from './commands/doctor'
 import { runInit } from './commands/init'
 import { runMcp } from './commands/mcp'
 import { runSync } from './commands/sync'
+import { runUpgrade } from './commands/upgrade'
 import { HOST_IDS } from './hosts'
+import { PACKAGE_VERSION } from './paths'
 
 const program = new Command()
   .name('jobduck')
   .description('Agent-run job search: local store, profile, and host registration')
-  .version('0.1.0')
+  .version(PACKAGE_VERSION)
 
 program
   .command('init')
@@ -30,7 +32,7 @@ program
 
 program
   .command('doctor')
-  .description('Check Node, the Job Duck home, the database, config files, and host registration')
+  .description('Check the runtime, PATH, the Job Duck home, the database, config files, and host registration')
   .option('--json', 'print the report as JSON')
   .option('--workspace <dir>', 'project directory to check for workspace-scoped host files', process.cwd())
   .action((opts: { json?: boolean; workspace: string }) => {
@@ -61,6 +63,14 @@ program
   .description('Run the Job Duck MCP server over stdio (started by your agent host)')
   .action(async () => {
     process.exitCode = await runMcp()
+  })
+
+program
+  .command('upgrade [version]')
+  .description('Replace this jobduck binary with the latest (or the given) GitHub release after verifying its SHA-256')
+  .option('--check', 'print the current and latest versions without downloading')
+  .action(async (version: string | undefined, opts: { check?: boolean }) => {
+    process.exitCode = await runUpgrade({ version, check: opts.check })
   })
 
 program.parseAsync(process.argv).catch((error: unknown) => {

@@ -1,27 +1,9 @@
-import { Database, type SQLQueryBindings } from 'bun:sqlite'
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { type Db, openDb, setDriver } from '../src/db/client'
+import { type Db, openDb } from '../src/db/client'
 import { migrate } from '../src/db/migrate'
 import { dbPath } from '../src/paths'
-
-setDriver((path, options) => {
-  const db = options.readonly ? new Database(path, { readonly: true }) : new Database(path, { create: true })
-  const bind = (params: unknown[]) => params as SQLQueryBindings[]
-  return {
-    prepare: (sql) => {
-      const stmt = db.prepare(sql)
-      return {
-        run: (...params) => stmt.run(...bind(params)),
-        get: (...params) => stmt.get(...bind(params)),
-        all: (...params) => stmt.all(...bind(params)),
-      }
-    },
-    exec: (sql) => db.exec(sql),
-    close: () => db.close(),
-  }
-})
 
 export interface Sandbox {
   root: string

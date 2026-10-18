@@ -54,7 +54,7 @@ test('Claude Code dry run merges .mcp.json, adds pointers, and writes nothing', 
 
   const merged = JSON.parse(changes[0]!.after)
   expect(merged).toEqual({
-    mcpServers: { other: { command: 'x' }, jobduck: { command: 'npx', args: ['-y', 'jobduck', 'mcp'] } },
+    mcpServers: { other: { command: 'x' }, jobduck: { command: 'jobduck', args: ['mcp'] } },
     extra: 1,
   })
   expect(changes[0]!.diff).toContain('+    "jobduck": {')
@@ -97,7 +97,7 @@ test('Codex dry run appends the server table and preserves other sections byte f
   expect(snapshot(box.root)).toEqual(before)
   expect(changes.map((c) => c.path)).toEqual([path, ...pointerPaths(join(box.workspace, '.agents', 'skills'))])
   expect(changes[0]!.after.startsWith(fixture)).toBe(true)
-  expect(changes[0]!.after.slice(fixture.length)).toBe('\n[mcp_servers.jobduck]\ncommand = "npx"\nargs = ["-y", "jobduck", "mcp"]\n')
+  expect(changes[0]!.after.slice(fixture.length)).toBe('\n[mcp_servers.jobduck]\ncommand = "jobduck"\nargs = ["mcp"]\n')
   expect(changes[0]!.diff).toContain('+[mcp_servers.jobduck]')
   const parsed = parse(changes[0]!.after) as Record<string, any>
   expect(parsed.mcp_servers.other).toEqual({ command: 'other', args: [] })
@@ -107,14 +107,14 @@ test('Codex dry run appends the server table and preserves other sections byte f
 test('Codex replaces an outdated jobduck table in place', () => {
   const fixture = 'model = "o3"\n\n[mcp_servers.jobduck]\ncommand = "node"\nargs = ["old.js"]\nenv = { A = "1" }\n\n[profiles.fast]\nmodel = "o4-mini"\n'
   const after = mergeCodexConfig(fixture)
-  expect(after).toBe('model = "o3"\n\n[mcp_servers.jobduck]\ncommand = "npx"\nargs = ["-y", "jobduck", "mcp"]\n\n[profiles.fast]\nmodel = "o4-mini"\n')
+  expect(after).toBe('model = "o3"\n\n[mcp_servers.jobduck]\ncommand = "jobduck"\nargs = ["mcp"]\n\n[profiles.fast]\nmodel = "o4-mini"\n')
   expect(mergeCodexConfig(after)).toBe(after)
 })
 
 test('Codex creates a config when none exists', () => {
   const changes = codex.register(ctx)
   expect(changes[0]!.before).toBeNull()
-  expect(changes[0]!.after).toBe('[mcp_servers.jobduck]\ncommand = "npx"\nargs = ["-y", "jobduck", "mcp"]\n')
+  expect(changes[0]!.after).toBe('[mcp_servers.jobduck]\ncommand = "jobduck"\nargs = ["mcp"]\n')
 })
 
 test('Gemini dry run merges settings.json and adds GEMINI.md', () => {
@@ -127,7 +127,7 @@ test('Gemini dry run merges settings.json and adds GEMINI.md', () => {
   expect(changes.map((c) => c.path)).toEqual([path, join(box.workspace, 'AGENTS.md'), join(box.workspace, 'GEMINI.md')])
   expect(JSON.parse(changes[0]!.after)).toEqual({
     theme: 'Dracula',
-    mcpServers: { other: { command: 'y' }, jobduck: { command: 'npx', args: ['-y', 'jobduck', 'mcp'] } },
+    mcpServers: { other: { command: 'y' }, jobduck: { command: 'jobduck', args: ['mcp'] } },
   })
   expect(changes[2]!.after).toBe('See AGENTS.md\n')
   expect(changes.some((c) => c.path.endsWith('SKILL.md'))).toBe(false)

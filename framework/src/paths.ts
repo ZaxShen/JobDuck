@@ -1,8 +1,8 @@
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join, resolve } from 'node:path'
 import pkg from '../package.json'
+import { SKILLS, TEMPLATES } from './assets'
 
 export const DB_FILE = 'jobduck.db'
 export const PROFILE_FILE = 'profile.md'
@@ -21,25 +21,8 @@ export const profilePath = (home = jobduckHome()) => join(home, PROFILE_FILE)
 export const permissionsPath = (home = jobduckHome()) => join(home, PERMISSIONS_FILE)
 export const installedSkillsPath = (home = jobduckHome()) => join(home, SKILLS_DIR)
 
-function findAsset(candidates: string[]): string {
-  let dir = dirname(fileURLToPath(import.meta.url))
-  for (let depth = 0; depth < 4; depth++) {
-    for (const candidate of candidates) {
-      const path = join(dir, candidate)
-      if (existsSync(path) && statSync(path).isDirectory()) return path
-    }
-    dir = dirname(dir)
-  }
-  throw new Error(`jobduck asset not found: ${candidates.join(' or ')}`)
-}
-
-export const templatesDir = () => findAsset(['templates'])
-export const migrationsDir = () => findAsset(['migrations', 'db/migrations'])
-export const dashboardDir = () => findAsset(['dashboard/public', 'dashboard'])
-export const skillsDir = () => findAsset([SKILLS_DIR])
-
 export function skillNames(): string[] {
-  return readdirSync(skillsDir()).filter((file) => file.endsWith('.md')).map((file) => file.slice(0, -3)).sort()
+  return Object.keys(SKILLS).sort()
 }
 
 export function skillsUpToDate(home = jobduckHome()): boolean {
@@ -48,7 +31,7 @@ export function skillsUpToDate(home = jobduckHome()): boolean {
   if (!existsSync(versionFile) || readFileSync(versionFile, 'utf8').trim() !== PACKAGE_VERSION) return false
   return skillNames().every((name) => {
     const installed = join(target, `${name}.md`)
-    return existsSync(installed) && readFileSync(installed, 'utf8') === readFileSync(join(skillsDir(), `${name}.md`), 'utf8')
+    return existsSync(installed) && readFileSync(installed, 'utf8') === SKILLS[name]
   })
 }
 
@@ -58,7 +41,7 @@ export function installSkills(home = jobduckHome()): string[] {
   const written: string[] = []
   for (const name of skillNames()) {
     const path = join(target, `${name}.md`)
-    copyFileSync(join(skillsDir(), `${name}.md`), path)
+    writeFileSync(path, SKILLS[name]!, { mode: 0o600 })
     chmodSync(path, 0o600)
     written.push(path)
   }
@@ -83,7 +66,7 @@ export function ensureHome(home = jobduckHome()): EnsureHomeResult {
   for (const file of [PROFILE_FILE, PERMISSIONS_FILE]) {
     const target = join(home, file)
     if (existsSync(target)) continue
-    copyFileSync(join(templatesDir(), file), target)
+    writeFileSync(target, TEMPLATES[file]!, { mode: 0o600 })
     chmodSync(target, 0o600)
     created.push(target)
   }

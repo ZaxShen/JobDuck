@@ -5,12 +5,13 @@ import { claudeCode } from './claude-code'
 import { codex } from './codex'
 import { unifiedDiff } from './diff'
 import { gemini } from './gemini'
-import { skillNames, skillsDir } from '../paths'
+import { SKILLS } from '../assets'
+import { skillNames } from '../paths'
 
 export const HOST_IDS = ['claude', 'codex', 'gemini'] as const
 export type HostId = (typeof HOST_IDS)[number]
 
-export const MCP_SERVER = { command: 'npx', args: ['-y', 'jobduck', 'mcp'] }
+export const MCP_SERVER = { command: 'jobduck', args: ['mcp'] }
 
 export interface HostContext {
   workspace: string
@@ -75,7 +76,7 @@ export function skillFrontMatter(text: string): Record<string, string> {
 
 export function skillPointers(dir: string): Array<FileChange | null> {
   return skillNames().map((name) => {
-    const { description = '' } = skillFrontMatter(readFileSync(join(skillsDir(), `${name}.md`), 'utf8'))
+    const { description = '' } = skillFrontMatter(SKILLS[name]!)
     const pointer = `jobduck-${name}`
     return planChange(
       join(dir, pointer, 'SKILL.md'),

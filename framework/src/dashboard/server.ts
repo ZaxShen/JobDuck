@@ -1,11 +1,10 @@
 import { spawn } from 'node:child_process'
-import { readFileSync } from 'node:fs'
 import { type IncomingMessage, type ServerResponse, createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { join } from 'node:path'
+import { DASHBOARD } from '../assets'
 import { openDb } from '../db/client'
 import { migrate } from '../db/migrate'
-import { dashboardDir, dbPath, ensureHome, jobduckHome } from '../paths'
+import { dbPath, ensureHome, jobduckHome } from '../paths'
 import { ApiError, handleApi } from './api'
 
 export const DASHBOARD_HOST = '127.0.0.1'
@@ -93,9 +92,8 @@ export function openBrowser(url: string, onError: () => void = () => undefined):
 export async function startDashboard(options: DashboardOptions = {}): Promise<Dashboard> {
   const home = options.home ?? jobduckHome()
   const out = options.out ?? ((line: string) => console.log(line))
-  const assetDir = dashboardDir()
   const assets = Object.fromEntries(Object.entries(ASSETS)
-    .map(([path, asset]) => [path, { type: asset.type, body: readFileSync(join(assetDir, asset.file)) }]))
+    .map(([path, asset]) => [path, { type: asset.type, body: DASHBOARD[asset.file]! }]))
 
   ensureHome(home)
   const db = openDb(dbPath(home))

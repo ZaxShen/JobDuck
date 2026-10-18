@@ -1,15 +1,30 @@
 # jobduck
 
-Status: pre-release, not yet on npm.
+Status: pre-release.
 
 Job Duck for your coding agent. Job Duck keeps your job search (postings, applications, status history, rejection outcomes) in a local SQLite database and lets the agent you already use — Claude Code, Codex CLI or Gemini CLI — work with it. No server, no account, no telemetry.
 
 ## Install
 
+`jobduck` is a single self-contained binary; nothing else needs to be installed.
+
+macOS and Linux (arm64 or x64):
+
 ```bash
-npx jobduck init --dry-run   # preview every file it would create or change
-npx jobduck init             # apply (asks first; use --yes in scripts)
-npx jobduck doctor           # check Node, ~/.jobduck, the database and host registration
+curl -fsSL https://raw.githubusercontent.com/ZaxShen/JobDuck/main/install.sh | sh
+jobduck init
+```
+
+The installer downloads the binary for your platform from [GitHub Releases](https://github.com/ZaxShen/JobDuck/releases), checks it against the release's `SHA256SUMS`, and puts it in `~/.local/bin` without root. `JOBDUCK_VERSION=0.1.0` pins a version; `JOBDUCK_INSTALL_DIR=<dir>` picks another directory.
+
+Windows (x64): download `jobduck-windows-x64.exe` from [Releases](https://github.com/ZaxShen/JobDuck/releases), rename it to `jobduck.exe`, and put it in a directory on your `PATH`.
+
+Then:
+
+```bash
+jobduck init --dry-run   # preview every file it would create or change
+jobduck init             # apply (asks first; use --yes in scripts)
+jobduck doctor           # check the runtime, PATH, ~/.jobduck, the database and host registration
 ```
 
 `init` options:
@@ -19,7 +34,17 @@ npx jobduck doctor           # check Node, ~/.jobduck, the database and host reg
 - `--dry-run`: print the plan and unified diffs, write nothing.
 - `--yes`: skip the confirmation prompt (required when not in a terminal).
 
-`doctor --json` prints a machine-readable report and exits 1 when a check fails. `jobduck mcp` runs the MCP server over stdio; your agent host starts it, you don't.
+`doctor` reports the jobduck and runtime versions, whether `jobduck` is on your `PATH` (hosts start it by name), `~/.jobduck` and its mode, the database, `permissions.toml`, `profile.md`, the installed skills and each host's registration. `doctor --json` prints a machine-readable report and exits 1 when a check fails. `jobduck mcp` runs the MCP server over stdio; your agent host starts it, you don't.
+
+## Upgrade
+
+```bash
+jobduck upgrade --check   # print the current and latest versions, download nothing
+jobduck upgrade           # replace this binary with the latest release
+jobduck upgrade 0.1.0     # install a specific version
+```
+
+`upgrade` downloads the release asset for your platform from GitHub, refuses it unless its SHA-256 matches the release's `SHA256SUMS`, and swaps it in place. Run `jobduck init` afterwards to refresh the skills.
 
 ## What `init` writes
 
@@ -32,7 +57,7 @@ npx jobduck doctor           # check Node, ~/.jobduck, the database and host reg
 | Codex CLI | `<workspace>/.agents/skills/jobduck-<name>/SKILL.md` | one pointer per skill |
 | Gemini CLI | `~/.gemini/settings.json`, `<workspace>/GEMINI.md` | adds `mcpServers.jobduck`, creates `GEMINI.md` pointing at `AGENTS.md` |
 
-Every server entry runs `npx -y jobduck mcp`. For every host, `init` also copies the skills to `~/.jobduck/skills/` (see [Skills](#skills)).
+Every server entry runs `jobduck mcp`, so `jobduck` must be on the `PATH` your agent host sees. For every host, `init` also copies the skills to `~/.jobduck/skills/` (see [Skills](#skills)).
 
 To register by hand instead of through `init`:
 
@@ -41,7 +66,7 @@ Claude Code (`<workspace>/.mcp.json`):
 ```json
 {
   "mcpServers": {
-    "jobduck": { "command": "npx", "args": ["-y", "jobduck", "mcp"] }
+    "jobduck": { "command": "jobduck", "args": ["mcp"] }
   }
 }
 ```
@@ -50,8 +75,8 @@ Codex CLI (`~/.codex/config.toml`):
 
 ```toml
 [mcp_servers.jobduck]
-command = "npx"
-args = ["-y", "jobduck", "mcp"]
+command = "jobduck"
+args = ["mcp"]
 ```
 
 Gemini CLI (`~/.gemini/settings.json`):
@@ -59,7 +84,7 @@ Gemini CLI (`~/.gemini/settings.json`):
 ```json
 {
   "mcpServers": {
-    "jobduck": { "command": "npx", "args": ["-y", "jobduck", "mcp"] }
+    "jobduck": { "command": "jobduck", "args": ["mcp"] }
   }
 }
 ```
@@ -93,13 +118,13 @@ Every tool returns compact JSON. Writes (`record_application`, `update_status`) 
 | `update_status` | `id`, `status`, `note?`, `source?` | `{ application }`; every change is logged in `application_events`, and `note` is also appended to the application's note |
 | `list_applications` | `status?` (one status or an array), `since?` (ISO date `YYYY-MM-DD` or timestamp), `limit?` (default 50, max 200) | `{ applications[] }` with title, company, location and URL from the posting |
 
-`search_jobs` uses the public [freehire.me](https://freehire.me) API (no key; 50 results per page, at most 10 000 deep). It and [`jobduck sync`](#sync) (your own Apps Script URL) are the only network calls Job Duck makes.
+`search_jobs` uses the public [freehire.me](https://freehire.me) API (no key; 50 results per page, at most 10 000 deep). It, [`jobduck sync`](#sync) (your own Apps Script URL) and [`jobduck upgrade`](#upgrade) (GitHub Releases) are the only network calls Job Duck makes.
 
 ## Dashboard
 
 ```bash
-npx jobduck dashboard             # serves http://127.0.0.1:4848 and opens your browser
-npx jobduck dashboard --port 0 --no-open
+jobduck dashboard             # serves http://127.0.0.1:4848 and opens your browser
+jobduck dashboard --port 0 --no-open
 ```
 
 A local page over the same SQLite store: the applications board with status filters and search, a detail drawer (timeline, status, notes, title/company/location overrides, delete) and a "Needs a match" queue for rejection emails that could not be matched automatically. Status changes made here are recorded with source `dashboard`; matching a rejection closes the application as `deny_by_employer`.
@@ -113,9 +138,9 @@ The server listens on `127.0.0.1` only, loads nothing from the internet, and ref
 ## Sync
 
 ```bash
-npx jobduck sync --dry-run   # fetch and print what would match, change nothing
-npx jobduck sync             # store, match, close, acknowledge
-npx jobduck sync --json      # same, as JSON
+jobduck sync --dry-run   # fetch and print what would match, change nothing
+jobduck sync             # store, match, close, acknowledge
+jobduck sync --json      # same, as JSON
 ```
 
 Rejection emails reach Job Duck through the Job Duck Gmail Apps Script running in your own Google account, deployed as a web app (its README, "Serve mode"). Set `[track] sync_url` to the `/exec` URL and `sync_token` to the token `generateSyncToken` logged; the `setup` skill's track module walks you through it. Job Duck never gets mail access: the script sorts your mail and queues one small record per rejection (date, sender domain, subject, company, title, job URL or reference, and the application marker when there is one).
@@ -155,13 +180,16 @@ Nothing is enabled until you turn a module on in `permissions.toml`; the `setup`
 bun install
 bun run typecheck
 bun test
-bun run build && node dist/cli.js doctor
+bun run build && ./dist/jobduck doctor   # binary for this machine
+bun run build:all                         # every platform plus dist/SHA256SUMS
 ```
 
-## Publishing
+## Releasing
+
+Pushing a `v<version>` tag that matches `package.json` runs the release workflow: it tests, builds `jobduck-darwin-arm64`, `jobduck-darwin-x64`, `jobduck-linux-x64`, `jobduck-linux-arm64`, `jobduck-windows-x64.exe` and `SHA256SUMS`, and publishes them as a GitHub Release.
 
 Maintainers build the public, history-free snapshot (this package plus the Gmail Apps Script) from the private repository with `scripts/release/snapshot.sh <out-dir>`.
-It scans the snapshot for secrets and personal data and prints the publish steps; it never pushes or publishes.
+It scans the snapshot for secrets and personal data and prints the publish steps; it never pushes or tags.
 
 ## License
 

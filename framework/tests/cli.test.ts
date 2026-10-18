@@ -28,6 +28,13 @@ function fixtures() {
 
 const base = () => ({ workspace: box.workspace, userHome: box.userHome, pathEnv: '', out })
 
+function doctorBase() {
+  const bin = join(box.root, 'bin')
+  mkdirSync(bin, { recursive: true })
+  writeFileSync(join(bin, 'jobduck'), '#!/bin/sh\n', { mode: 0o755 })
+  return { ...base(), pathEnv: bin }
+}
+
 test('init --dry-run prints the three host diffs and touches nothing', async () => {
   fixtures()
   const before = snapshot(box.root)
@@ -85,27 +92,36 @@ test('init --yes creates the home, migrates, and registers hosts; doctor then pa
   expect(lines).toContain('Nothing to do.')
 
   lines = []
-  expect(runDoctor({ ...base(), json: true })).toBe(0)
+  expect(runDoctor({ ...doctorBase(), json: true })).toBe(0)
   const report = JSON.parse(lines.join('\n'))
   expect(report.checks.find((c: { name: string }) => c.name === 'database').detail).toBe('migration version 1')
+  expect(report.checks.find((c: { name: string }) => c.name === 'runtime').detail).toBe(`jobduck ${PACKAGE_VERSION} on bun ${Bun.version}`)
+  expect(report.checks.find((c: { name: string }) => c.name === 'path').detail).toBe(`jobduck found at ${join(box.root, 'bin', 'jobduck')}`)
+  expect(report.checks.some((c: { name: string }) => c.name === 'node')).toBe(false)
   expect(report.hosts.every((h: { registered: boolean }) => h.registered)).toBe(true)
   expect(report.checks.find((c: { name: string }) => c.name === 'skills').detail).toBe(`6 installed (version ${PACKAGE_VERSION})`)
 
   rmSync(join(box.home, 'skills', 'apply.md'))
   lines = []
-  expect(runDoctor({ ...base() })).toBe(1)
+  expect(runDoctor({ ...doctorBase() })).toBe(1)
   expect(lines.some((line) => line.startsWith('FAIL skills: missing apply'))).toBe(true)
 })
 
 test('doctor on a fresh home reports skills as not installed without failing', () => {
-  expect(runDoctor({ ...base() })).toBe(0)
-  expect(lines).toContain('ok   skills: 0 installed (run npx jobduck init to install)')
+  expect(runDoctor({ ...doctorBase() })).toBe(0)
+  expect(lines).toContain('ok   skills: 0 installed (run jobduck init to install)')
 })
 
 test('doctor fails when permissions.toml is invalid', async () => {
-  expect(runDoctor({ ...base() })).toBe(0)
+  expect(runDoctor({ ...doctorBase() })).toBe(0)
   writeFileSync(join(box.home, 'permissions.toml'), '[modules]\nteleport = true\n')
   lines = []
-  expect(runDoctor({ ...base() })).toBe(1)
+  expect(runDoctor({ ...doctorBase() })).toBe(1)
   expect(lines.some((line) => line.startsWith('FAIL permissions.toml'))).toBe(true)
+})
+
+test('doctor fails the path check when jobduck is not on PATH', () => {
+  expect(runDoctor({ ...base() })).toBe(1)
+  expect(lines).toContain('FAIL path: not on PATH; hosts start the MCP server with `jobduck mcp`')
+  expect(lines.some((line) => line.startsWith('ok   runtime: jobduck '))).toBe(true)
 })

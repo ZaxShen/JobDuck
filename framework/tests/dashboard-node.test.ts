@@ -1,28 +1,16 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
-import { type ChildProcess, spawn, spawnSync } from 'node:child_process'
+import { type ChildProcess, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { delimiter, join } from 'node:path'
+import { join } from 'node:path'
 import { type Sandbox, sandbox } from './helpers'
 
 const root = join(import.meta.dir, '..')
-const cli = join(root, 'dist', 'cli.js')
-const built = existsSync(cli)
+const binary = join(root, 'dist', process.platform === 'win32' ? 'jobduck.exe' : 'jobduck')
 
-function realNodeWithSqlite(candidate: string): string | undefined {
-  const probe = spawnSync(candidate, ['-e', "require('better-sqlite3')(':memory:').close(); process.stdout.write(process.execPath)"],
-    { cwd: root, encoding: 'utf8' })
-  return probe.status === 0 && probe.stdout ? probe.stdout : undefined
-}
-
-const nodeBinaries = [...new Set((process.env.PATH ?? '').split(delimiter).filter(Boolean)
-  .map((dir) => join(dir, process.platform === 'win32' ? 'node.exe' : 'node')).filter(existsSync))]
-const node = built ? nodeBinaries.map(realNodeWithSqlite).find(Boolean) : undefined
-
-if (!built) console.warn(`dashboard-node.test.ts skipped: ${cli} is missing; run \`bun run build\` first`)
-else if (!node) {
-  console.warn(`dashboard-node.test.ts skipped: no node on PATH can load better-sqlite3 (tried ${nodeBinaries.join(', ') || 'none'}); `
-    + 'rebuild it for your Node with `npm rebuild better-sqlite3`')
-}
+const launchers = [
+  { label: 'bun src/cli.ts', command: 'bun', args: [join(root, 'src', 'cli.ts')] },
+  ...(existsSync(binary) ? [{ label: 'dist/jobduck', command: binary, args: [] }] : []),
+]
 
 let box: Sandbox
 let child: ChildProcess | undefined
@@ -46,20 +34,25 @@ function firstLine(proc: ChildProcess): Promise<string> {
   })
 }
 
-test.skipIf(!node)('the built CLI serves the dashboard under Node', async () => {
-  child = spawn(node!, [cli, 'dashboard', '--port', '0', '--no-open', '--print-url'], {
-    env: { ...process.env, JOBDUCK_HOME: box.home, HOME: box.userHome },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  const url = await firstLine(child)
-  expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
-  const res = await fetch(`${url}/api/summary`)
-  expect(res.status).toBe(200)
-  expect(await res.json()).toMatchObject({ counts: { saved: 0 }, needs_match: 0 })
-  expect((await fetch(`${url}/`)).headers.get('content-security-policy')).toBe("default-src 'self'")
+for (const launcher of launchers) {
+  test(`${launcher.label} serves the dashboard in a child process`, async () => {
+    child = spawn(launcher.command, [...launcher.args, 'dashboard', '--port', '0', '--no-open', '--print-url'], {
+      cwd: box.workspace,
+      env: { ...process.env, JOBDUCK_HOME: box.home, HOME: box.userHome },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    const url = await firstLine(child)
+    expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+    const res = await fetch(`${url}/api/summary`)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ counts: { saved: 0 }, needs_match: 0 })
+    const page = await fetch(`${url}/`)
+    expect(page.headers.get('content-security-policy')).toBe("default-src 'self'")
+    expect(await page.text()).toContain('<html')
 
-  const exited = new Promise<number | null>((resolve) => child!.on('exit', resolve))
-  child.kill('SIGTERM')
-  expect(await exited).toBe(0)
-  child = undefined
-}, 20_000)
+    const exited = new Promise<number | null>((resolve) => child!.on('exit', resolve))
+    child.kill('SIGTERM')
+    expect(await exited).toBe(0)
+    child = undefined
+  }, 20_000)
+}

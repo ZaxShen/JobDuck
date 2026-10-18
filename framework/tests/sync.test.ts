@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
-import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, writeFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { delimiter, join } from 'node:path'
+import { join } from 'node:path'
 import { type Sandbox, migratedDb, sandbox } from './helpers'
 import { runSync } from '../src/commands/sync'
 import { type ApplicationStatus, createApplication, getApplication, listEvents } from '../src/db/applications'
@@ -260,18 +260,11 @@ test('the client status call and unknown keys pass through', async () => {
   expect((await client.pending()).outcomes[0]).toMatchObject({ messageId: 'm1', extra: 'kept' })
 })
 
-const root = join(import.meta.dir, '..')
-const cli = join(root, 'dist', 'cli.js')
-const nodeWithSqlite = existsSync(cli)
-  ? [...new Set((process.env.PATH ?? '').split(delimiter).filter(Boolean).map((dir) => join(dir, 'node')).filter(existsSync))]
-    .map((candidate) => spawnSync(candidate, ['-e', "require('better-sqlite3')(':memory:').close(); process.stdout.write(process.execPath)"],
-      { cwd: root, encoding: 'utf8' }))
-    .find((probe) => probe.status === 0 && probe.stdout)?.stdout
-  : undefined
+const cli = join(import.meta.dir, '..', 'src', 'cli.ts')
 
-function runNode(args: string[]): Promise<{ code: number | null; stdout: string; stderr: string }> {
+function runCli(args: string[]): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    const child = spawn(nodeWithSqlite!, [cli, ...args], {
+    const child = spawn('bun', [cli, ...args], {
       env: { ...process.env, JOBDUCK_HOME: box.home, HOME: box.userHome }, stdio: ['ignore', 'pipe', 'pipe'],
     })
     let stdout = ''
@@ -282,7 +275,7 @@ function runNode(args: string[]): Promise<{ code: number | null; stdout: string;
   })
 }
 
-test.skipIf(!nodeWithSqlite)('the built CLI syncs under Node through a 302 redirect', async () => {
+test('the CLI syncs in a child process through a 302 redirect', async () => {
   const app = application('Acme', 'AI Engineer')
   db.close()
   const queue = new Map<string, string>()
@@ -312,12 +305,12 @@ test.skipIf(!nodeWithSqlite)('the built CLI syncs under Node through a 302 redir
     const url = `http://127.0.0.1:${(stub.address() as AddressInfo).port}/macros/s/abc/exec`
     configure(true, url)
 
-    const dry = await runNode(['sync', '--dry-run', '--json'])
+    const dry = await runCli(['sync', '--dry-run', '--json'])
     expect(dry.code).toBe(0)
     expect(JSON.parse(dry.stdout).totals).toMatchObject({ fetched: 2, matched: { marker: 1 }, needs_match: 1 })
     expect(posts.map((post) => post.body.action)).toEqual(['pending'])
 
-    const real = await runNode(['sync'])
+    const real = await runCli(['sync'])
     expect(real.code).toBe(0)
     expect(real.stdout).toContain('fetched 2 / matched 1 (marker 1, url 0, ref 0, company_title 0) / needs_match 1 / known 0')
     expect(posts.map((post) => post.body.action)).toEqual(['pending', 'pending', 'ack'])

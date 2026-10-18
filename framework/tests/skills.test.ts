@@ -6,7 +6,10 @@ import { ApplyManifest, CONSENT_KEYS, MODULES } from '../src/config/permissions'
 import { parseProfile } from '../src/config/profile'
 import { skillFrontMatter } from '../src/hosts'
 import { EXTRACTED_KEYS, TOOL_NAMES } from '../src/mcp/tools'
-import { PACKAGE_VERSION, installSkills, skillNames, skillsDir, skillsUpToDate, templatesDir } from '../src/paths'
+import { PACKAGE_VERSION, installSkills, skillNames, skillsUpToDate } from '../src/paths'
+
+const skillsDir = () => join(import.meta.dir, '..', 'skills')
+const templatesDir = () => join(import.meta.dir, '..', 'templates')
 
 const SKILLS = ['apply', 'cv', 'find', 'interview', 'setup', 'track']
 const read = (name: string) => readFileSync(join(skillsDir(), `${name}.md`), 'utf8')
@@ -61,7 +64,7 @@ test('find defaults to 20 results, reads posting text via with_text and keeps un
 })
 
 test('setup always runs doctor with --workspace', () => {
-  const runs = [...read('setup').matchAll(/Run `npx jobduck doctor[^`]*`/g)].map((m) => m[0])
+  const runs = [...read('setup').matchAll(/Run `jobduck doctor[^`]*`/g)].map((m) => m[0])
   expect(runs.length).toBeGreaterThan(0)
   for (const run of runs) expect(run).toContain('--workspace')
 })
@@ -98,7 +101,7 @@ test('the profile template has no plain cv_files key and documents the [[cv_file
 })
 
 test('setup and track describe jobduck sync', () => {
-  expect(read('setup')).toContain('npx jobduck sync --dry-run')
+  expect(read('setup')).toContain('jobduck sync --dry-run')
   expect(read('setup')).toContain('generateSyncToken')
-  expect(read('track')).toContain('npx jobduck sync')
+  expect(read('track')).toContain('jobduck sync')
 })
