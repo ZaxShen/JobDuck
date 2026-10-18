@@ -71,4 +71,4 @@ case ":$PATH:" in
 esac
 
 echo
-echo "Next: jobduck init"
+echo "Next: mkdir ~/JobDuck && cd ~/JobDuck && jobduck init"

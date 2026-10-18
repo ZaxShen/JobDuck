@@ -43,12 +43,13 @@ program
 
 program
   .command('dashboard')
-  .description('Serve the local applications dashboard on 127.0.0.1')
+  .description('Serve the local dashboard (applications, profile, settings) on 127.0.0.1')
   .option('--port <n>', 'port to listen on (0 picks a free port)', '4848')
   .option('--no-open', 'do not open a browser')
   .option('--print-url', 'print only the URL')
-  .action(async (opts: { port: string; open: boolean; printUrl?: boolean }) => {
-    process.exitCode = await runDashboard({ port: opts.port, open: opts.open, printUrl: opts.printUrl })
+  .option('--view <name>', 'open on a tab: applications, profile or settings')
+  .action(async (opts: { port: string; open: boolean; printUrl?: boolean; view?: string }) => {
+    process.exitCode = await runDashboard({ port: opts.port, open: opts.open, printUrl: opts.printUrl, view: opts.view })
   })
 
 program

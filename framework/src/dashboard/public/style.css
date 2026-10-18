@@ -35,6 +35,13 @@ body { margin: 0; background: var(--bg); color: var(--text); }
   position: sticky; top: 0; z-index: 2;
 }
 .top h1 { font-size: 18px; margin: 0 8px 0 0; }
+.tabs { display: flex; gap: 4px; }
+.tabs a {
+  color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; border: 1px solid transparent;
+}
+.tabs a:hover { color: var(--text); background: var(--row-hover); }
+.tabs a.active { color: var(--text); border-color: var(--border); background: var(--bg); font-weight: 600; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
 .chip {
   border: 1px solid var(--border); background: transparent; color: var(--text);
@@ -54,8 +61,10 @@ button.ghost { background: transparent; }
 button.danger { border-color: var(--danger); color: var(--danger); background: transparent; margin-top: 16px; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #111; }
 
-main { padding: 16px 20px; display: grid; gap: 16px; }
+main { padding: 16px 20px 96px; }
+.view { display: grid; gap: 16px; }
 .board, .outcomes { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.board { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); }
 th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
@@ -97,3 +106,59 @@ tbody tr:hover, tbody tr.selected { background: var(--row-hover); }
 
 .message { margin: 12px 20px 0; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); }
 .message.error { border-color: var(--danger); color: var(--danger); }
+
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; }
+.panel h2 { margin: 0 0 4px; font-size: 15px; }
+.panel .hint { padding: 0; margin: 0 0 12px; }
+.form { display: grid; gap: 16px; max-width: 920px; }
+.form .path { font-size: 12px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px 20px; }
+.field { display: grid; gap: 4px; align-content: start; }
+.field.wide { grid-column: 1 / -1; }
+.field > label { color: var(--muted); font-size: 12px; font-weight: 500; }
+.field small { color: var(--muted); font-size: 12px; }
+.check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.check input { width: auto; margin: 0; }
+.check-field { align-content: center; }
+.checks { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 6px 0; }
+textarea { resize: vertical; line-height: 1.45; }
+
+.tags {
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center; cursor: text;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 4px;
+}
+.tags:focus-within { border-color: var(--accent); }
+.tags input { border: 0; background: transparent; flex: 1; min-width: 140px; padding: 2px 4px; outline: none; }
+.tag-list { display: contents; }
+.tag {
+  display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px 2px 8px; border-radius: 999px;
+  background: var(--row-hover); border: 1px solid var(--border);
+}
+.tag-x { border: 0; background: transparent; padding: 0 4px; color: var(--muted); line-height: 1; }
+.tag-x:hover { color: var(--danger); }
+
+.rows-list { display: grid; gap: 6px; }
+.pair { display: grid; grid-template-columns: 1fr 2fr auto; gap: 6px; }
+button.add { justify-self: start; }
+.sections { display: grid; gap: 14px; }
+.add-section { display: flex; gap: 6px; margin-top: 12px; max-width: 480px; }
+
+.intake { border-color: var(--accent); }
+.ways { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+code { background: var(--row-hover); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+
+.savebar {
+  position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 4;
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+}
+.savebar span { color: var(--muted); margin-right: 6px; }
+
+@media (max-width: 640px) {
+  .top { padding: 10px 16px; }
+  main { padding: 12px 16px 96px; }
+  #search { width: 100%; }
+  .pair { grid-template-columns: 1fr; }
+  .outcome { grid-template-columns: 1fr; }
+  .panel { padding: 14px 16px; }
+}

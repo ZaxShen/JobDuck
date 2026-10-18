@@ -9,14 +9,20 @@ import { ApiError, handleApi } from './api'
 
 export const DASHBOARD_HOST = '127.0.0.1'
 export const DASHBOARD_HEADER = 'x-jobduck-dashboard'
-export const MAX_BODY_BYTES = 64 * 1024
+export const MAX_BODY_BYTES = 1024 * 1024
 
 export interface DashboardOptions {
   home?: string
   port?: number
   open?: boolean
+  view?: DashboardView
   out?: (line: string) => void
 }
+
+export const DASHBOARD_VIEWS = ['applications', 'profile', 'settings'] as const
+export type DashboardView = (typeof DASHBOARD_VIEWS)[number]
+
+export const pageUrl = (origin: string, view?: DashboardView) => (view ? `${origin}/#${view}` : origin)
 
 export interface Dashboard {
   url: string
@@ -40,7 +46,7 @@ const ASSETS: Record<string, { file: string; type: string }> = {
   '/style.css': { file: 'style.css', type: 'text/css; charset=utf-8' },
 }
 
-const MUTATIONS = new Set(['POST', 'PATCH', 'DELETE'])
+const MUTATIONS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
 function send(res: ServerResponse, status: number, type: string, body: string | Buffer): void {
   res.writeHead(status, { ...SECURITY_HEADERS, 'Content-Type': type })
@@ -122,7 +128,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
         if (requestOrigin !== undefined && requestOrigin !== origin) return sendJson(res, 403, { error: 'cross-origin request refused' })
       }
       const body = MUTATIONS.has(method) ? parseJson(await readBody(req)) : undefined
-      const result = handleApi(db, { method, path: url.pathname, query: url.searchParams, body })
+      const result = handleApi({ db, home }, { method, path: url.pathname, query: url.searchParams, body })
       sendJson(res, result.status, result.body)
     } catch (error) {
       if (error instanceof ApiError) return sendJson(res, error.status, { error: error.message })
@@ -146,7 +152,8 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
   const address = server.address() as AddressInfo
   origin = `http://${DASHBOARD_HOST}:${address.port}`
   allowedHosts = new Set([`${DASHBOARD_HOST}:${address.port}`, `localhost:${address.port}`])
-  if (options.open ?? true) openBrowser(origin, () => out(`Could not open a browser; visit ${origin}`))
+  const page = pageUrl(origin, options.view)
+  if (options.open ?? true) openBrowser(page, () => out(`Could not open a browser; visit ${page}`))
 
   let closed = false
   return {

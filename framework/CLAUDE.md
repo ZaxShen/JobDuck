@@ -24,12 +24,12 @@ Agent-run Job Duck: a CLI plus a local SQLite store that the user's coding agent
 | `src/paths.ts` | `JOBDUCK_HOME` resolution, `ensureHome()`, `installSkills()`, asset lookup |
 | `src/assets.ts` | embedded skills, templates, migrations and dashboard files (text imports) |
 | `src/db/` | client, migrations, `urlKey()`, postings, applications and outcomes data layer |
-| `src/config/` | `profile.md` (TOML front matter) and `permissions.toml` schemas |
+| `src/config/` | `profile.md` (TOML front matter) and `permissions.toml` schemas, readers and revision-checked writers |
 | `src/hosts/` | per-host detection, MCP registration and skill pointers, unified diffs |
 | `src/commands/` | `init`, `doctor`, `dashboard`, `mcp` and `sync` implementations |
 | `src/commands/upgrade.ts` | `jobduck upgrade [version] [--check]`: GitHub Releases lookup, checksum check, in-place binary swap |
 | `src/dashboard/` | loopback HTTP server, JSON API, static page in `public/` |
-| `src/mcp/` | MCP server (`createServer`) and its seven tools |
+| `src/mcp/` | MCP server (`createServer`) and its eight tools |
 | `src/freehire/` | freehire.me search client and job → posting mapping |
 | `src/sync/` | Apps Script web-app client (`pending`, `ack`, `status`) and the pure outcome → application matcher |
 | `skills/` | workflow skills copied to `~/.jobduck/skills/` by `init`; hosts get `SKILL.md` pointers |

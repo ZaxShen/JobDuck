@@ -1,4 +1,7 @@
 import { z } from 'zod'
+import { RevisionConflict } from '../config/files'
+import { readStoredPermissions, writePermissions } from '../config/permissions'
+import { TEMPLATE_SECTIONS, isPlaceholder, readStoredProfile, splitSections, updateProfile } from '../config/profile'
 import {
   APPLICATION_STATUSES, type ApplicationFields, EDITABLE_FIELDS, TERMINAL_STATUSES, getApplication,
   getApplicationWithPosting, listApplicationsWithPostings, listEvents, setStatus, softDeleteApplication,
@@ -6,11 +9,17 @@ import {
 } from '../db/applications'
 import type { Db } from '../db/client'
 import { OUTCOME_STATUSES, type Outcome, dismissOutcome, getOutcome, listOutcomes, matchOutcome } from '../db/outcomes'
+import { permissionsPath, profilePath } from '../paths'
 
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) {
     super(message)
   }
+}
+
+export interface ApiContext {
+  db: Db
+  home: string
 }
 
 export interface ApiRequest {
@@ -45,6 +54,14 @@ const listQuerySchema = z.object({
 })
 
 const outcomesQuerySchema = z.object({ status: z.enum(OUTCOME_STATUSES).optional() })
+
+const profileSchema = z.object({
+  front_matter: z.record(z.string(), z.unknown()),
+  sections: z.record(z.string().max(200), z.string().max(200_000)).default(() => ({})),
+  revision: z.string().max(64).optional(),
+}).strict()
+
+const permissionsSchema = z.object({ permissions: z.unknown(), revision: z.string().max(64).optional() }).strict()
 
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   const result = schema.safeParse(value)
@@ -102,37 +119,92 @@ function patchApplication(db: Db, id: number, body: unknown) {
   return requireApplication(db, id)
 }
 
-type Handler = (db: Db, req: ApiRequest, id: number) => unknown
+function profileView(home: string) {
+  const stored = readStoredProfile(profilePath(home))
+  const { sections } = splitSections(stored.body)
+  const standard = new Set(TEMPLATE_SECTIONS.map((section) => section.title.toLowerCase()))
+  const find = (title: string) => sections.find((section) => section.title.toLowerCase() === title.toLowerCase())
+  return {
+    front_matter: stored.frontMatter,
+    sections: [
+      ...TEMPLATE_SECTIONS.map((template) => {
+        const found = find(template.title)
+        const content = found && !isPlaceholder(found) ? found.content : ''
+        return { title: found?.title ?? template.title, content, hint: template.content, standard: true }
+      }),
+      ...sections.filter((section) => !standard.has(section.title.toLowerCase()))
+        .map((section) => ({ ...section, hint: '', standard: false })),
+    ],
+    revision: stored.revision,
+    path: profilePath(home),
+  }
+}
+
+function permissionsView(home: string) {
+  return { ...readStoredPermissions(permissionsPath(home)), path: permissionsPath(home) }
+}
+
+function saving<T>(fn: () => T): T {
+  try {
+    return fn()
+  } catch (error) {
+    if (error instanceof RevisionConflict) throw new ApiError(409, error.message)
+    if (error instanceof Error && !(error instanceof ApiError) && !('code' in error)) throw new ApiError(400, error.message)
+    throw error
+  }
+}
+
+type Handler = (ctx: ApiContext, req: ApiRequest, id: number) => unknown
 
 const routes: { method: string; pattern: RegExp; handler: Handler }[] = [
-  { method: 'GET', pattern: /^\/api\/summary$/, handler: (db) => summary(db) },
+  { method: 'GET', pattern: /^\/api\/profile$/, handler: ({ home }) => profileView(home) },
+  {
+    method: 'PUT', pattern: /^\/api\/profile$/,
+    handler: ({ home }, req) => {
+      const input = parse(profileSchema, req.body ?? {})
+      saving(() => updateProfile(
+        { frontMatter: input.front_matter, sections: input.sections, revision: input.revision }, profilePath(home),
+      ))
+      return profileView(home)
+    },
+  },
+  { method: 'GET', pattern: /^\/api\/permissions$/, handler: ({ home }) => permissionsView(home) },
+  {
+    method: 'PUT', pattern: /^\/api\/permissions$/,
+    handler: ({ home }, req) => {
+      const input = parse(permissionsSchema, req.body ?? {})
+      saving(() => writePermissions(input.permissions, input.revision, permissionsPath(home)))
+      return permissionsView(home)
+    },
+  },
+  { method: 'GET', pattern: /^\/api\/summary$/, handler: ({ db }) => summary(db) },
   {
     method: 'GET', pattern: /^\/api\/statuses$/,
     handler: () => ({ statuses: APPLICATION_STATUSES, terminal: TERMINAL_STATUSES }),
   },
   {
     method: 'GET', pattern: /^\/api\/applications$/,
-    handler: (db, req) => listApplicationsWithPostings(db, { limit: 500, ...parse(listQuerySchema, queryObject(req.query)) }),
+    handler: ({ db }, req) => listApplicationsWithPostings(db, { limit: 500, ...parse(listQuerySchema, queryObject(req.query)) }),
   },
   {
     method: 'GET', pattern: /^\/api\/applications\/(\d+)$/,
-    handler: (db, _req, id) => ({ application: requireApplication(db, id), events: listEvents(db, id) }),
+    handler: ({ db }, _req, id) => ({ application: requireApplication(db, id), events: listEvents(db, id) }),
   },
-  { method: 'PATCH', pattern: /^\/api\/applications\/(\d+)$/, handler: (db, req, id) => patchApplication(db, id, req.body) },
+  { method: 'PATCH', pattern: /^\/api\/applications\/(\d+)$/, handler: ({ db }, req, id) => patchApplication(db, id, req.body) },
   {
     method: 'DELETE', pattern: /^\/api\/applications\/(\d+)$/,
-    handler: (db, _req, id) => {
+    handler: ({ db }, _req, id) => {
       if (!softDeleteApplication(db, id)) throw new ApiError(404, `application ${id} not found`)
       return { ok: true }
     },
   },
   {
     method: 'GET', pattern: /^\/api\/outcomes$/,
-    handler: (db, req) => listOutcomes(db, parse(outcomesQuerySchema, queryObject(req.query))).map(withCandidates),
+    handler: ({ db }, req) => listOutcomes(db, parse(outcomesQuerySchema, queryObject(req.query))).map(withCandidates),
   },
   {
     method: 'POST', pattern: /^\/api\/outcomes\/(\d+)\/match$/,
-    handler: (db, req, id) => {
+    handler: ({ db }, req, id) => {
       const { application_id } = parse(matchSchema, req.body ?? {})
       if (!getOutcome(db, id)) throw new ApiError(404, `outcome ${id} not found`)
       if (!getApplication(db, application_id)) throw new ApiError(404, `application ${application_id} not found`)
@@ -141,21 +213,21 @@ const routes: { method: string; pattern: RegExp; handler: Handler }[] = [
   },
   {
     method: 'POST', pattern: /^\/api\/outcomes\/(\d+)\/dismiss$/,
-    handler: (db, _req, id) => {
+    handler: ({ db }, _req, id) => {
       if (!getOutcome(db, id)) throw new ApiError(404, `outcome ${id} not found`)
       return dismissOutcome(db, id)
     },
   },
 ]
 
-export function handleApi(db: Db, req: ApiRequest): ApiResponse {
+export function handleApi(ctx: ApiContext, req: ApiRequest): ApiResponse {
   const matching = routes.filter((route) => route.pattern.test(req.path))
   if (matching.length === 0) return { status: 404, body: { error: 'not found' } }
   const route = matching.find((candidate) => candidate.method === req.method)
   if (!route) return { status: 405, body: { error: 'method not allowed' } }
   const id = Number(route.pattern.exec(req.path)?.[1] ?? 0)
   try {
-    return { status: 200, body: route.handler(db, req, id) }
+    return { status: 200, body: route.handler(ctx, req, id) }
   } catch (error) {
     if (error instanceof ApiError) return { status: error.status, body: { error: error.message } }
     throw error

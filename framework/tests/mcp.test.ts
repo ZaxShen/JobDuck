@@ -71,7 +71,7 @@ const inspect = (fn: (db: Db) => void) => {
 
 const application = { url: 'https://jobs.lever.co/acme/abc-123/apply', title: 'Staff Engineer', company: 'Acme' }
 
-test('tools/list returns the seven tools', async () => {
+test('tools/list returns the eight tools', async () => {
   const { tools } = await client.listTools()
   expect(tools.map((tool) => tool.name).sort()).toEqual([...TOOL_NAMES].sort())
 })
@@ -87,6 +87,29 @@ test('get_profile and get_permissions read the home files', async () => {
   })
   enableTrack()
   expect((await data('get_permissions', { module: 'track' })).enabled).toBe(true)
+})
+
+test('update_profile writes fields and sections, and refuses a stale revision or unknown key', async () => {
+  const before = await data('get_profile')
+  expect(before.revision).toMatch(/^[0-9a-f]{16}$/)
+  const written = await data('update_profile', {
+    front_matter: { name: '<your name>', work_modes: ['remote'] },
+    sections: { Summary: 'Builds at Acme.' },
+    revision: before.revision,
+  })
+  expect(written.frontMatter.name).toBe('<your name>')
+  expect(written.frontMatter.work_modes).toEqual(['remote'])
+  expect(written.body).toContain('# Summary\n\nBuilds at Acme.')
+  expect(written.sections_written).toEqual(['Summary'])
+  expect((await data('get_profile')).revision).toBe(written.revision)
+
+  const stale = await call('update_profile', { front_matter: { name: 'x' }, revision: before.revision })
+  expect(stale.isError).toBe(true)
+  expect(stale.content[0]?.text).toContain('changed since')
+  const unknown = await call('update_profile', { front_matter: { nickname: 'x' } })
+  expect(unknown.isError).toBe(true)
+  expect(unknown.content[0]?.text).toContain('nickname')
+  expect((await data('get_profile')).frontMatter.name).toBe('<your name>')
 })
 
 test('record_application is refused while track is off and writes once enabled', async () => {

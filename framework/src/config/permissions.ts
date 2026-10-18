@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs'
-import { parse } from 'smol-toml'
+import { parse, stringify } from 'smol-toml'
 import { z } from 'zod'
+import { TEMPLATES } from '../assets'
 import { permissionsPath } from '../paths'
+import { checkRevision, parseOrExplain, readOr, revisionOf, writePrivateFile } from './files'
 
 export const MODULES = ['cv', 'find', 'track', 'apply', 'interview'] as const
 export type ModuleName = (typeof MODULES)[number]
@@ -70,4 +72,57 @@ export function loadPermissions(path = permissionsPath()): Permissions {
 
 export function isModuleEnabled(name: ModuleName, path = permissionsPath()): boolean {
   return loadPermissions(path).modules[name]
+}
+
+const HEADER = [
+  '# Job Duck permissions. Edit them in the dashboard (jobduck dashboard, then Settings) or by hand.',
+  '# Nothing runs until its module is switched on. CAPTCHAs and verification codes always stop for you.',
+]
+
+const COMMENTS: Record<string, string> = {
+  'apply.autonomy': 'confirm_each | confirm_batch | auto_after_approvals',
+  'apply.approvals_before_auto': 'approved submissions before auto_after_approvals takes over',
+  'apply.eeo': 'decline | from_profile',
+  'apply.ats_accounts': 'never | reuse | create',
+  'apply.salary_mode': 'posting_range_upper | fixed | leave_blank',
+  'apply.uploads': 'cv, cover_letter, portfolio, transcript',
+  'apply.cover_letter': 'only_when_required | never | always',
+  'apply.tailor_cv': 'never | when_bottleneck | always',
+  'apply.free_text': 'never | draft_for_approval | auto_from_profile',
+  'apply.marker': 'paste the JobDuck-Application-Id marker into an editable field',
+}
+
+export function serializePermissions(permissions: Record<string, unknown>): string {
+  let table = ''
+  const lines: string[] = [...HEADER]
+  for (const line of stringify(permissions).trimEnd().split('\n')) {
+    const header = /^\[([^\]]+)\]$/.exec(line)
+    if (header) {
+      table = header[1]!
+      if (lines.at(-1) !== '') lines.push('')
+    }
+    const key = /^([A-Za-z0-9_]+) = /.exec(line)?.[1]
+    const comment = key === undefined ? undefined : COMMENTS[`${table}.${key}`]
+    lines.push(comment === undefined ? line : `${line}  # ${comment}`)
+  }
+  return `${lines.join('\n')}\n`
+}
+
+export interface StoredPermissions {
+  permissions: Permissions
+  revision: string
+}
+
+export function readStoredPermissions(path = permissionsPath()): StoredPermissions {
+  const text = readOr(path, TEMPLATES['permissions.toml']!)
+  return { permissions: parsePermissions(text), revision: revisionOf(text) }
+}
+
+export function writePermissions(input: unknown, revision?: string, path = permissionsPath()): StoredPermissions {
+  const text = readOr(path, TEMPLATES['permissions.toml']!)
+  checkRevision('permissions.toml', text, revision)
+  const permissions = parseOrExplain(Permissions, input, 'permission')
+  const next = serializePermissions({ ...(parse(text) as Record<string, unknown>), ...permissions })
+  writePrivateFile(path, next)
+  return { permissions: parsePermissions(next), revision: revisionOf(next) }
 }

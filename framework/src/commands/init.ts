@@ -1,5 +1,5 @@
-import { existsSync } from 'node:fs'
-import { resolve, sep } from 'node:path'
+import { existsSync, mkdirSync } from 'node:fs'
+import { join, resolve, sep } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { openDb } from '../db/client'
 import { migrate, pendingMigrations } from '../db/migrate'
@@ -89,8 +89,9 @@ export function planLines(changes: FileChange[], ctx: HostContext, tense: 'prese
 function homePlan(home: string, show: (path: string) => string): string[] {
   const steps: string[] = []
   if (!existsSync(home)) steps.push(`create ${show(home)} (mode 0700)`)
-  for (const file of [PROFILE_FILE, PERMISSIONS_FILE]) {
-    if (!existsSync(resolve(home, file))) steps.push(`create ${show(resolve(home, file))} from template`)
+  const templates = [PROFILE_FILE, PERMISSIONS_FILE].filter((file) => !existsSync(resolve(home, file)))
+  if (templates.length > 0) {
+    steps.push(`create ${templates.map((file) => show(resolve(home, file))).join(' and ')} from templates`)
   }
   if (!skillsUpToDate(home)) {
     steps.push(`install ${skillNames().length} skills (version ${PACKAGE_VERSION}) to ${show(installedSkillsPath(home))}`)
@@ -110,6 +111,25 @@ function homePlan(home: string, show: (path: string) => string): string[] {
   return steps
 }
 
+export const WORKSPACE_FOLDERS = ['inbox', 'cv', 'cover-letters'] as const
+const PROJECT_MARKERS = ['.git', 'package.json', 'pyproject.toml', 'go.mod', 'Cargo.toml', 'pom.xml', 'build.gradle']
+
+export function isDedicatedWorkspace(ctx: HostContext): boolean {
+  if (resolve(ctx.workspace) === resolve(userHomeOf(ctx))) return false
+  return !PROJECT_MARKERS.some((marker) => existsSync(join(ctx.workspace, marker)))
+}
+
+function missingFolders(ctx: HostContext): string[] {
+  if (!isDedicatedWorkspace(ctx)) return []
+  return WORKSPACE_FOLDERS.filter((folder) => !existsSync(join(ctx.workspace, folder)))
+}
+
+export const DEDICATED_TIP = [
+  'Tip: Job Duck works best in a folder of its own, where your CVs, cover letters, imports and the',
+  "agent's notes stay together. This folder looks like a code project or your home folder, so no",
+  'document folders were created here. For example: mkdir ~/JobDuck && cd ~/JobDuck && jobduck init',
+]
+
 export async function runInit(options: InitOptions = {}): Promise<number> {
   const out = options.out ?? ((line: string) => console.log(line))
   const home = jobduckHome()
@@ -121,7 +141,9 @@ export async function runInit(options: InitOptions = {}): Promise<number> {
   }
   const show = (path: string) => shortPath(path, ctx)
   const hosts = selectHosts(ctx, options.hosts)
+  const folders = missingFolders(ctx)
   const steps = homePlan(home, show)
+  if (folders.length > 0) steps.push(`create ${folders.map((folder) => `${folder}/`).join(', ')} for your documents`)
   const changes = dedupe(hosts.flatMap((host) => host.register(ctx)))
 
   out(`Job Duck home: ${show(home)}`)
@@ -140,6 +162,7 @@ export async function runInit(options: InitOptions = {}): Promise<number> {
       out('Pass --diff to see every change in full.')
     }
   }
+  if (!isDedicatedWorkspace(ctx)) for (const line of DEDICATED_TIP) out(line)
 
   if (options.dryRun) {
     out('Dry run: nothing written.')
@@ -166,10 +189,17 @@ export async function runInit(options: InitOptions = {}): Promise<number> {
     db.close()
   }
   const written = dedupe(hosts.flatMap((host) => host.register({ ...ctx, dryRun: false })))
+  for (const folder of folders) mkdirSync(join(ctx.workspace, folder), { recursive: true })
   for (const path of created) out(`created ${show(path)}`)
   out(`installed ${skills.length} skills to ${show(installedSkillsPath(home))}`)
   if (applied.length > 0) out(`applied migrations ${applied.join(', ')}`)
   for (const line of planLines(written, ctx, 'past')) out(line)
-  if (hosts.length > 0) out('Done. Open your agent in this workspace and say "set up Job Duck".')
+  if (folders.length > 0) out(`created ${folders.map((folder) => `${folder}/`).join(', ')}`)
+  if (hosts.length > 0) {
+    out('Done. Open your agent in this workspace and say "set up Job Duck".')
+    out(existsSync(join(ctx.workspace, 'inbox'))
+      ? 'To fill in your profile, drop your resume or LinkedIn PDF in inbox/, or run: jobduck dashboard --view profile'
+      : 'To fill in your profile, run: jobduck dashboard --view profile')
+  }
   return 0
 }
