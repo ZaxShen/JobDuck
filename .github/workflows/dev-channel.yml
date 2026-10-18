@@ -1,8 +1,9 @@
 name: Dev channel
 
 on:
-  push:
-    branches: [dev]
+  schedule:
+    - cron: '23 9 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -12,13 +13,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  dev-build:
+  check:
+    name: dev changed since dev-latest
     runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.compare.outputs.build }}
+      sha: ${{ steps.compare.outputs.sha }}
+    steps:
+      - id: compare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/dev" --jq .sha)
+          built=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/dev-latest" --jq .object.sha 2>/dev/null || true)
+          echo "dev $sha, dev-latest ${built:-none}"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT" = schedule ] && [ "$sha" = "$built" ]; then build=false; else build=true; fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
+  dev-build:
+    needs: check
+    if: needs.check.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    env:
+      SHA: ${{ needs.check.outputs.sha }}
     defaults:
       run:
         working-directory: framework
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check.outputs.sha }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.4
@@ -33,7 +59,7 @@ jobs:
             const [core, pre] = pkg.version.split("-")
             const [major, minor, patch] = core.split(".").map(Number)
             const next = pre ? core : `${major}.${minor}.${patch + 1}`
-            pkg.version = `${next}-dev.${process.env.GITHUB_RUN_NUMBER}+${process.env.GITHUB_SHA.slice(0, 7)}`
+            pkg.version = `${next}-dev.${process.env.GITHUB_RUN_NUMBER}+${process.env.SHA.slice(0, 7)}`
             require("fs").writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n")
             console.log(pkg.version)')
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -45,5 +71,5 @@ jobs:
         run: |
           gh release delete dev-latest --cleanup-tag --yes || true
           gh release create dev-latest dist/jobduck-* dist/SHA256SUMS --prerelease --latest=false \
-            --target "$GITHUB_SHA" --title "$VERSION" \
-            --notes "Rolling build of \`dev\` at $GITHUB_SHA for developers. Install with \`jobduck upgrade --channel dev\`; it is replaced on every push to \`dev\`."
+            --target "$SHA" --title "$VERSION" \
+            --notes "Rolling build of \`dev\` at $SHA for developers. Install with \`jobduck upgrade --channel dev\`; rebuilt daily when \`dev\` changed, or on demand."
