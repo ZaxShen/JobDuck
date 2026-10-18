@@ -6,6 +6,9 @@ import type { FetchLike } from '../sync/client'
 
 export const RELEASE_REPO = 'ZaxShen/JobDuck'
 export const CHECKSUMS_ASSET = 'SHA256SUMS'
+export const DEV_TAG = 'dev-latest'
+export const CHANNELS = ['stable', 'rc', 'dev'] as const
+export type Channel = typeof CHANNELS[number]
 
 const MAX_REDIRECTS = 5
 const OS_NAMES: Partial<Record<NodeJS.Platform, string>> = { darwin: 'darwin', linux: 'linux', win32: 'windows' }
@@ -13,6 +16,7 @@ const ARCHES = new Set(['arm64', 'x64'])
 
 export interface UpgradeOptions {
   version?: string
+  channel?: Channel
   check?: boolean
   fetch?: FetchLike
   execPath?: string
@@ -29,10 +33,51 @@ interface ReleaseAsset {
 
 interface Release {
   tag_name: string
+  name?: string | null
+  draft?: boolean
   assets: ReleaseAsset[]
 }
 
+interface Version {
+  core: [number, number, number]
+  pre: string[]
+}
+
 class UpgradeError extends Error {}
+
+export function parseVersion(text: string): Version | undefined {
+  const match = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(text.trim())
+  if (!match) return undefined
+  return { core: [Number(match[1]), Number(match[2]), Number(match[3])], pre: match[4] ? match[4].split('.') : [] }
+}
+
+export function compareVersions(a: string, b: string): number {
+  const left = parseVersion(a)
+  const right = parseVersion(b)
+  if (!left || !right) throw new UpgradeError(`cannot compare versions ${a} and ${b}`)
+  for (let i = 0; i < 3; i++) {
+    if (left.core[i] !== right.core[i]) return left.core[i]! - right.core[i]!
+  }
+  if (!left.pre.length || !right.pre.length) return right.pre.length - left.pre.length
+  for (let i = 0; i < Math.max(left.pre.length, right.pre.length); i++) {
+    const x = left.pre[i]
+    const y = right.pre[i]
+    if (x === undefined || y === undefined) return x === undefined ? -1 : 1
+    if (x === y) continue
+    const xNum = /^\d+$/.test(x)
+    const yNum = /^\d+$/.test(y)
+    if (xNum && yNum) return Number(x) - Number(y)
+    if (xNum !== yNum) return xNum ? -1 : 1
+    return x < y ? -1 : 1
+  }
+  return 0
+}
+
+export function channelOf(version: string): Channel {
+  const pre = parseVersion(version)?.pre ?? []
+  if (pre[0] === 'dev') return 'dev'
+  return pre.length ? 'rc' : 'stable'
+}
 
 export function assetName(platform: NodeJS.Platform, arch: string): string {
   const os = OS_NAMES[platform]
@@ -66,17 +111,51 @@ async function fetchOk(fetch: FetchLike, url: string, headers: Record<string, st
   return res
 }
 
-async function fetchRelease(fetch: FetchLike, version: string | undefined, userAgent: string): Promise<Release> {
-  const path = version ? `releases/tags/v${version.replace(/^v/, '')}` : 'releases/latest'
+function toRelease(raw: unknown): Release {
+  const release = raw as Partial<Release>
+  if (typeof release?.tag_name !== 'string' || !Array.isArray(release.assets)) {
+    throw new UpgradeError('release response is missing tag_name or assets')
+  }
+  return { tag_name: release.tag_name, name: release.name, draft: release.draft, assets: release.assets }
+}
+
+async function getReleases(fetch: FetchLike, path: string, userAgent: string, what: string): Promise<unknown> {
   const res = await fetchOk(fetch, `https://api.github.com/repos/${RELEASE_REPO}/${path}`, {
     Accept: 'application/vnd.github+json',
     'User-Agent': userAgent,
-  }, version ? `release v${version.replace(/^v/, '')}` : 'latest release')
-  const release = await res.json() as Partial<Release>
-  if (typeof release.tag_name !== 'string' || !Array.isArray(release.assets)) {
-    throw new UpgradeError('release response is missing tag_name or assets')
+  }, what)
+  return res.json()
+}
+
+async function findRelease(
+  fetch: FetchLike, version: string | undefined, channel: Channel, userAgent: string,
+): Promise<{ release: Release; version: string }> {
+  if (version) {
+    const tag = `v${version.replace(/^v/, '')}`
+    const release = toRelease(await getReleases(fetch, `releases/tags/${tag}`, userAgent, `release ${tag}`))
+    return { release, version: release.tag_name.replace(/^v/, '') }
   }
-  return { tag_name: release.tag_name, assets: release.assets }
+  if (channel === 'stable') {
+    const release = toRelease(await getReleases(fetch, 'releases/latest', userAgent, 'latest release'))
+    return { release, version: release.tag_name.replace(/^v/, '') }
+  }
+  if (channel === 'dev') {
+    const release = toRelease(await getReleases(fetch, `releases/tags/${DEV_TAG}`, userAgent, 'dev build'))
+    const name = release.name?.trim() ?? ''
+    if (channelOf(name) !== 'dev') throw new UpgradeError(`the ${DEV_TAG} release is not titled with a dev version`)
+    return { release, version: name }
+  }
+  const list = await getReleases(fetch, 'releases?per_page=30', userAgent, 'release list')
+  if (!Array.isArray(list)) throw new UpgradeError('release list response is not a list')
+  let best: { release: Release; version: string } | undefined
+  for (const raw of list) {
+    const release = toRelease(raw)
+    const candidate = release.tag_name.replace(/^v/, '')
+    if (release.draft || !parseVersion(candidate) || channelOf(candidate) === 'dev') continue
+    if (!best || compareVersions(candidate, best.version) > 0) best = { release, version: candidate }
+  }
+  if (!best) throw new UpgradeError('no stable or rc release found')
+  return best
 }
 
 export function expectedChecksum(sums: string, name: string): string | undefined {
@@ -120,15 +199,23 @@ export async function runUpgrade(options: UpgradeOptions = {}): Promise<number> 
   const userAgent = `jobduck/${PACKAGE_VERSION}`
 
   try {
-    const release = await fetchRelease(fetch, options.version, userAgent)
-    const latest = release.tag_name.replace(/^v/, '')
+    if (options.version && options.channel) throw new UpgradeError('give a version or --channel, not both')
+    const current = channelOf(PACKAGE_VERSION)
+    const channel = options.channel ?? current
+    const { release, version: target } = await findRelease(fetch, options.version, channel, userAgent)
     if (options.check) {
       out(`current ${PACKAGE_VERSION}`)
-      out(`${options.version ? 'requested' : 'latest'} ${latest}`)
+      out(`${options.version ? 'requested' : 'latest'} ${target}`)
+      if (!options.version) out(`channel ${channel}`)
       return 0
     }
-    if (latest === PACKAGE_VERSION) {
+    if (target === PACKAGE_VERSION) {
       out(`already up to date (${PACKAGE_VERSION})`)
+      return 0
+    }
+    const newer = compareVersions(target, PACKAGE_VERSION) > 0
+    if (!options.version && channel === current && channel !== 'dev' && !newer) {
+      out(`current ${PACKAGE_VERSION} is newer than the latest ${channel} release ${target}; \`jobduck upgrade ${target}\` installs it anyway`)
       return 0
     }
 
@@ -151,7 +238,7 @@ export async function runUpgrade(options: UpgradeOptions = {}): Promise<number> 
     }
 
     swap(execPath, bytes, platform)
-    out(`upgraded ${PACKAGE_VERSION} -> ${latest}`)
+    out(`${newer ? 'upgraded' : 'downgraded'} ${PACKAGE_VERSION} -> ${target}`)
     return 0
   } catch (error) {
     err(`upgrade failed: ${error instanceof Error ? error.message : String(error)}`)

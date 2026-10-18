@@ -1,0 +1,49 @@
+name: Dev channel
+
+on:
+  push:
+    branches: [dev]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dev-channel
+  cancel-in-progress: true
+
+jobs:
+  dev-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: framework
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.4
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun test
+      - name: Stamp the dev version
+        id: stamp
+        run: |
+          version=$(bun -e '
+            const pkg = require("./package.json")
+            const [core, pre] = pkg.version.split("-")
+            const [major, minor, patch] = core.split(".").map(Number)
+            const next = pre ? core : `${major}.${minor}.${patch + 1}`
+            pkg.version = `${next}-dev.${process.env.GITHUB_RUN_NUMBER}+${process.env.GITHUB_SHA.slice(0, 7)}`
+            require("fs").writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n")
+            console.log(pkg.version)')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - run: bash scripts/build-all.sh
+      - name: Replace the dev-latest prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.stamp.outputs.version }}
+        run: |
+          gh release delete dev-latest --cleanup-tag --yes || true
+          gh release create dev-latest dist/jobduck-* dist/SHA256SUMS --prerelease --latest=false \
+            --target "$GITHUB_SHA" --title "$VERSION" \
+            --notes "Rolling build of \`dev\` at $GITHUB_SHA for developers. Install with \`jobduck upgrade --channel dev\`; it is replaced on every push to \`dev\`."

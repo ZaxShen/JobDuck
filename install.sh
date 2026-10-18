@@ -1,7 +1,8 @@
 #!/bin/sh
 # Install the jobduck binary from GitHub Releases into a user directory (no root needed).
 # Usage: curl -fsSL https://raw.githubusercontent.com/ZaxShen/JobDuck/main/install.sh | sh
-# Env: JOBDUCK_VERSION (default: latest release), JOBDUCK_INSTALL_DIR (default: $HOME/.local/bin)
+# Env: JOBDUCK_VERSION (default: latest release), JOBDUCK_CHANNEL (stable, rc or dev; default: stable),
+#      JOBDUCK_INSTALL_DIR (default: $HOME/.local/bin)
 set -eu
 
 REPO=ZaxShen/JobDuck
@@ -28,17 +29,35 @@ command -v curl >/dev/null 2>&1 || fail "curl is required"
 asset="jobduck-$os-$arch"
 version=${JOBDUCK_VERSION:-}
 version=${version#v}
+channel=${JOBDUCK_CHANNEL:-stable}
 if [ -n "$version" ]; then
   base="https://github.com/$REPO/releases/download/v$version"
 else
-  base="https://github.com/$REPO/releases/latest/download"
+  case "$channel" in
+    stable)
+      base="https://github.com/$REPO/releases/latest/download"
+      version="(latest)"
+      ;;
+    rc)
+      feed=$(curl -fsSL "https://github.com/$REPO/releases.atom") || fail "could not read https://github.com/$REPO/releases.atom"
+      tag=$(printf '%s\n' "$feed" | grep -o 'releases/tag/v[^"]*' | grep -v -- '-dev' | head -n 1 | sed 's|releases/tag/||')
+      [ -n "$tag" ] || fail "no stable or rc release found"
+      base="https://github.com/$REPO/releases/download/$tag"
+      version="${tag#v} (newest release, rc channel)"
+      ;;
+    dev)
+      base="https://github.com/$REPO/releases/download/dev-latest"
+      version="(rolling dev build)"
+      ;;
+    *) fail "JOBDUCK_CHANNEL must be stable, rc or dev, not $channel" ;;
+  esac
 fi
 dir=${JOBDUCK_INSTALL_DIR:-"$HOME/.local/bin"}
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
-echo "Downloading $asset ${version:-(latest)}"
+echo "Downloading $asset $version"
 curl -fsSL -o "$tmp/$asset" "$base/$asset" || fail "download failed: $base/$asset"
 curl -fsSL -o "$tmp/SHA256SUMS" "$base/SHA256SUMS" || fail "download failed: $base/SHA256SUMS"
 
