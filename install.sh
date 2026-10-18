@@ -39,9 +39,8 @@ else
       version="(latest)"
       ;;
     rc)
-      tag=$(curl -fsSL -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/releases?per_page=30" |
-        grep -o '"tag_name": *"v[^"]*"' | grep -v -- '-dev' | head -n 1 | sed 's/.*"\(v[^"]*\)"$/\1/') ||
-        fail "could not list releases from api.github.com"
+      feed=$(curl -fsSL "https://github.com/$REPO/releases.atom") || fail "could not read https://github.com/$REPO/releases.atom"
+      tag=$(printf '%s\n' "$feed" | grep -o 'releases/tag/v[^"]*' | grep -v -- '-dev' | head -n 1 | sed 's|releases/tag/||')
       [ -n "$tag" ] || fail "no stable or rc release found"
       base="https://github.com/$REPO/releases/download/$tag"
       version="${tag#v} (newest release, rc channel)"
