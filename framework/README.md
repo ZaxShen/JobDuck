@@ -16,7 +16,7 @@ mkdir ~/JobDuck && cd ~/JobDuck
 jobduck init
 ```
 
-The installer downloads the binary for your platform from [GitHub Releases](https://github.com/ZaxShen/JobDuck/releases), checks it against the release's `SHA256SUMS`, and puts it in `~/.local/bin` without root. `JOBDUCK_VERSION=0.1.0` pins a version; `JOBDUCK_INSTALL_DIR=<dir>` picks another directory.
+The installer downloads the binary for your platform from [GitHub Releases](https://github.com/ZaxShen/JobDuck/releases), checks it against the release's `SHA256SUMS`, and puts it in `~/.local/bin` without root. `JOBDUCK_VERSION=0.1.0` pins a version; `JOBDUCK_CHANNEL=rc` or `JOBDUCK_CHANNEL=dev` installs from a [prerelease channel](#release-channels); `JOBDUCK_INSTALL_DIR=<dir>` picks another directory.
 
 Windows (x64): download `jobduck-windows-x64.exe` from [Releases](https://github.com/ZaxShen/JobDuck/releases), rename it to `jobduck.exe`, and put it in a directory on your `PATH`.
 
@@ -51,12 +51,23 @@ Run Job Duck from a folder of its own, such as `~/JobDuck`, and open your agent 
 ## Upgrade
 
 ```bash
-jobduck upgrade --check   # print the current and latest versions, download nothing
-jobduck upgrade           # replace this binary with the latest release
-jobduck upgrade 0.1.0     # install a specific version
+jobduck upgrade --check          # print the current and latest versions and the channel, download nothing
+jobduck upgrade                  # replace this binary with the latest release on its channel
+jobduck upgrade --channel rc     # switch channel: stable, rc or dev
+jobduck upgrade 0.1.0            # install a specific version
 ```
 
 `upgrade` downloads the release asset for your platform from GitHub, refuses it unless its SHA-256 matches the release's `SHA256SUMS`, and swaps it in place. Run `jobduck init` afterwards to refresh the skills.
+
+### Release channels
+
+| Channel | For | Built from | Versions |
+|---|---|---|---|
+| `stable` | everyone (the default) | a `vX.Y.Z` tag on `main` | `0.2.0` |
+| `rc` | testers before a release | a `vX.Y.Z-rc.N` tag on `dev`, published as a prerelease | `0.2.0-rc.1` |
+| `dev` | developers | every push to `dev`, the rolling `dev-latest` prerelease | `0.2.1-dev.42+abc1234` |
+
+The channel follows the installed version, so plain `jobduck upgrade` stays on it; `--channel` switches, even to an older version. On `stable` and `rc`, `upgrade` never moves to an older version by itself. The `rc` channel takes the highest stable or rc release, so once an rc ships as `X.Y.Z` you are back on `stable`; `--channel rc` again to keep testing.
 
 ## What `init` writes
 
@@ -220,7 +231,15 @@ bun run build:all                         # every platform plus dist/SHA256SUMS
 
 ## Releasing
 
-Pushing a `v<version>` tag that matches `package.json` runs the release workflow: it tests, builds `jobduck-darwin-arm64`, `jobduck-darwin-x64`, `jobduck-linux-x64`, `jobduck-linux-arm64`, `jobduck-windows-x64.exe` and `SHA256SUMS`, and publishes them as a GitHub Release.
+Nothing reaches `stable` without a release candidate people have run.
+
+1. On `dev` (through a PR), set `package.json` to `X.Y.Z-rc.1` and tag that commit `vX.Y.Z-rc.1`. The release workflow publishes it as a prerelease.
+2. Test it: `jobduck upgrade --channel rc`. Fixes go to `dev`, then `X.Y.Z-rc.2`, and so on.
+3. When an rc holds up, set `package.json` to `X.Y.Z` on `dev`, merge `dev` into `main`, and tag `main` `vX.Y.Z`.
+
+The release workflow (`.github/workflows/release.yml`) runs `scripts/release-gate.sh` first: an rc tag must be on `dev`; a stable tag must be on `main`, its `vX.Y.Z-rc.N` must already be published, and nothing but the `package.json` version may differ from the newest rc. Then it tests, checks the tag matches `package.json`, builds `jobduck-darwin-arm64`, `jobduck-darwin-x64`, `jobduck-linux-x64`, `jobduck-linux-arm64`, `jobduck-windows-x64.exe` and `SHA256SUMS`, and publishes the GitHub Release (stable notes start from the previous stable tag).
+
+Every push to `dev` also runs `.github/workflows/dev-channel.yml`, which tests, stamps the version `X.Y.Z-dev.<run>+<sha>` (the next patch after a stable `package.json` version) and replaces the `dev-latest` prerelease.
 
 ## License
 

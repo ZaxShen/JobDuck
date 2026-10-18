@@ -14,7 +14,7 @@ Agent-run Job Duck: a CLI plus a local SQLite store that the user's coding agent
 - **Network:** exactly three outbound calls: `search_jobs` to the freehire.me public API (`src/freehire/client.ts`), `jobduck sync` to the user's own Apps Script web app at `[track] sync_url` (`src/sync/client.ts`, POST with the token in the JSON body, never in a URL or log line), and `jobduck upgrade` to api.github.com and the github.com / `*.githubusercontent.com` release downloads (`src/commands/upgrade.ts`, SHA-256 checked against `SHA256SUMS`). All take an injected `fetch`; tests always inject it; no other network calls anywhere.
 - **stdout is the MCP channel.** In the `jobduck mcp` process nothing but JSON-RPC may reach stdout: no `console.log` under `src/mcp/` or in `src/commands/mcp.ts`; log to `process.stderr`. Tool handlers return `isError` results instead of throwing.
 - **Dashboard is loopback-only.** `src/dashboard/server.ts` binds `127.0.0.1` (never `0.0.0.0` or a configurable host) and rejects other `Host` headers; mutations require `X-JobDuck-Dashboard: 1` and a same-origin `Origin`. `src/dashboard/public/` is vanilla HTML/JS/CSS with no external URLs (CSP `default-src 'self'`).
-- **Build and release.** `bun run build` writes `dist/jobduck` for this machine; `bun run build:all` (`scripts/build-all.sh`) writes `jobduck-{darwin-arm64,darwin-x64,linux-x64,linux-arm64,windows-x64.exe}` and `SHA256SUMS`. `bun run smoke` (`scripts/smoke.sh`) drives the built binary end to end in a throwaway home with all three hosts faked; CI runs it on Linux, macOS and Windows. Branches: feature → `dev` (PR, CI required) → `main` (PR); a `v<version>` tag on `main` matching `package.json` builds and publishes the GitHub Release (`.github/workflows/release.yml`).
+- **Build and release.** `bun run build` writes `dist/jobduck` for this machine; `bun run build:all` (`scripts/build-all.sh`) writes `jobduck-{darwin-arm64,darwin-x64,linux-x64,linux-arm64,windows-x64.exe}` and `SHA256SUMS`. `bun run smoke` (`scripts/smoke.sh`) drives the built binary end to end in a throwaway home with all three hosts faked; CI runs it on Linux, macOS and Windows. Branches: feature → `dev` (PR, CI required) → `main` (PR). Channels: `vX.Y.Z-rc.N` tags on `dev` publish prereleases (`rc`); every push to `dev` replaces the `dev-latest` prerelease (`dev`, `.github/workflows/dev-channel.yml`); a `vX.Y.Z` tag on `main` publishes `stable` only after `scripts/release-gate.sh` confirms a published rc of that version differing from it in nothing but the `package.json` version (`.github/workflows/release.yml`). Never tag stable without an rc.
 
 ## Layout
 
@@ -27,7 +27,7 @@ Agent-run Job Duck: a CLI plus a local SQLite store that the user's coding agent
 | `src/config/` | `profile.md` (TOML front matter) and `permissions.toml` schemas, readers and revision-checked writers |
 | `src/hosts/` | per-host detection, MCP registration and skill pointers, unified diffs |
 | `src/commands/` | `init`, `doctor`, `dashboard`, `mcp` and `sync` implementations |
-| `src/commands/upgrade.ts` | `jobduck upgrade [version] [--check]`: GitHub Releases lookup, checksum check, in-place binary swap |
+| `src/commands/upgrade.ts` | `jobduck upgrade [version] [--channel] [--check]`: stable/rc/dev GitHub Releases lookup, semver ordering, checksum check, in-place binary swap |
 | `src/dashboard/` | loopback HTTP server, JSON API, static page in `public/` |
 | `src/mcp/` | MCP server (`createServer`) and its eight tools |
 | `src/freehire/` | freehire.me search client and job → posting mapping |
@@ -35,4 +35,5 @@ Agent-run Job Duck: a CLI plus a local SQLite store that the user's coding agent
 | `skills/` | workflow skills copied to `~/.jobduck/skills/` by `init`; hosts get `SKILL.md` pointers |
 | `templates/` | files copied into `~/.jobduck/` and the workspace |
 | `scripts/build-all.sh` | cross-compiles the five release binaries and `SHA256SUMS` into `dist/` |
+| `scripts/release-gate.sh` | decides whether a pushed tag may be released (rc on `dev`, stable on `main` after its rc) |
 | `scripts/smoke.sh` | end-to-end smoke test of the compiled binary (`init`, `doctor`, `mcp`, `dashboard`) against faked hosts |

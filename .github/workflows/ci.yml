@@ -59,6 +59,10 @@ jobs:
           JOBDUCK_INSTALL_DIR="$RUNNER_TEMP/bin" sh install.sh
           "$RUNNER_TEMP/bin/jobduck" --version
           "$RUNNER_TEMP/bin/jobduck" init --dry-run --workspace "$RUNNER_TEMP"
+      - name: Install the newest release on the rc channel
+        run: |
+          JOBDUCK_CHANNEL=rc JOBDUCK_INSTALL_DIR="$RUNNER_TEMP/rc" sh install.sh
+          "$RUNNER_TEMP/rc/jobduck" --version
 
   ci:
     name: ci

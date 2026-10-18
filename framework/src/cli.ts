@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
-import { Command } from 'commander'
+import { Command, Option } from 'commander'
 import { runDashboard } from './commands/dashboard'
 import { runDoctor } from './commands/doctor'
 import { runInit } from './commands/init'
 import { runMcp } from './commands/mcp'
 import { runSync } from './commands/sync'
-import { runUpgrade } from './commands/upgrade'
+import { CHANNELS, type Channel, runUpgrade } from './commands/upgrade'
 import { HOST_IDS } from './hosts'
 import { PACKAGE_VERSION } from './paths'
 
@@ -71,9 +71,10 @@ program
 program
   .command('upgrade [version]')
   .description('Replace this jobduck binary with the latest (or the given) GitHub release after verifying its SHA-256')
+  .addOption(new Option('--channel <channel>', 'stable (releases from main), rc (release candidates) or dev (rolling build of dev); default: the channel of this binary').choices(CHANNELS))
   .option('--check', 'print the current and latest versions without downloading')
-  .action(async (version: string | undefined, opts: { check?: boolean }) => {
-    process.exitCode = await runUpgrade({ version, check: opts.check })
+  .action(async (version: string | undefined, opts: { channel?: Channel; check?: boolean }) => {
+    process.exitCode = await runUpgrade({ version, channel: opts.channel, check: opts.check })
   })
 
 program.parseAsync(process.argv).catch((error: unknown) => {
