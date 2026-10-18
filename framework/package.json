@@ -1,6 +1,6 @@
 {
   "name": "jobduck",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Agent-run job search: a local SQLite store and CLI that your coding agent drives.",
   "keywords": [
