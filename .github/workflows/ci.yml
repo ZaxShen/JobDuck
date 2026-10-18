@@ -2,15 +2,44 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches: [main, dev]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
+  changes:
+    name: changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      framework: ${{ steps.classify.outputs.framework }}
+      installer: ${{ steps.classify.outputs.installer }}
+    steps:
+      - name: Classify the pull request's files
+        id: classify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -z "$PR" ]; then
+            printf 'framework=true\ninstaller=true\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename')
+          printf '%s\n' "$files"
+          has() { if printf '%s\n' "$files" | grep -vE '^framework/(README|CLAUDE)\.md$' | grep -qE "$1"; then echo true; else echo false; fi; }
+          echo "framework=$(has '^(framework/|\.github/workflows/ci\.yml$)')" >> "$GITHUB_OUTPUT"
+          echo "installer=$(has '^(install\.sh|\.github/workflows/ci\.yml)$')" >> "$GITHUB_OUTPUT"
+
   framework:
     name: framework (typecheck, test, build)
+    needs: changes
+    if: needs.changes.outputs.framework == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -27,6 +56,8 @@ jobs:
 
   smoke:
     name: smoke (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.framework == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -47,6 +78,8 @@ jobs:
 
   installer:
     name: install.sh (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.installer == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -67,7 +100,7 @@ jobs:
   ci:
     name: ci
     if: always()
-    needs: [framework, smoke, installer]
+    needs: [changes, framework, smoke, installer]
     runs-on: ubuntu-latest
     steps:
       - name: Every job succeeded
