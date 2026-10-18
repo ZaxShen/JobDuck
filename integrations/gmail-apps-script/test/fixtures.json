@@ -1,0 +1,252 @@
+[
+  {
+    "name": "Pinterest won't be moving forward (update)",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Alex,\n\nAfter careful review, we won't be moving forward with your application.\n\nBest regards,\nThe Talent Team",
+    "expect": "rejection"
+  },
+  {
+    "name": "Pinterest won't be moving forward (status)",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Your application status",
+    "body": "Hi Alex,\n\nAfter careful review, we won't be moving forward with your application.\n\nBest regards,\nThe Talent Team",
+    "expect": "rejection"
+  },
+  {
+    "name": "Jane Street unable to find a match",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Alex,\n\nUnfortunately we were unable to find a good match for your background at this time, but we will reach out in the event that our needs change.\n\nBest regards,\nThe Talent Team",
+    "expect": "rejection"
+  },
+  {
+    "name": "Commure other candidates before conditional",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Alex,\n\nWe have decided to move forward with other candidates at this time, but would love to stay in touch in the event any suitable roles open up.\n\nBest regards,\nThe Talent Team",
+    "expect": "rejection"
+  },
+  {
+    "name": "Hippocratic AI closed role",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Alex,\n\nWe have decided to close this role right now.\n\nBest regards,\nThe Talent Team",
+    "expect": "rejection"
+  },
+  {
+    "name": "Lockheed considering other candidates",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Alex,\n\nWe are considering other candidates for this opening.\n\nBest regards,\nThe Talent Team",
+    "expect": "rejection"
+  },
+  {
+    "name": "Snap more closely align",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Alex,\n\nWe are pursuing candidates with skills and experience which more closely align with this role.\n\nBest regards,\nThe Talent Team",
+    "expect": "rejection"
+  },
+  {
+    "name": "Discord chosen candidates",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Alex,\n\nWhile your background is impressive, we've chosen to move forward with candidates whose experience aligns more specifically with the immediate needs of this team.\n\nBest regards,\nThe Talent Team",
+    "expect": "rejection"
+  },
+  {
+    "name": "Fullstory isn't quite a match",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Alex,\n\nAfter reviewing your profile, it isn't quite a match for what we are looking for at this time.\n\nBest regards,\nThe Talent Team",
+    "expect": "rejection"
+  },
+  {
+    "name": "Capco more closely aligned",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Alex,\n\nWe will move forward with candidates whose qualifications are more closely aligned to the role.\n\nBest regards,\nThe Talent Team",
+    "expect": "rejection"
+  },
+  {
+    "name": "InMobi no strong match",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Alex,\n\nWe do not have a position that is a strong match with your profile at this time.\n\nBest regards,\nThe Talent Team",
+    "expect": "rejection"
+  },
+  {
+    "name": "Labelbox other applicants",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Alex,\n\nAt this time, we have decided to move forward with other applicants.\n\nBest regards,\nThe Talent Team",
+    "expect": "rejection"
+  },
+  {
+    "name": "QuinStreet filled the role",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Alex,\n\nAfter careful consideration, we've filled the role.\n\nBest regards,\nThe Talent Team",
+    "expect": "rejection"
+  },
+  {
+    "name": "PayPal no longer reviewing",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Alex,\n\nWe are no longer reviewing applicants for this particular position.\n\nBest regards,\nThe Talent Team",
+    "expect": "rejection"
+  },
+  {
+    "name": "NVIDIA not the right fit",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Alex,\n\nAfter review, we don't believe this position is the right fit.\n\nBest regards,\nThe Talent Team",
+    "expect": "rejection"
+  },
+  {
+    "name": "Chewy identified other candidates",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Alex,\n\nWe have identified other candidates to move forward with.\n\nBest regards,\nThe Talent Team",
+    "expect": "rejection"
+  },
+  {
+    "name": "Standard regret template",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Alex,\n\nWe regret to inform you that we will not be proceeding with your application.\n\nBest regards,\nThe Talent Team",
+    "expect": "rejection"
+  },
+  {
+    "name": "Standard not selected template",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Alex,\n\nWe appreciate your interest. You have not been selected for this position.\n\nBest regards,\nThe Talent Team",
+    "expect": "rejection"
+  },
+  {
+    "name": "Cisco should your expertise align",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Alex,\n\nShould your expertise align with the role's requirements, we will contact you.\n\nBest regards,\nThe Talent Team",
+    "expect": "job"
+  },
+  {
+    "name": "Green Dot should your qualifications match",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Alex,\n\nShould your qualifications match the requirements of the role, a recruiter will reach out.\n\nBest regards,\nThe Talent Team",
+    "expect": "job"
+  },
+  {
+    "name": "CVS application received",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Your application with CVS Health has been received!",
+    "body": "Hi Alex,\n\nYour application with CVS Health has been received!\n\nBest regards,\nThe Talent Team",
+    "expect": "job"
+  },
+  {
+    "name": "Generic receipt if not selected",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Thanks for applying",
+    "body": "Hi Alex,\n\nThanks for applying. If you are not selected, we will let you know.\n\nBest regards,\nThe Talent Team",
+    "expect": "job"
+  },
+  {
+    "name": "Courtesy only",
+    "from": "Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Alex,\n\nWe wish you the best and encourage you to apply to future opportunities.\n\nBest regards,\nThe Talent Team",
+    "expect": "job"
+  },
+  {
+    "name": "ITBrainiac immediate need pitch",
+    "from": "Sam Lee <sam@itbrainiac.example>",
+    "subject": "Immediate Need AI Developer Charlotte, NC 28202 - Onsite",
+    "body": "Hi Alex,\n\nI am a recruiter at ITBrainiac with an urgent requirement for our client. The role is an AI Developer in Charlotte, NC 28202 - Onsite. Please send your updated resume if you are interested in this position.\n\nThanks,\nSam",
+    "expect": "skip"
+  },
+  {
+    "name": "BayOne W2 only",
+    "from": "Pat Kim <pat@bayone.example>",
+    "subject": "Remote - Senior Data Infra Engineer - W2 Only",
+    "body": "Hi Alex,\n\nI came across your profile and have a contract position that may suit you. Your application to our client would be W2 only. Please reply with your availability.\n\nThanks,\nPat",
+    "expect": "skip"
+  },
+  {
+    "name": "Runpod Ashby closer match",
+    "from": "Runpod Hiring Team <no-reply@ashbyhq.com>",
+    "subject": "Thanks for applying at Runpod!",
+    "body": "Hi Alex,\n\nThank you for your interest in Runpod and for taking the time to apply. After reviewing your application, we've decided to move forward with candidates who more closely match our current needs.\n\nWe wish you the best in your search.\n\nThe Runpod Team",
+    "expect": "rejection"
+  },
+  {
+    "name": "Cohere Ashby receipt (can't respond to every applicant)",
+    "from": "Cohere Recruiting <no-reply@ashbyhq.com>",
+    "subject": "Thanks for applying to Cohere",
+    "body": "Hi Alex,\n\nThank you for applying to the Machine Learning Engineer role at Cohere. Our team will review your application carefully.\n\nUnfortunately we can't respond to every applicant individually, but we will reach out if your experience is a fit.\n\nBest,\nCohere Talent",
+    "expect": "job"
+  },
+  {
+    "name": "Latent Health Ashby receipt (can't respond to every applicant)",
+    "from": "Latent Health <no-reply@ashbyhq.com>",
+    "subject": "Thank you for your application to Latent Health",
+    "body": "Hi Alex,\n\nThanks for applying for the Software Engineer position. We've received your application and the team is reviewing it now.\n\nUnfortunately we can't respond to every applicant, so please know that we read each one.\n\nLatent Health Recruiting",
+    "expect": "job"
+  },
+  {
+    "name": "Paylocity receipt",
+    "from": "Acme Careers <noreply@paylocity.com>",
+    "subject": "Thank you for your application",
+    "body": "Hello Alex,\n\nThank you for your interest in the Data Engineer position at Acme. We have received your application and our hiring team will review it.\n\nSincerely,\nAcme Human Resources",
+    "expect": "job"
+  },
+  {
+    "name": "Paylocity rejection",
+    "from": "Acme Careers <noreply@paylocity.com>",
+    "subject": "Thank you for your application",
+    "body": "Hello Alex,\n\nThank you for your interest in the Data Engineer position at Acme. After careful consideration, we will not be moving forward with your application at this time.\n\nSincerely,\nAcme Human Resources",
+    "expect": "rejection"
+  },
+  {
+    "name": "iCIMS password reset",
+    "from": "Acme Careers <noreply@icims.com>",
+    "subject": "Reset your password",
+    "body": "Hello Alex,\n\nWe received a request to reset your password for your Acme Careers candidate account. Use the link below to choose a new password. The link expires in 24 hours.\n\nAcme Talent Acquisition",
+    "expect": "skip",
+    "negative": "password reset / verification code"
+  },
+  {
+    "name": "Job Alert digest",
+    "from": "Acme Careers <jobs@greenhouse.io>",
+    "subject": "Job Alert: 5 new roles match your preferences",
+    "body": "Hi Alex,\n\nHere are new positions at Acme that match your job alert. Senior Software Engineer, Staff Data Engineer, ML Engineer. Thanks for applying to Acme in the past; we thought you might like these roles.\n\nAcme Recruiting",
+    "expect": "skip",
+    "negative": "job alert"
+  },
+  {
+    "name": "Referral invite",
+    "from": "Acme Recruiting <no-reply@ashbyhq.com>",
+    "subject": "Know someone great? Refer a friend to Acme",
+    "body": "Hi Alex,\n\nThanks for your application to the Product Engineer role. While you wait, our referral program rewards you for introducing candidates to our hiring team.\n\nAcme Talent",
+    "expect": "skip",
+    "negative": "referral"
+  },
+  {
+    "name": "Self-identification invite",
+    "from": "Acme <acme@myworkday.com>",
+    "subject": "Action requested: voluntary self-identification",
+    "body": "Dear Alex,\n\nThank you for your application for the Backend Engineer position. Please complete the voluntary self-identification form for our hiring records. Your answers will not affect your candidacy.\n\nAcme Talent Acquisition",
+    "expect": "skip",
+    "negative": "self-identification"
+  },
+  {
+    "name": "Abandoned application reminder",
+    "from": "Acme Careers <noreply@icims.com>",
+    "subject": "Complete your application for Platform Engineer",
+    "body": "Hi Alex,\n\nYou started an application for the Platform Engineer role at Acme but have not submitted it yet. Sign in to finish your application before the position closes.\n\nAcme Recruiting",
+    "expect": "skip",
+    "negative": "unfinished application"
+  }
+]

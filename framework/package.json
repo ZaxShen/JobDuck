@@ -1,0 +1,57 @@
+{
+  "name": "jobduck",
+  "version": "0.1.0",
+  "description": "Agent-run job search: a local SQLite store and CLI that your coding agent drives.",
+  "keywords": [
+    "job-search",
+    "mcp",
+    "agent",
+    "claude-code",
+    "codex",
+    "gemini-cli",
+    "sqlite",
+    "applications"
+  ],
+  "license": "MIT",
+  "author": "Zax Shen",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ZaxShen/JobDuck.git",
+    "directory": "framework"
+  },
+  "homepage": "https://github.com/ZaxShen/JobDuck#readme",
+  "bugs": "https://github.com/ZaxShen/JobDuck/issues",
+  "type": "module",
+  "bin": {
+    "jobduck": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "bun build src/cli.ts --target node --outfile dist/cli.js --external better-sqlite3 && rm -rf dist/templates dist/migrations dist/dashboard dist/skills && cp -R templates dist/templates && cp -R skills dist/skills && cp -R src/db/migrations dist/migrations && cp -R src/dashboard/public dist/dashboard",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "better-sqlite3": "^12.4.1",
+    "commander": "^14.0.1",
+    "smol-toml": "^1.4.2",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.19.0",
+    "bun-types": "^1.3.4",
+    "typescript": "^5.9.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

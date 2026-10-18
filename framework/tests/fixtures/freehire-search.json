@@ -1,0 +1,91 @@
+{
+  "pages": [
+    {
+      "headers": { "x-ratelimit-limit": "600", "x-ratelimit-remaining": "0", "x-ratelimit-reset": "2" },
+      "body": {
+        "data": [
+          {
+            "public_slug": "staff-engineer-acme-1",
+            "source": "greenhouse",
+            "manually_added": false,
+            "external_id": "acme:1001",
+            "url": "https://job-boards.greenhouse.io/acme/jobs/1001?utm_source=freehire.me",
+            "title": "Staff Engineer",
+            "company": "Acme",
+            "company_slug": "acme",
+            "location": "San Francisco, United States",
+            "description": "<p>Build things.</p>",
+            "countries": ["us"],
+            "regions": ["north_america"],
+            "work_mode": "hybrid",
+            "skills": ["typescript", "postgres"],
+            "cities": ["San Francisco"],
+            "is_tech": "tech",
+            "posted_at": "2026-10-16T10:00:00Z",
+            "last_seen_at": "2026-10-17T10:00:00Z",
+            "enrichment": {
+              "employment_type": "full_time", "seniority": "staff", "category": "backend",
+              "salary_min": 200000, "salary_max": 250000, "salary_currency": "USD", "salary_period": "year"
+            },
+            "reality": { "class": "fresh", "age_days": 1, "repost_count": 1, "fake_freshness": false }
+          },
+          {
+            "public_slug": "senior-backend-globex-2",
+            "source": "whatjobs",
+            "manually_added": false,
+            "external_id": "globex:2002",
+            "url": "https://www.whatjobs.com/pub_api__cpl__2002?geoID=1&utm_campaign=publisher&utm_source=freehire.me&utm_medium=api",
+            "title": "Senior Backend Engineer",
+            "company": "Globex",
+            "company_slug": "globex",
+            "location": "United, United States",
+            "description": "<p>Go services.</p>",
+            "countries": ["us"],
+            "regions": ["north_america"],
+            "skills": ["go"],
+            "cities": [],
+            "is_tech": "tech",
+            "posted_at": "2026-10-15T09:00:00Z",
+            "last_seen_at": "2026-10-17T09:00:00Z",
+            "enrichment": { "employment_type": "contract", "seniority": "senior", "category": "backend" },
+            "reality": { "class": "reposted", "age_days": 2, "repost_count": 3, "fake_freshness": false }
+          }
+        ],
+        "meta": { "limit": 50, "offset": 0, "total": 3 }
+      }
+    },
+    {
+      "headers": { "x-ratelimit-limit": "600", "x-ratelimit-remaining": "598", "x-ratelimit-reset": "1" },
+      "body": {
+        "data": [
+          {
+            "public_slug": "ml-engineer-initech-3",
+            "source": "ashby",
+            "manually_added": false,
+            "external_id": "initech:3003",
+            "url": "https://jobs.ashbyhq.com/initech/3003?utm_source=freehire.me",
+            "title": "ML Engineer",
+            "company": "Initech",
+            "company_slug": "initech",
+            "location": "Toronto, Canada",
+            "description": "<p>Models.</p>",
+            "countries": ["ca", "us"],
+            "regions": ["north_america"],
+            "work_mode": "remote",
+            "skills": ["python"],
+            "cities": ["Toronto"],
+            "is_tech": "tech",
+            "posted_at": "2026-10-14T08:00:00Z",
+            "last_seen_at": "2026-10-17T08:00:00Z",
+            "enrichment": {
+              "employment_type": "full_time", "seniority": "mid", "category": "ml",
+              "salary_min": 150000, "salary_max": 180000, "salary_currency": "CAD"
+            },
+            "reality": { "class": "fresh", "age_days": 3, "repost_count": 1, "fake_freshness": false }
+          }
+        ],
+        "meta": { "limit": 50, "offset": 2, "total": 3 }
+      }
+    }
+  ]
+}

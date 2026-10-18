@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Job Duck</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <h1>Job Duck</h1>
+    <nav id="chips" class="chips" aria-label="Filter by status"></nav>
+    <input id="search" type="search" placeholder="Search company, title, location" aria-label="Search applications">
+  </header>
+
+  <p id="message" class="message" role="status" hidden></p>
+
+  <main>
+    <section id="outcomes" class="outcomes" hidden>
+      <h2>Needs a match</h2>
+      <p class="hint">Rejection emails that could not be matched to an application automatically.</p>
+      <ul id="outcome-list" class="outcome-list"></ul>
+    </section>
+
+    <section class="board">
+      <table>
+        <thead>
+          <tr><th>Company</th><th>Title</th><th>Location</th><th>Status</th><th>Applied</th><th>Updated</th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <p id="empty" class="empty" hidden>No applications yet. Ask your agent to save or apply to a posting.</p>
+    </section>
+  </main>
+
+  <aside id="drawer" class="drawer" hidden aria-labelledby="drawer-title">
+    <div class="drawer-head">
+      <h2 id="drawer-title"></h2>
+      <button id="drawer-close" type="button" class="ghost" aria-label="Close">Close</button>
+    </div>
+    <p id="drawer-sub" class="sub"></p>
+    <a id="drawer-link" class="posting-link" target="_blank" rel="noreferrer noopener" hidden>Open posting</a>
+
+    <label>Status <select id="f-status"></select></label>
+    <label>Note <textarea id="f-note" rows="5" placeholder="Interview notes, contacts, next steps"></textarea></label>
+    <fieldset>
+      <legend>Overrides</legend>
+      <label>Title <input id="f-title_override" type="text"></label>
+      <label>Company <input id="f-company_override" type="text"></label>
+      <label>Location <input id="f-location_override" type="text"></label>
+    </fieldset>
+
+    <h3>Timeline</h3>
+    <ol id="timeline" class="timeline"></ol>
+
+    <button id="delete" type="button" class="danger">Delete application</button>
+  </aside>
+</body>
+</html>

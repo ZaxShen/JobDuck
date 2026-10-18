@@ -1,0 +1,43 @@
+# Job Duck permissions. The setup skill fills this in; edit by hand any time.
+# Nothing runs until its module is switched on. CAPTCHAs and verification codes always stop for you.
+
+[modules]
+cv = false
+find = false
+track = false
+apply = false
+interview = false
+
+[apply]
+autonomy = "confirm_each"           # confirm_each | confirm_batch | auto_after_approvals
+approvals_before_auto = 10          # approved submissions before auto_after_approvals takes over
+eeo = "decline"                     # decline | from_profile
+ats_accounts = "never"              # never | reuse | create
+salary_mode = "leave_blank"         # posting_range_upper | fixed | leave_blank
+salary_floor = 0
+salary_fixed_total = 0
+salary_fixed_base = 0
+uploads = ["cv"]                    # cv, cover_letter, portfolio, transcript
+cover_letter = "only_when_required" # only_when_required | never | always
+tailor_cv = "never"                 # never | when_bottleneck | always
+free_text = "draft_for_approval"    # never | draft_for_approval | auto_from_profile
+skip_companies = []
+max_per_run = 10
+marker = true                       # paste the JobDuck-Application-Id marker into an editable field
+
+[apply.consents]
+privacy_policy = false
+terms = false
+arbitration = false
+background_check = false
+e_signature = false
+marketing_opt_in = false
+
+[apply.answers]
+
+[track]
+sync_url = ""
+sync_token = ""
+
+[cv]
+page_limit = 2
