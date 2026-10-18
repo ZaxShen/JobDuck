@@ -137,6 +137,8 @@ To push your own copy of the script with [clasp](https://github.com/google/clasp
 2. `bun x @google/clasp login`
 3. From `integrations/gmail-apps-script/`, run `bun x @google/clasp push --force`.
 
+The included `.claspignore` keeps the `test/` harness out of the push, so only `appsscript.json` and `Code.gs` upload.
+
 Every version bump renames the project `vN` (or `vN.M`), so a copy's name says which version it runs.
 Copies never auto-update: to update, make a new copy and re-add your script properties.
 

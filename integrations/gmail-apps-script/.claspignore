@@ -1,0 +1,4 @@
+# Whitelist: clasp pushes only the Apps Script sources; test/ uses top-level require and breaks every function.
+**/**
+!appsscript.json
+!Code.gs
