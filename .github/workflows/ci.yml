@@ -3,13 +3,14 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, dev]
 
 permissions:
   contents: read
 
 jobs:
   framework:
+    name: framework (typecheck, test, build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -19,4 +20,54 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.4
-      - run: bun install --frozen-lockfile && bun run typecheck && bun test && bun run build
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run build
+      - run: bun test
+
+  smoke:
+    name: smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: framework
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.4
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - run: bash scripts/smoke.sh
+
+  installer:
+    name: install.sh (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the latest release with install.sh
+        run: |
+          JOBDUCK_INSTALL_DIR="$RUNNER_TEMP/bin" sh install.sh
+          "$RUNNER_TEMP/bin/jobduck" --version
+          "$RUNNER_TEMP/bin/jobduck" init --dry-run --workspace "$RUNNER_TEMP"
+
+  ci:
+    name: ci
+    if: always()
+    needs: [framework, smoke, installer]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job succeeded
+        run: |
+          echo '${{ toJSON(needs) }}' | grep -q '"result": "failure"' && exit 1
+          echo '${{ toJSON(needs) }}' | grep -q '"result": "cancelled"' && exit 1
+          exit 0

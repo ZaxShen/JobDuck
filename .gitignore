@@ -3,3 +3,6 @@ dist/
 .clasp.json
 *.db
 *.tgz
+
+# TMB plugin runtime state — never commit
+.claude/

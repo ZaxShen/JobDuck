@@ -1,9 +1,9 @@
 import { existsSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { resolve, sep } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { openDb } from '../db/client'
 import { migrate, pendingMigrations } from '../db/migrate'
-import { type FileChange, type Host, type HostContext, allHosts, hostById } from '../hosts'
+import { type FileChange, type Host, type HostContext, allHosts, hostById, userHomeOf } from '../hosts'
 import {
   PACKAGE_VERSION, PERMISSIONS_FILE, PROFILE_FILE, dbPath, ensureHome, installSkills, installedSkillsPath, jobduckHome,
   skillNames, skillsUpToDate,
@@ -13,6 +13,7 @@ export interface InitOptions {
   workspace?: string
   hosts?: string[]
   dryRun?: boolean
+  diff?: boolean
   yes?: boolean
   userHome?: string
   pathEnv?: string
@@ -20,6 +21,9 @@ export interface InitOptions {
   out?: (line: string) => void
   confirm?: (question: string) => Promise<boolean>
 }
+
+type Verb = 'create' | 'update'
+const PAST: Record<Verb, string> = { create: 'created', update: 'updated' }
 
 async function promptYesNo(question: string): Promise<boolean> {
   const rl = createInterface({ input: process.stdin, output: process.stdout })
@@ -40,23 +44,65 @@ function dedupe(changes: FileChange[]): FileChange[] {
   return changes.filter((change) => !seen.has(change.path) && seen.add(change.path))
 }
 
-function homePlan(home: string): string[] {
+const slashes = (path: string) => path.split(sep).join('/')
+
+export function shortPath(path: string, ctx: HostContext): string {
+  const workspace = ctx.workspace.endsWith(sep) ? ctx.workspace : `${ctx.workspace}${sep}`
+  if (path.startsWith(workspace)) return slashes(path.slice(workspace.length))
+  const home = resolve(userHomeOf(ctx))
+  if (path === home) return '~'
+  const homePrefix = home.endsWith(sep) ? home : `${home}${sep}`
+  if (path.startsWith(homePrefix)) return `~/${slashes(path.slice(homePrefix.length))}`
+  return path
+}
+
+function verbOf(change: FileChange): Verb {
+  return change.before === null ? 'create' : 'update'
+}
+
+export function planLines(changes: FileChange[], ctx: HostContext, tense: 'present' | 'past' = 'present'): string[] {
+  const pointer = new RegExp(`^(.*)[\\\\/]jobduck-(?:${skillNames().join('|')})[\\\\/]SKILL\\.md$`)
+  const entries: Array<{ verb: Verb; label: string; count: number }> = []
+  const groups = new Map<string, number>()
+  for (const change of changes) {
+    const dir = pointer.exec(change.path)?.[1]
+    if (dir === undefined) {
+      entries.push({ verb: verbOf(change), label: shortPath(change.path, ctx), count: 1 })
+      continue
+    }
+    const index = groups.get(dir)
+    if (index === undefined) {
+      groups.set(dir, entries.length)
+      entries.push({ verb: verbOf(change), label: `${shortPath(dir, ctx)}/jobduck-*/SKILL.md`, count: 1 })
+    } else {
+      const entry = entries[index]!
+      entry.count++
+      if (entry.verb !== verbOf(change)) entry.verb = 'update'
+    }
+  }
+  return entries.map(({ verb, label, count }) => {
+    const word = tense === 'past' ? PAST[verb] : verb
+    return count > 1 ? `${word} ${label} (${count} skill pointers)` : `${word} ${label}`
+  })
+}
+
+function homePlan(home: string, show: (path: string) => string): string[] {
   const steps: string[] = []
-  if (!existsSync(home)) steps.push(`create ${home} (mode 0700)`)
+  if (!existsSync(home)) steps.push(`create ${show(home)} (mode 0700)`)
   for (const file of [PROFILE_FILE, PERMISSIONS_FILE]) {
-    if (!existsSync(resolve(home, file))) steps.push(`create ${resolve(home, file)} from template`)
+    if (!existsSync(resolve(home, file))) steps.push(`create ${show(resolve(home, file))} from template`)
   }
   if (!skillsUpToDate(home)) {
-    steps.push(`install ${skillNames().length} skills (version ${PACKAGE_VERSION}) to ${installedSkillsPath(home)}`)
+    steps.push(`install ${skillNames().length} skills (version ${PACKAGE_VERSION}) to ${show(installedSkillsPath(home))}`)
   }
   const db = dbPath(home)
   if (!existsSync(db)) {
-    steps.push(`create ${db} and apply migrations ${pendingMigrations(null).map((m) => m.version).join(', ')}`)
+    steps.push(`create ${show(db)} and apply migrations ${pendingMigrations(null).map((m) => m.version).join(', ')}`)
   } else {
     const conn = openDb(db, { readonly: true })
     try {
       const pending = pendingMigrations(conn)
-      if (pending.length > 0) steps.push(`apply migrations ${pending.map((m) => m.version).join(', ')} to ${db}`)
+      if (pending.length > 0) steps.push(`apply migrations ${pending.map((m) => m.version).join(', ')} to ${show(db)}`)
     } finally {
       conn.close()
     }
@@ -73,16 +119,27 @@ export async function runInit(options: InitOptions = {}): Promise<number> {
     pathEnv: options.pathEnv,
     dryRun: true,
   }
+  const show = (path: string) => shortPath(path, ctx)
   const hosts = selectHosts(ctx, options.hosts)
-  const steps = homePlan(home)
+  const steps = homePlan(home, show)
   const changes = dedupe(hosts.flatMap((host) => host.register(ctx)))
 
-  out(`Job Duck home: ${home}`)
+  out(`Job Duck home: ${show(home)}`)
   out(`Workspace: ${ctx.workspace}`)
   out(`Hosts: ${hosts.length > 0 ? hosts.map((host) => host.label).join(', ') : 'none detected (use --hosts)'}`)
-  for (const step of steps) out(`- ${step}`)
-  for (const change of changes) out(`- ${change.before === null ? 'create' : 'update'} ${change.path}\n${change.diff}`)
-  if (steps.length === 0 && changes.length === 0) out('Nothing to do.')
+  if (steps.length === 0 && changes.length === 0) {
+    out('Nothing to do.')
+  } else {
+    out('')
+    for (const step of steps) out(`- ${step}`)
+    for (const line of planLines(changes, ctx)) out(`- ${line}`)
+    out('')
+    if (options.diff) {
+      for (const change of changes) out(change.diff)
+    } else if (changes.length > 0) {
+      out('Pass --diff to see every change in full.')
+    }
+  }
 
   if (options.dryRun) {
     out('Dry run: nothing written.')
@@ -109,9 +166,10 @@ export async function runInit(options: InitOptions = {}): Promise<number> {
     db.close()
   }
   const written = dedupe(hosts.flatMap((host) => host.register({ ...ctx, dryRun: false })))
-  for (const path of created) out(`created ${path}`)
-  out(`installed ${skills.length} skills to ${installedSkillsPath(home)}`)
+  for (const path of created) out(`created ${show(path)}`)
+  out(`installed ${skills.length} skills to ${show(installedSkillsPath(home))}`)
   if (applied.length > 0) out(`applied migrations ${applied.join(', ')}`)
-  for (const change of written) out(`${change.before === null ? 'created' : 'updated'} ${change.path}`)
+  for (const line of planLines(written, ctx, 'past')) out(line)
+  if (hosts.length > 0) out('Done. Open your agent in this workspace and say "set up Job Duck".')
   return 0
 }

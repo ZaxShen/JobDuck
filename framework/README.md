@@ -22,7 +22,7 @@ Windows (x64): download `jobduck-windows-x64.exe` from [Releases](https://github
 Then:
 
 ```bash
-jobduck init --dry-run   # preview every file it would create or change
+jobduck init --dry-run   # preview the plan, one line per file, without writing anything
 jobduck init             # apply (asks first; use --yes in scripts)
 jobduck doctor           # check the runtime, PATH, ~/.jobduck, the database and host registration
 ```
@@ -31,7 +31,8 @@ jobduck doctor           # check the runtime, PATH, ~/.jobduck, the database and
 
 - `--workspace <dir>`: project directory that gets `.mcp.json`, `AGENTS.md`, `CLAUDE.md` / `GEMINI.md` pointers (default: current directory).
 - `--hosts claude,codex,gemini`: hosts to register (default: those detected by config file or binary on `PATH`).
-- `--dry-run`: print the plan and unified diffs, write nothing.
+- `--dry-run`: print the plan, write nothing.
+- `--diff`: also print a unified diff of every file the plan touches (`init --dry-run --diff` previews everything).
 - `--yes`: skip the confirmation prompt (required when not in a terminal).
 
 `doctor` reports the jobduck and runtime versions, whether `jobduck` is on your `PATH` (hosts start it by name), `~/.jobduck` and its mode, the database, `permissions.toml`, `profile.md`, the installed skills and each host's registration. `doctor --json` prints a machine-readable report and exits 1 when a check fails. `jobduck mcp` runs the MCP server over stdio; your agent host starts it, you don't.
@@ -187,9 +188,6 @@ bun run build:all                         # every platform plus dist/SHA256SUMS
 ## Releasing
 
 Pushing a `v<version>` tag that matches `package.json` runs the release workflow: it tests, builds `jobduck-darwin-arm64`, `jobduck-darwin-x64`, `jobduck-linux-x64`, `jobduck-linux-arm64`, `jobduck-windows-x64.exe` and `SHA256SUMS`, and publishes them as a GitHub Release.
-
-Maintainers build the public, history-free snapshot (this package plus the Gmail Apps Script) from the private repository with `scripts/release/snapshot.sh <out-dir>`.
-It scans the snapshot for secrets and personal data and prints the publish steps; it never pushes or tags.
 
 ## License
 

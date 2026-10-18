@@ -58,6 +58,7 @@ export function runDoctor(options: DoctorOptions = {}): number {
   checks.push(attempt('home', () => {
     ensureHome(home)
     const mode = statSync(home).mode & 0o777
+    if (process.platform === 'win32') return home
     if (mode & 0o077) throw new Error(`${home} is mode ${mode.toString(8)}; run chmod 700 ${home}`)
     return `${home} (mode ${mode.toString(8)})`
   }))

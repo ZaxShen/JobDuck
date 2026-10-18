@@ -35,10 +35,10 @@ function doctorBase() {
   return { ...base(), pathEnv: bin }
 }
 
-test('init --dry-run prints the three host diffs and touches nothing', async () => {
+test('init --dry-run --diff prints the three host diffs and touches nothing', async () => {
   fixtures()
   const before = snapshot(box.root)
-  const code = await runInit({ ...base(), hosts: ['claude', 'codex', 'gemini'], dryRun: true })
+  const code = await runInit({ ...base(), hosts: ['claude', 'codex', 'gemini'], dryRun: true, diff: true })
   expect(code).toBe(0)
   expect(snapshot(box.root)).toEqual(before)
   expect(existsSync(box.home)).toBe(false)
@@ -49,9 +49,9 @@ test('init --dry-run prints the three host diffs and touches nothing', async () 
   expect(text).toContain('Dry run: nothing written.')
 })
 
-test('init --dry-run for claude and codex diffs twelve SKILL.md pointers', async () => {
+test('init --dry-run --diff for claude and codex diffs twelve SKILL.md pointers', async () => {
   const before = snapshot(box.root)
-  expect(await runInit({ ...base(), hosts: ['claude', 'codex'], dryRun: true })).toBe(0)
+  expect(await runInit({ ...base(), hosts: ['claude', 'codex'], dryRun: true, diff: true })).toBe(0)
   expect(snapshot(box.root)).toEqual(before)
   const pointers = lines.join('\n').split('\n').filter((line) => /^\+\+\+ .*\/SKILL\.md$/.test(line))
   expect(pointers).toHaveLength(12)
@@ -60,6 +60,22 @@ test('init --dry-run for claude and codex diffs twelve SKILL.md pointers', async
     expect(pointers).toContain(`+++ ${join(box.workspace, '.agents', 'skills', `jobduck-${name}`, 'SKILL.md')}`)
   }
   expect(lines.some((line) => line.startsWith('- install 6 skills'))).toBe(true)
+})
+
+test('init --dry-run without --diff prints one line per file and groups skill pointers', async () => {
+  fixtures()
+  expect(await runInit({ ...base(), hosts: ['claude', 'codex'], dryRun: true })).toBe(0)
+  expect(lines).toContain(`Job Duck home: ${box.home}`)
+  expect(lines).toContain('- create .mcp.json')
+  expect(lines).toContain('- create AGENTS.md')
+  expect(lines).toContain('- update CLAUDE.md')
+  expect(lines).toContain('- create .claude/skills/jobduck-*/SKILL.md (6 skill pointers)')
+  expect(lines).toContain('- update ~/.codex/config.toml')
+  expect(lines).toContain('- create .agents/skills/jobduck-*/SKILL.md (6 skill pointers)')
+  expect(lines).toContain('Pass --diff to see every change in full.')
+  expect(lines.filter((line) => line.startsWith('- '))).toHaveLength(11)
+  expect(lines.some((line) => /^[-+@]{2,3} /.test(line))).toBe(false)
+  expect(lines.some((line) => line.includes(box.workspace) && line !== `Workspace: ${box.workspace}`)).toBe(false)
 })
 
 test('init without --yes refuses on a non-TTY and writes nothing', async () => {
@@ -78,6 +94,9 @@ test('init asks on a TTY and aborts on no', async () => {
 test('init --yes creates the home, migrates, and registers hosts; doctor then passes', async () => {
   fixtures()
   expect(await runInit({ ...base(), hosts: ['claude', 'codex', 'gemini'], yes: true })).toBe(0)
+  expect(lines).toContain('created .claude/skills/jobduck-*/SKILL.md (6 skill pointers)')
+  expect(lines).toContain('updated ~/.codex/config.toml')
+  expect(lines).toContain('Done. Open your agent in this workspace and say "set up Job Duck".')
   for (const file of ['jobduck.db', 'profile.md', 'permissions.toml']) expect(existsSync(join(box.home, file))).toBe(true)
   for (const file of ['.mcp.json', 'AGENTS.md', 'GEMINI.md']) expect(existsSync(join(box.workspace, file))).toBe(true)
   const skills = join(box.home, 'skills')

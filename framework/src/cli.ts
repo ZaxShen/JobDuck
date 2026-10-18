@@ -19,13 +19,15 @@ program
   .description('Create ~/.jobduck, apply migrations, and register Job Duck with your agent hosts')
   .option('--workspace <dir>', 'project directory for workspace-scoped host files', process.cwd())
   .option('--hosts <list>', `comma-separated hosts (${HOST_IDS.join(',')}); default: detected`)
-  .option('--dry-run', 'print the plan and diffs without writing anything')
+  .option('--dry-run', 'print the plan without writing anything')
+  .option('--diff', 'also print a unified diff of every file the plan touches')
   .option('--yes', 'apply without asking')
-  .action(async (opts: { workspace: string; hosts?: string; dryRun?: boolean; yes?: boolean }) => {
+  .action(async (opts: { workspace: string; hosts?: string; dryRun?: boolean; diff?: boolean; yes?: boolean }) => {
     process.exitCode = await runInit({
       workspace: opts.workspace,
       hosts: opts.hosts?.split(',').map((host) => host.trim()).filter(Boolean),
       dryRun: opts.dryRun,
+      diff: opts.diff,
       yes: opts.yes,
     })
   })
