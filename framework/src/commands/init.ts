@@ -44,12 +44,14 @@ function dedupe(changes: FileChange[]): FileChange[] {
   return changes.filter((change) => !seen.has(change.path) && seen.add(change.path))
 }
 
+const slashes = (path: string) => path.split(sep).join('/')
+
 export function shortPath(path: string, ctx: HostContext): string {
   const workspace = ctx.workspace.endsWith(sep) ? ctx.workspace : `${ctx.workspace}${sep}`
-  if (path.startsWith(workspace)) return path.slice(workspace.length)
+  if (path.startsWith(workspace)) return slashes(path.slice(workspace.length))
   const home = userHomeOf(ctx).replace(/[\\/]+$/, '')
   if (path === home) return '~'
-  if (path.startsWith(`${home}${sep}`)) return `~${path.slice(home.length)}`
+  if (path.startsWith(`${home}${sep}`)) return `~${slashes(path.slice(home.length))}`
   return path
 }
 

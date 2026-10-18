@@ -34,9 +34,10 @@ check() {
     failures=$((failures + 1))
   fi
 }
-contains() { grep -qF -- "$1" "$2"; }
-lacks() { ! grep -qE -- "$1" "$2"; }
-count() { [[ "$(grep -cE -- "$1" "$2")" == "$3" ]]; }
+show() { sed 's/^/     | /' "$1" >&2; return 1; }
+contains() { grep -qF -- "$1" "$2" || show "$2"; }
+lacks() { ! grep -qE -- "$1" "$2" || show "$2"; }
+count() { [[ "$(grep -cE -- "$1" "$2")" == "$3" ]] || show "$2"; }
 
 run() {
   local log=$1
