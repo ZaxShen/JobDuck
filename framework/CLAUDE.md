@@ -14,7 +14,7 @@ Agent-run Job Duck: a CLI plus a local SQLite store that the user's coding agent
 - **Network:** exactly three outbound calls: `search_jobs` to the freehire.me public API (`src/freehire/client.ts`), `jobduck sync` to the user's own Apps Script web app at `[track] sync_url` (`src/sync/client.ts`, POST with the token in the JSON body, never in a URL or log line), and `jobduck upgrade` to api.github.com and the github.com / `*.githubusercontent.com` release downloads (`src/commands/upgrade.ts`, SHA-256 checked against `SHA256SUMS`). All take an injected `fetch`; tests always inject it; no other network calls anywhere.
 - **stdout is the MCP channel.** In the `jobduck mcp` process nothing but JSON-RPC may reach stdout: no `console.log` under `src/mcp/` or in `src/commands/mcp.ts`; log to `process.stderr`. Tool handlers return `isError` results instead of throwing.
 - **Dashboard is loopback-only.** `src/dashboard/server.ts` binds `127.0.0.1` (never `0.0.0.0` or a configurable host) and rejects other `Host` headers; mutations require `X-JobDuck-Dashboard: 1` and a same-origin `Origin`. `src/dashboard/public/` is vanilla HTML/JS/CSS with no external URLs (CSP `default-src 'self'`).
-- **Build and release.** `bun run build` writes `dist/jobduck` for this machine; `bun run build:all` (`scripts/build-all.sh`) writes `jobduck-{darwin-arm64,darwin-x64,linux-x64,linux-arm64,windows-x64.exe}` and `SHA256SUMS`. `release/` holds `release.yml`, `ci.yml` and `install.sh`, which `scripts/release/snapshot.sh` places at the public repo root; a `v<version>` tag there builds and publishes the GitHub Release.
+- **Build and release.** `bun run build` writes `dist/jobduck` for this machine; `bun run build:all` (`scripts/build-all.sh`) writes `jobduck-{darwin-arm64,darwin-x64,linux-x64,linux-arm64,windows-x64.exe}` and `SHA256SUMS`. `bun run smoke` (`scripts/smoke.sh`) drives the built binary end to end in a throwaway home with all three hosts faked; CI runs it on Linux, macOS and Windows. Branches: feature → `dev` (PR, CI required) → `main` (PR); a `v<version>` tag on `main` matching `package.json` builds and publishes the GitHub Release (`.github/workflows/release.yml`).
 
 ## Layout
 
@@ -35,4 +35,4 @@ Agent-run Job Duck: a CLI plus a local SQLite store that the user's coding agent
 | `skills/` | workflow skills copied to `~/.jobduck/skills/` by `init`; hosts get `SKILL.md` pointers |
 | `templates/` | files copied into `~/.jobduck/` and the workspace |
 | `scripts/build-all.sh` | cross-compiles the five release binaries and `SHA256SUMS` into `dist/` |
-| `release/` | public-root `release.yml`, `ci.yml` workflows and `install.sh`, placed by `scripts/release/snapshot.sh` |
+| `scripts/smoke.sh` | end-to-end smoke test of the compiled binary (`init`, `doctor`, `mcp`, `dashboard`) against faked hosts |

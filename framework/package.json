@@ -26,6 +26,7 @@
   "scripts": {
     "build": "bun build --compile src/cli.ts --outfile dist/jobduck",
     "build:all": "bash scripts/build-all.sh",
+    "smoke": "bash scripts/smoke.sh",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },

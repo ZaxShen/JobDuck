@@ -189,9 +189,6 @@ bun run build:all                         # every platform plus dist/SHA256SUMS
 
 Pushing a `v<version>` tag that matches `package.json` runs the release workflow: it tests, builds `jobduck-darwin-arm64`, `jobduck-darwin-x64`, `jobduck-linux-x64`, `jobduck-linux-arm64`, `jobduck-windows-x64.exe` and `SHA256SUMS`, and publishes them as a GitHub Release.
 
-Maintainers build the public, history-free snapshot (this package plus the Gmail Apps Script) from the private repository with `scripts/release/snapshot.sh <out-dir>`.
-It scans the snapshot for secrets and personal data and prints the publish steps; it never pushes or tags.
-
 ## License
 
 MIT. See [LICENSE](LICENSE).
