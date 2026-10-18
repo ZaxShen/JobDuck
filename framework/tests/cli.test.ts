@@ -73,6 +73,7 @@ test('init --dry-run without --diff prints one line per file and groups skill po
   expect(lines).toContain('- update ~/.codex/config.toml')
   expect(lines).toContain('- create .agents/skills/jobduck-*/SKILL.md (6 skill pointers)')
   expect(lines).toContain('Pass --diff to see every change in full.')
+  expect(lines).toContain('- create inbox/, cv/, cover-letters/ for your documents')
   expect(lines.filter((line) => line.startsWith('- '))).toHaveLength(11)
   expect(lines.some((line) => /^[-+@]{2,3} /.test(line))).toBe(false)
   expect(lines.some((line) => line.includes(box.workspace) && line !== `Workspace: ${box.workspace}`)).toBe(false)

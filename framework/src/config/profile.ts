@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs'
-import { parse } from 'smol-toml'
+import { parse, stringify } from 'smol-toml'
 import { z } from 'zod'
+import { TEMPLATES } from '../assets'
 import { profilePath } from '../paths'
+import { checkRevision, parseOrExplain, readOr, revisionOf, writePrivateFile } from './files'
 
 const strings = () => z.array(z.string()).default(() => [])
 
@@ -47,12 +49,111 @@ export interface Profile {
 
 const FRONT_MATTER = /^\+\+\+\r?\n([\s\S]*?)\r?\n\+\+\+\r?\n?([\s\S]*)$/
 
-export function parseProfile(text: string): Profile {
+function splitFrontMatter(text: string): { raw: Record<string, unknown>; body: string } {
   const match = FRONT_MATTER.exec(text)
-  if (!match) return { frontMatter: ProfileFrontMatter.parse({}), body: text }
-  return { frontMatter: ProfileFrontMatter.parse(parse(match[1] ?? '')), body: match[2] ?? '' }
+  if (!match) return { raw: {}, body: text }
+  return { raw: parse(match[1] ?? '') as Record<string, unknown>, body: match[2] ?? '' }
+}
+
+export function parseProfile(text: string): Profile {
+  const { raw, body } = splitFrontMatter(text)
+  return { frontMatter: ProfileFrontMatter.parse(raw), body }
 }
 
 export function loadProfile(path = profilePath()): Profile {
   return parseProfile(readFileSync(path, 'utf8'))
+}
+
+export interface Section {
+  title: string
+  content: string
+}
+
+export interface ProfileBody {
+  preamble: string
+  sections: Section[]
+}
+
+const HEADING = /^# (.+?)\s*$/
+const FENCE = /^\s*(```|~~~)/
+const tidy = (lines: string[]) => lines.join('\n').replace(/^\s*\n/, '').trimEnd()
+
+export function splitSections(body: string): ProfileBody {
+  const preamble: string[] = []
+  const sections: { title: string; lines: string[] }[] = []
+  let fenced = false
+  for (const line of body.split(/\r?\n/)) {
+    if (FENCE.test(line)) fenced = !fenced
+    const heading = fenced ? null : HEADING.exec(line)
+    if (heading) sections.push({ title: heading[1]!, lines: [] })
+    else (sections.at(-1)?.lines ?? preamble).push(line)
+  }
+  return { preamble: tidy(preamble), sections: sections.map(({ title, lines }) => ({ title, content: tidy(lines) })) }
+}
+
+export function joinSections({ preamble, sections }: ProfileBody): string {
+  const parts = preamble === '' ? [] : [preamble]
+  for (const { title, content } of sections) parts.push(content === '' ? `# ${title}` : `# ${title}\n\n${content}`)
+  return `${parts.join('\n\n')}\n`
+}
+
+export function replaceSections(body: string, updates: Record<string, string>): string {
+  const parsed = splitSections(body)
+  for (const [title, content] of Object.entries(updates)) {
+    const name = title.replace(/^#+\s*/, '').trim()
+    if (name === '') throw new Error('section titles must not be empty')
+    const existing = parsed.sections.find((section) => section.title.toLowerCase() === name.toLowerCase())
+    const text = content.trim()
+    if (existing) existing.content = text
+    else parsed.sections.push({ title: name, content: text })
+  }
+  return joinSections(parsed)
+}
+
+export const TEMPLATE_SECTIONS: Section[] = splitSections(parseProfile(TEMPLATES['profile.md']!).body).sections
+
+export function isPlaceholder(section: Section): boolean {
+  const template = TEMPLATE_SECTIONS.find((candidate) => candidate.title === section.title)
+  return template !== undefined && template.content === section.content
+}
+
+const optionalShape = (shape: z.ZodRawShape) => Object.fromEntries(Object.entries(shape).map(([key, field]) =>
+  [key, (field instanceof z.ZodDefault ? field.unwrap() as z.ZodType : field as z.ZodType).optional()]))
+
+export const ProfileFrontMatterUpdate = z.object({
+  ...optionalShape(ProfileFrontMatter.shape),
+  links: z.object(optionalShape(Links.shape)).strict().optional(),
+}).strict()
+
+export interface ProfileUpdate {
+  frontMatter?: Record<string, unknown>
+  sections?: Record<string, string>
+  revision?: string
+}
+
+export interface StoredProfile extends Profile {
+  revision: string
+}
+
+export function serializeProfile(frontMatter: Record<string, unknown>, body: string): string {
+  return `+++\n${stringify(frontMatter).trimEnd()}\n+++\n\n${body.replace(/^\s+/, '').trimEnd()}\n`
+}
+
+export function readStoredProfile(path = profilePath()): StoredProfile {
+  const text = readOr(path, TEMPLATES['profile.md']!)
+  return { ...parseProfile(text), revision: revisionOf(text) }
+}
+
+export function updateProfile(update: ProfileUpdate, path = profilePath()): StoredProfile {
+  const text = readOr(path, TEMPLATES['profile.md']!)
+  checkRevision('profile.md', text, update.revision)
+  const { raw, body } = splitFrontMatter(text)
+  const current = ProfileFrontMatter.parse(raw)
+  const changes = parseOrExplain(ProfileFrontMatterUpdate, update.frontMatter ?? {}, 'profile field')
+  const links = { ...current.links, ...(changes.links as Partial<ProfileFrontMatter['links']> | undefined) }
+  const frontMatter = parseOrExplain(ProfileFrontMatter, { ...current, ...changes, links }, 'profile field')
+  const nextBody = update.sections ? replaceSections(body, update.sections) : body
+  const next = serializeProfile({ ...raw, ...frontMatter }, nextBody)
+  writePrivateFile(path, next)
+  return { ...parseProfile(next), revision: revisionOf(next) }
 }

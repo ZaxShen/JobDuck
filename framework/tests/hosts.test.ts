@@ -3,7 +3,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse } from 'smol-toml'
 import { type Sandbox, sandbox, snapshot } from './helpers'
-import { claudeCode } from '../src/hosts/claude-code'
+import { TEMPLATES } from '../src/assets'
+import { claudeCode, mergeAgentsMd } from '../src/hosts/claude-code'
 import { codex, mergeCodexConfig } from '../src/hosts/codex'
 import { unifiedDiff } from '../src/hosts/diff'
 import { gemini } from '../src/hosts/gemini'
@@ -68,7 +69,7 @@ test('Claude Code registration is idempotent once applied', () => {
   expect(claudeCode.isRegistered(ctx)).toBe(false)
   claudeCode.register({ ...ctx, dryRun: false })
   expect(claudeCode.isRegistered(ctx)).toBe(true)
-  expect(readFileSync(join(box.workspace, 'AGENTS.md'), 'utf8')).toBe('mine\n')
+  expect(readFileSync(join(box.workspace, 'AGENTS.md'), 'utf8')).toBe(`mine\n\n${TEMPLATES['AGENTS.md']}`)
   expect(readFileSync(join(box.workspace, 'CLAUDE.md'), 'utf8')).toBe('@AGENTS.md\n')
   expect(claudeCode.register(ctx)).toEqual([])
   expect(readFileSync(join(box.workspace, '.claude', 'skills', 'jobduck-apply', 'SKILL.md'), 'utf8'))
@@ -95,7 +96,9 @@ test('Codex dry run appends the server table and preserves other sections byte f
 
   const changes = codex.register(ctx)
   expect(snapshot(box.root)).toEqual(before)
-  expect(changes.map((c) => c.path)).toEqual([path, ...pointerPaths(join(box.workspace, '.agents', 'skills'))])
+  expect(changes.map((c) => c.path)).toEqual([
+    path, join(box.workspace, 'AGENTS.md'), ...pointerPaths(join(box.workspace, '.agents', 'skills')),
+  ])
   expect(changes[0]!.after.startsWith(fixture)).toBe(true)
   expect(changes[0]!.after.slice(fixture.length)).toBe('\n[mcp_servers.jobduck]\ncommand = "jobduck"\nargs = ["mcp"]\n')
   expect(changes[0]!.diff).toContain('+[mcp_servers.jobduck]')
@@ -132,4 +135,28 @@ test('Gemini dry run merges settings.json and adds GEMINI.md', () => {
   expect(changes[2]!.after).toBe('See AGENTS.md\n')
   expect(changes.some((c) => c.path.endsWith('SKILL.md'))).toBe(false)
   expect(gemini.isRegistered(ctx)).toBe(false)
+})
+
+test('AGENTS.md keeps the user text and replaces only the Job Duck block', () => {
+  const block = TEMPLATES['AGENTS.md']!
+  expect(block.startsWith('<!-- jobduck:start')).toBe(true)
+  expect(block.trimEnd().endsWith('<!-- jobduck:end -->')).toBe(true)
+  expect(mergeAgentsMd(null)).toBe(block)
+  expect(mergeAgentsMd('')).toBe(block)
+  expect(mergeAgentsMd('# Notes\nkeep me')).toBe(`# Notes\nkeep me\n\n${block}`)
+  const stale = '# Notes\n\n<!-- jobduck:start old -->\nold rules\n<!-- jobduck:end -->\n\n## Mine\nafter\n'
+  const merged = mergeAgentsMd(stale)
+  expect(merged).toBe(`# Notes\n\n${block.trimEnd()}\n\n## Mine\nafter\n`)
+  expect(mergeAgentsMd(merged)).toBe(merged)
+})
+
+test('AGENTS.md written by jobduck 0.1.x is replaced by the block', () => {
+  const legacy = readFileSync(join(import.meta.dir, 'fixtures', 'agents-0.1.md'), 'utf8')
+  expect(mergeAgentsMd(legacy)).toBe(TEMPLATES['AGENTS.md']!)
+  expect(mergeAgentsMd(`${legacy}edited\n`)).toBe(`${legacy}edited\n\n${TEMPLATES['AGENTS.md']}`)
+})
+
+test('Codex gets the AGENTS.md block, since Codex reads AGENTS.md itself', () => {
+  codex.register({ ...ctx, dryRun: false })
+  expect(readFileSync(join(box.workspace, 'AGENTS.md'), 'utf8')).toBe(TEMPLATES['AGENTS.md']!)
 })

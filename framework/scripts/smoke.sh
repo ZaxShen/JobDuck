@@ -64,6 +64,9 @@ check "init --diff prints unified diffs" contains '+++ ' "$root/diff.log"
 run "$root/apply.log" "$binary" init --yes --workspace "$workspace"
 check "init --yes exits 0" true
 check "init reports completion" contains 'Done. Open your agent in this workspace' "$root/apply.log"
+check "init points at profile intake" contains 'jobduck dashboard --view profile' "$root/apply.log"
+check "init creates document folders" eval '[[ -d "$workspace/inbox" && -d "$workspace/cv" && -d "$workspace/cover-letters" ]]'
+check "AGENTS.md carries the managed block" contains '<!-- jobduck:end -->' "$workspace/AGENTS.md"
 check "home has profile, permissions and db" eval '[[ -f "$JOBDUCK_HOME/profile.md" && -f "$JOBDUCK_HOME/permissions.toml" && -f "$JOBDUCK_HOME/jobduck.db" ]]'
 check "six skills installed" eval '[[ "$(ls "$JOBDUCK_HOME/skills"/*.md | wc -l)" -eq 6 && -f "$JOBDUCK_HOME/skills/.version" ]]'
 check "claude: .mcp.json registers jobduck" contains '"jobduck"' "$workspace/.mcp.json"
@@ -94,6 +97,7 @@ printf '%s\n' \
 check "mcp answers with exactly two JSON-RPC lines" eval '[[ "$(grep -c . "$root/mcp.out")" -eq 2 ]]'
 check "mcp initialize names the server" contains '"name":"jobduck"' "$root/mcp.out"
 check "mcp tools/list includes search_jobs" contains '"search_jobs"' "$root/mcp.out"
+check "mcp tools/list includes update_profile" contains '"update_profile"' "$root/mcp.out"
 check "mcp stdout is JSON only" bash -c "! grep -vE '^\{' '$root/mcp.out' | grep -q ."
 
 "$binary" dashboard --port 0 --print-url --no-open > "$root/dashboard.url" 2> "$root/dashboard.err" &
@@ -108,6 +112,9 @@ check "dashboard prints a loopback URL" eval '[[ -n "$url" ]]'
 if [[ -n "$url" ]]; then
   check "dashboard serves the page" bash -c "curl -fsS -o /dev/null -w '%{http_code}' '$url/' | grep -q '^200$'"
   check "dashboard API answers" bash -c "curl -fsS '$url/api/summary' | grep -q '{'"
+  check "dashboard serves the profile" bash -c "curl -fsS '$url/api/profile' | grep -q '\"revision\"'"
+  check "dashboard serves the permissions" bash -c "curl -fsS '$url/api/permissions' | grep -q '\"modules\"'"
+  check "dashboard refuses a PUT without its header" bash -c "[[ \"\$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H 'Content-Type: application/json' -d '{}' '$url/api/profile')\" == 403 ]]"
 fi
 kill "$dashboard_pid" 2>/dev/null || true
 wait "$dashboard_pid" 2>/dev/null || true

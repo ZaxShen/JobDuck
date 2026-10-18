@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 import { loadPermissions, MODULES } from '../config/permissions'
-import { loadProfile } from '../config/profile'
+import { readStoredProfile, updateProfile } from '../config/profile'
 import {
   APPLICATION_STATUSES, createApplication, EVENT_SOURCES, findApplicationsByCompanyTitle,
   getLiveApplicationForPosting, listApplicationsWithPostings, setStatus, summarizeApplication,
@@ -21,7 +21,7 @@ export interface ToolDeps {
 }
 
 export const TOOL_NAMES = [
-  'get_profile', 'get_permissions', 'search_jobs', 'find_application',
+  'get_profile', 'update_profile', 'get_permissions', 'search_jobs', 'find_application',
   'record_application', 'update_status', 'list_applications',
 ] as const
 
@@ -113,9 +113,25 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   }
 
   server.registerTool('get_profile', {
-    description: 'Read the user profile (~/.jobduck/profile.md): TOML front matter and free-form body.',
+    description: 'Read the user profile (~/.jobduck/profile.md): TOML front matter, markdown body and its revision.',
     annotations: { readOnlyHint: true },
-  }, () => run(() => ({ ...loadProfile(profilePath(home)) })))
+  }, () => run(() => ({ ...readStoredProfile(profilePath(home)) })))
+
+  server.registerTool('update_profile', {
+    description: 'Write the user profile (~/.jobduck/profile.md). front_matter sets only the keys given '
+      + '(links merge key by key; lists and cv_files are replaced whole); unknown keys are rejected. '
+      + 'sections replaces or adds "# Title" body sections by title, case-insensitive. '
+      + 'Afterwards ask the user to review it in the dashboard Profile tab (jobduck dashboard --view profile).',
+    inputSchema: {
+      front_matter: z.record(z.string(), z.unknown()).optional(),
+      sections: z.record(z.string(), z.string()).optional()
+        .describe('body sections by title, e.g. {"Experience": "..."}; content is markdown without the heading'),
+      revision: z.string().optional().describe('revision from get_profile; the write fails if the file changed since'),
+    },
+  }, ({ front_matter, sections, revision }) => run(() => {
+    const stored = updateProfile({ frontMatter: front_matter, sections, revision }, profilePath(home))
+    return { ...stored, sections_written: Object.keys(sections ?? {}) }
+  }))
 
   server.registerTool('get_permissions', {
     description: 'Read permissions.toml: every module switch and manifest, or one module with its settings table.',

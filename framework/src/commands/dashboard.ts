@@ -1,9 +1,10 @@
-import { startDashboard } from '../dashboard/server'
+import { DASHBOARD_VIEWS, type DashboardView, pageUrl, startDashboard } from '../dashboard/server'
 
 export interface DashboardCommandOptions {
   port?: string | number
   open?: boolean
   printUrl?: boolean
+  view?: string
   home?: string
   out?: (line: string) => void
   err?: (line: string) => void
@@ -18,8 +19,14 @@ export async function runDashboard(options: DashboardCommandOptions = {}): Promi
     err(`invalid --port: ${options.port}`)
     return 1
   }
-  const dashboard = await startDashboard({ home: options.home, port, open: options.open ?? true, out: err })
-  out(options.printUrl ? dashboard.url : `Dashboard: ${dashboard.url}`)
+  if (options.view !== undefined && !(DASHBOARD_VIEWS as readonly string[]).includes(options.view)) {
+    err(`invalid --view: ${options.view} (expected ${DASHBOARD_VIEWS.join(', ')})`)
+    return 1
+  }
+  const view = options.view as DashboardView | undefined
+  const dashboard = await startDashboard({ home: options.home, port, open: options.open ?? true, view, out: err })
+  const page = pageUrl(dashboard.url, view)
+  out(options.printUrl ? page : `Dashboard: ${page}`)
   if (!options.printUrl) out('Press Ctrl+C to stop.')
   await new Promise<void>((resolve) => {
     const stop = () => {

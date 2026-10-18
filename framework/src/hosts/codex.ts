@@ -4,6 +4,7 @@ import { parse, stringify } from 'smol-toml'
 import {
   type Host, type HostContext, MCP_SERVER, applyChanges, onPath, planChange, readText, skillPointers, userHomeOf,
 } from './index'
+import { agentsPointer } from './claude-code'
 
 const configToml = (ctx: HostContext) => join(userHomeOf(ctx), '.codex', 'config.toml')
 
@@ -70,6 +71,7 @@ export const codex: Host = {
   register: (ctx) =>
     applyChanges([
       planChange(configToml(ctx), mergeCodexConfig(readText(configToml(ctx)))),
+      agentsPointer(ctx),
       ...skillPointers(join(ctx.workspace, '.agents', 'skills')),
     ], ctx.dryRun),
 }

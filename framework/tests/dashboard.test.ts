@@ -134,7 +134,7 @@ test('invalid bodies get 400 and unknown ids 404', async () => {
   })
   expect(broken.status).toBe(400)
   expect((await broken.json() as any).error).toBeString()
-  const huge = await mutate('PATCH', `/api/applications/${ids.acme}`, { note: 'x'.repeat(70 * 1024) })
+  const huge = await mutate('PATCH', `/api/applications/${ids.acme}`, { note: 'x'.repeat(1100 * 1024) })
   expect(huge.res.status).toBe(413)
   expect((await mutate('PATCH', '/api/applications/999', { note: 'x' })).res.status).toBe(404)
   expect((await get('/api/applications/999')).res.status).toBe(404)
@@ -186,4 +186,48 @@ test('/api/outcomes returns candidates as an array', async () => {
   insertOutcome(db, { message_id: 'c2', kind: 'rejection', received_at: '2026-10-02T00:00:00.000Z', status: 'needs_match' })
   const body = (await get('/api/outcomes')).body as { message_id: string; candidates: unknown }[]
   expect(Object.fromEntries(body.map((row) => [row.message_id, row.candidates]))).toEqual({ c1: candidates, c2: [] })
+})
+
+test('profile: GET shows template sections empty, PUT saves and a stale revision gets 409', async () => {
+  const first = await get('/api/profile')
+  expect(first.res.status).toBe(200)
+  expect(first.body.front_matter.name).toBe('')
+  const summary = first.body.sections.find((s: any) => s.title === 'Summary')
+  expect(summary).toMatchObject({ content: '', standard: true })
+  expect(summary.hint).toContain('Two or three sentences')
+
+  const saved = await mutate('PUT', '/api/profile', {
+    front_matter: { name: '<your name>' }, sections: { Summary: 'Builds at Acme.' }, revision: first.body.revision,
+  })
+  expect(saved.res.status).toBe(200)
+  expect(saved.body.front_matter.name).toBe('<your name>')
+  expect(saved.body.sections.find((s: any) => s.title === 'Summary').content).toBe('Builds at Acme.')
+  expect(saved.body.revision).not.toBe(first.body.revision)
+
+  const stale = await mutate('PUT', '/api/profile', { front_matter: { name: 'x' }, revision: first.body.revision })
+  expect(stale.res.status).toBe(409)
+  const bad = await mutate('PUT', '/api/profile', { front_matter: { nickname: 'x' } })
+  expect(bad.res.status).toBe(400)
+  expect(bad.body.error).toContain('nickname')
+  expect((await get('/api/profile')).body.front_matter.name).toBe('<your name>')
+})
+
+test('permissions: PUT saves, rejects unknown keys and stale revisions, and needs the dashboard header', async () => {
+  const first = await get('/api/permissions')
+  expect(first.body.permissions.modules.track).toBe(false)
+  const next = structuredClone(first.body.permissions)
+  next.modules.track = true
+
+  const bare = await fetch(`${dash.url}/api/permissions`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ permissions: next }),
+  })
+  expect(bare.status).toBe(403)
+
+  const saved = await mutate('PUT', '/api/permissions', { permissions: next, revision: first.body.revision })
+  expect(saved.res.status).toBe(200)
+  expect(saved.body.permissions.modules.track).toBe(true)
+  expect((await mutate('PUT', '/api/permissions', { permissions: next, revision: first.body.revision })).res.status).toBe(409)
+  const unknown = await mutate('PUT', '/api/permissions', { permissions: { ...next, modules: { ...next.modules, fly: true } } })
+  expect(unknown.res.status).toBe(400)
+  expect((await get('/api/permissions')).body.permissions.modules.track).toBe(true)
 })

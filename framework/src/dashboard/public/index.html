@@ -11,29 +11,62 @@
 <body>
   <header class="top">
     <h1>Job Duck</h1>
-    <nav id="chips" class="chips" aria-label="Filter by status"></nav>
-    <input id="search" type="search" placeholder="Search company, title, location" aria-label="Search applications">
+    <nav class="tabs" aria-label="Sections">
+      <a href="#applications" data-view="applications">Applications</a>
+      <a href="#profile" data-view="profile">Profile</a>
+      <a href="#settings" data-view="settings">Settings</a>
+    </nav>
   </header>
 
   <p id="message" class="message" role="status" hidden></p>
 
   <main>
-    <section id="outcomes" class="outcomes" hidden>
-      <h2>Needs a match</h2>
-      <p class="hint">Rejection emails that could not be matched to an application automatically.</p>
-      <ul id="outcome-list" class="outcome-list"></ul>
-    </section>
+    <div id="view-applications" class="view">
+      <div class="toolbar">
+        <nav id="chips" class="chips" aria-label="Filter by status"></nav>
+        <input id="search" type="search" placeholder="Search company, title, location" aria-label="Search applications">
+      </div>
 
-    <section class="board">
-      <table>
-        <thead>
-          <tr><th>Company</th><th>Title</th><th>Location</th><th>Status</th><th>Applied</th><th>Updated</th></tr>
-        </thead>
-        <tbody id="rows"></tbody>
-      </table>
-      <p id="empty" class="empty" hidden>No applications yet. Ask your agent to save or apply to a posting.</p>
-    </section>
+      <section id="outcomes" class="outcomes" hidden>
+        <h2>Needs a match</h2>
+        <p class="hint">Rejection emails that could not be matched to an application automatically.</p>
+        <ul id="outcome-list" class="outcome-list"></ul>
+      </section>
+
+      <section class="board">
+        <table>
+          <thead>
+            <tr><th>Company</th><th>Title</th><th>Location</th><th>Status</th><th>Applied</th><th>Updated</th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <p id="empty" class="empty" hidden>No applications yet. Ask your agent to save or apply to a posting.</p>
+      </section>
+    </div>
+
+    <div id="view-profile" class="view" hidden>
+      <section id="intake" class="panel intake" hidden>
+        <h2>Fill in your profile</h2>
+        <p class="hint">Pick whichever is quickest. For the first two, your agent fills this form and you review it here.</p>
+        <ol class="ways">
+          <li><strong>Import a resume.</strong> Put your CV (PDF, Word or Markdown) in the <code>inbox/</code> folder of your Job Duck workspace, then tell your agent "import my resume".</li>
+          <li><strong>Import LinkedIn.</strong> On your LinkedIn profile, choose More, then Save to PDF. Put the file in <code>inbox/</code> and tell your agent "import my LinkedIn".</li>
+          <li><strong>Type it in.</strong> Fill in the form below and press Save.</li>
+        </ol>
+      </section>
+      <form id="profile-form" class="form" novalidate></form>
+    </div>
+
+    <div id="view-settings" class="view" hidden>
+      <form id="settings-form" class="form" novalidate></form>
+    </div>
   </main>
+
+  <div id="savebar" class="savebar" hidden>
+    <span>Unsaved changes</span>
+    <button id="revert" type="button" class="ghost">Discard</button>
+    <button id="save" type="button" class="primary">Save</button>
+  </div>
 
   <aside id="drawer" class="drawer" hidden aria-labelledby="drawer-title">
     <div class="drawer-head">
