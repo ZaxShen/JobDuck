@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { type IncomingMessage, type ServerResponse, createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { DASHBOARD } from '../assets'
+import { DASHBOARD, DASHBOARD_FONTS } from '../assets'
 import { openDb } from '../db/client'
 import { migrate } from '../db/migrate'
 import { dbPath, ensureHome, jobduckHome } from '../paths'
@@ -47,6 +47,12 @@ const ASSETS: Record<string, { file: string; type: string }> = {
   '/index.html': { file: 'index.html', type: 'text/html; charset=utf-8' },
   '/app.js': { file: 'app.js', type: 'text/javascript; charset=utf-8' },
   '/style.css': { file: 'style.css', type: 'text/css; charset=utf-8' },
+  ...Object.fromEntries(Object.keys(DASHBOARD_FONTS).map((name) => [`/${name}`, { file: name, type: 'font/woff2' }])),
+}
+
+const assetBody = async (file: string): Promise<string | Buffer> => {
+  const font = DASHBOARD_FONTS[file]
+  return font ? Buffer.from(await Bun.file(font).arrayBuffer()) : DASHBOARD[file]!
 }
 
 const MUTATIONS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
@@ -101,8 +107,8 @@ export function openBrowser(url: string, onError: () => void = () => undefined):
 export async function startDashboard(options: DashboardOptions = {}): Promise<Dashboard> {
   const home = options.home ?? jobduckHome()
   const out = options.out ?? ((line: string) => console.log(line))
-  const assets = Object.fromEntries(Object.entries(ASSETS)
-    .map(([path, asset]) => [path, { type: asset.type, body: DASHBOARD[asset.file]! }]))
+  const assets = Object.fromEntries(await Promise.all(Object.entries(ASSETS)
+    .map(async ([path, asset]) => [path, { type: asset.type, body: await assetBody(asset.file) }] as const)))
 
   ensureHome(home)
   const db = openDb(dbPath(home))

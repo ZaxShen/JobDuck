@@ -235,7 +235,10 @@ bun run typecheck
 bun test
 bun run build && ./dist/jobduck doctor   # binary for this machine
 bun run build:all                         # every platform plus dist/SHA256SUMS
+bun run build:web                         # rebuild the dashboard after editing web/
 ```
+
+The dashboard is a React app in `web/` (Vite, Tailwind and shadcn/ui, with its own `package.json` and `bun.lock`). `bun run build:web` builds it into `src/dashboard/public/`, which is committed and embedded in the binary, so commit the rebuilt files with your `web/` change. Its dependencies are build-time only and never enter the binary's `dependencies`. CI rebuilds it on pull requests that touch `web/` or `public/` and fails if the committed output differs.
 
 ## Releasing
 

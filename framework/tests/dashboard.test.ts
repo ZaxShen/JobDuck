@@ -62,8 +62,20 @@ test('GET / serves the page with security headers', async () => {
   expect(res.headers.get('content-security-policy')).toBe("default-src 'self'")
   expect(res.headers.get('x-content-type-options')).toBe('nosniff')
   expect(res.headers.get('referrer-policy')).toBe('no-referrer')
-  expect(await res.text()).toContain('<script src="/app.js"')
+  const html = await res.text()
+  expect(html).toMatch(/<script type="module"[^>]* src="\/app\.js"/)
+  expect(html).toMatch(/<link rel="stylesheet"[^>]* href="\/style\.css"/)
+  expect(html).not.toMatch(/<script(?![^>]*\ssrc=)[^>]*>|<style|https?:\/\//)
   for (const asset of ['/app.js', '/style.css']) expect((await fetch(`${dash.url}${asset}`)).status).toBe(200)
+  const css = await (await fetch(`${dash.url}/style.css`)).text()
+  const fonts = [...css.matchAll(/url\((\/[^)]+\.woff2)\)/g)].map((match) => match[1]!)
+  expect(fonts.length).toBeGreaterThan(0)
+  for (const font of fonts) {
+    const fontRes = await fetch(`${dash.url}${font}`)
+    expect(fontRes.status).toBe(200)
+    expect(fontRes.headers.get('content-type')).toBe('font/woff2')
+    expect(new TextDecoder().decode((await fontRes.arrayBuffer()).slice(0, 4))).toBe('wOF2')
+  }
   expect((await fetch(`${dash.url}/missing`)).status).toBe(404)
 })
 

@@ -2,6 +2,11 @@ import migration001 from './db/migrations/001_init.sql' with { type: 'text' }
 import dashboardApp from './dashboard/public/app.js' with { type: 'text' }
 import dashboardIndex from './dashboard/public/index.html' with { type: 'text' }
 import dashboardStyle from './dashboard/public/style.css' with { type: 'text' }
+import fontCyrillic from './dashboard/public/geist-cyrillic-wght-normal.woff2' with { type: 'file' }
+import fontCyrillicExt from './dashboard/public/geist-cyrillic-ext-wght-normal.woff2' with { type: 'file' }
+import fontLatin from './dashboard/public/geist-latin-wght-normal.woff2' with { type: 'file' }
+import fontLatinExt from './dashboard/public/geist-latin-ext-wght-normal.woff2' with { type: 'file' }
+import fontVietnamese from './dashboard/public/geist-vietnamese-wght-normal.woff2' with { type: 'file' }
 import skillApply from '../skills/apply.md' with { type: 'text' }
 import skillCv from '../skills/cv.md' with { type: 'text' }
 import skillFind from '../skills/find.md' with { type: 'text' }
@@ -35,4 +40,12 @@ export const DASHBOARD: Record<string, string> = {
   'app.js': dashboardApp,
   'index.html': dashboardIndex as unknown as string,
   'style.css': dashboardStyle,
+}
+
+export const DASHBOARD_FONTS: Record<string, string> = {
+  'geist-cyrillic-ext-wght-normal.woff2': fontCyrillicExt,
+  'geist-cyrillic-wght-normal.woff2': fontCyrillic,
+  'geist-latin-ext-wght-normal.woff2': fontLatinExt,
+  'geist-latin-wght-normal.woff2': fontLatin,
+  'geist-vietnamese-wght-normal.woff2': fontVietnamese,
 }
