@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { type Sandbox, sandbox, snapshot } from './helpers'
 import { runDoctor } from '../src/commands/doctor'
 import { runInit } from '../src/commands/init'
-import { PACKAGE_VERSION } from '../src/paths'
+import { PACKAGE_VERSION, installSkills } from '../src/paths'
 
 const SKILLS = ['apply', 'cv', 'find', 'interview', 'setup', 'track']
 
@@ -26,7 +27,7 @@ function fixtures() {
   writeFileSync(join(box.workspace, 'CLAUDE.md'), '# Project\n')
 }
 
-const base = () => ({ workspace: box.workspace, userHome: box.userHome, pathEnv: '', out })
+const base = () => ({ workspace: box.workspace, userHome: box.userHome, pathEnv: '', isTTY: false, out })
 
 function doctorBase() {
   const bin = join(box.root, 'bin')
@@ -97,7 +98,9 @@ test('init --yes creates the home, migrates, and registers hosts; doctor then pa
   expect(await runInit({ ...base(), hosts: ['claude', 'codex', 'gemini'], yes: true })).toBe(0)
   expect(lines).toContain('created .claude/skills/jobduck-*/SKILL.md (6 skill pointers)')
   expect(lines).toContain('updated ~/.codex/config.toml')
-  expect(lines).toContain('Done. Open your agent in this workspace and say "set up Job Duck".')
+  expect(lines).toContain('Done. Open your agent in this workspace once the setup wizard is finished.')
+  expect(lines.some((line) => line.startsWith('Finish setup in your browser: jobduck dashboard --background --view welcome'))).toBe(true)
+  expect(lines.some((line) => line.includes('set up Job Duck'))).toBe(false)
   for (const file of ['jobduck.db', 'profile.md', 'permissions.toml']) expect(existsSync(join(box.home, file))).toBe(true)
   for (const file of ['.mcp.json', 'AGENTS.md', 'GEMINI.md']) expect(existsSync(join(box.workspace, file))).toBe(true)
   const skills = join(box.home, 'skills')
@@ -145,3 +148,74 @@ test('doctor fails the path check when jobduck is not on PATH', () => {
   expect(lines).toContain('FAIL path: not on PATH; hosts start the MCP server with `jobduck mcp`')
   expect(lines.some((line) => line.startsWith('ok   runtime: jobduck '))).toBe(true)
 })
+
+function launcher() {
+  const calls: Array<{ view: string; workspace: string }> = []
+  const launch = async (options: { view: string; workspace: string }) => {
+    calls.push(options)
+    return 'http://127.0.0.1:4848/#welcome'
+  }
+  return { calls, launch }
+}
+
+test('init on a TTY opens the setup wizard in the background dashboard', async () => {
+  const { calls, launch } = launcher()
+  expect(await runInit({ ...base(), hosts: ['codex'], yes: true, isTTY: true, launchDashboard: launch })).toBe(0)
+  expect(calls).toEqual([{ view: 'welcome', workspace: box.workspace }])
+  expect(lines).toContain('Finish setup in your browser: http://127.0.0.1:4848/#welcome')
+  expect(lines.some((line) => line.includes('set up Job Duck'))).toBe(false)
+})
+
+test('init does not launch the dashboard with --no-dashboard or on a non-TTY', async () => {
+  const { calls, launch } = launcher()
+  expect(await runInit({ ...base(), hosts: ['codex'], yes: true, isTTY: true, dashboard: false, launchDashboard: launch })).toBe(0)
+  expect(await runInit({ ...base(), hosts: ['codex'], yes: true, isTTY: false, launchDashboard: launch })).toBe(0)
+  expect(calls).toEqual([])
+  expect(lines.filter((line) => line.startsWith('Finish setup in your browser: jobduck dashboard --background --view welcome')))
+    .toHaveLength(2)
+})
+
+test('init falls back to printing the command when the dashboard cannot start', async () => {
+  const launch = async () => { throw new Error('the dashboard did not start within 5s') }
+  expect(await runInit({ ...base(), hosts: ['codex'], yes: true, isTTY: true, launchDashboard: launch })).toBe(0)
+  expect(lines).toContain('Could not start the dashboard: the dashboard did not start within 5s')
+  expect(lines.some((line) => line.startsWith('Finish setup in your browser: jobduck dashboard --background'))).toBe(true)
+})
+
+function stampSkills(version: string) {
+  installSkills(box.home)
+  writeFileSync(join(box.home, 'skills', '.version'), `${version}\n`)
+}
+
+test('doctor warns when the installed skills are from another version', () => {
+  stampSkills('0.0.1')
+  expect(runDoctor({ ...doctorBase() })).toBe(0)
+  const warning = lines.find((line) => line.startsWith('warn skills: '))
+  expect(warning).toBe(`warn skills: version 0.0.1 installed, jobduck is ${PACKAGE_VERSION}; run jobduck init to refresh them`)
+  expect(lines.some((line) => line.startsWith('ok   skills'))).toBe(false)
+})
+
+test('the cli refreshes stale skills before a command', () => {
+  stampSkills('0.0.1')
+  writeFileSync(join(box.home, 'skills', 'find.md'), 'stale\n')
+  const result = spawnSync('bun', [join(import.meta.dir, '..', 'src', 'cli.ts'), 'doctor', '--json'], {
+    cwd: box.workspace,
+    env: { ...process.env, JOBDUCK_HOME: box.home, HOME: box.userHome },
+    encoding: 'utf8',
+  })
+  expect(result.stderr).toBe('')
+  expect(readFileSync(join(box.home, 'skills', '.version'), 'utf8').trim()).toBe(PACKAGE_VERSION)
+  expect(readFileSync(join(box.home, 'skills', 'find.md'), 'utf8')).not.toBe('stale\n')
+  const report = JSON.parse(result.stdout)
+  expect(report.checks.find((c: { name: string }) => c.name === 'skills').detail).toBe(`6 installed (version ${PACKAGE_VERSION})`)
+}, 20_000)
+
+test('the cli leaves a missing home alone', () => {
+  const result = spawnSync('bun', [join(import.meta.dir, '..', 'src', 'cli.ts'), '--version'], {
+    cwd: box.workspace,
+    env: { ...process.env, JOBDUCK_HOME: box.home, HOME: box.userHome },
+    encoding: 'utf8',
+  })
+  expect(result.stdout.trim()).toBe(PACKAGE_VERSION)
+  expect(existsSync(box.home)).toBe(false)
+}, 20_000)

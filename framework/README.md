@@ -35,8 +35,11 @@ jobduck doctor           # check the runtime, PATH, ~/.jobduck, the database and
 - `--dry-run`: print the plan, write nothing.
 - `--diff`: also print a unified diff of every file the plan touches (`init --dry-run --diff` previews everything).
 - `--yes`: skip the confirmation prompt (required when not in a terminal).
+- `--no-dashboard`: do not open the setup wizard afterwards.
 
-`doctor` reports the jobduck and runtime versions, whether `jobduck` is on your `PATH` (hosts start it by name), `~/.jobduck` and its mode, the database, `permissions.toml`, `profile.md`, the installed skills and each host's registration. `doctor --json` prints a machine-readable report and exits 1 when a check fails. `jobduck mcp` runs the MCP server over stdio; your agent host starts it, you don't.
+In a terminal, `init` ends by opening the dashboard's setup wizard in your browser (`jobduck dashboard --background --view welcome`) and prints `Finish setup in your browser: <url>`. Outside a terminal it prints that command for you to run instead.
+
+`doctor` reports the jobduck and runtime versions, whether `jobduck` is on your `PATH` (hosts start it by name), `~/.jobduck` and its mode, the database, `permissions.toml`, `profile.md`, the installed skills (a `warn` line when they come from another jobduck version) and each host's registration. `doctor --json` prints a machine-readable report and exits 1 when a check fails. `jobduck mcp` runs the MCP server over stdio; your agent host starts it, you don't.
 
 ## Use a dedicated folder
 
@@ -57,7 +60,7 @@ jobduck upgrade --channel rc     # switch channel: stable, rc or dev
 jobduck upgrade 0.1.0            # install a specific version
 ```
 
-`upgrade` downloads the release asset for your platform from GitHub, refuses it unless its SHA-256 matches the release's `SHA256SUMS`, and swaps it in place. Run `jobduck init` afterwards to refresh the skills.
+`upgrade` downloads the release asset for your platform from GitHub, refuses it unless its SHA-256 matches the release's `SHA256SUMS`, and swaps it in place. The next `jobduck` command (any but `init` and `upgrade`) refreshes `~/.jobduck/skills/` to the new version; `jobduck init` does too.
 
 ### Release channels
 
@@ -122,7 +125,7 @@ Skills are plain markdown workflows any agent can follow. `init` copies them to 
 
 | Skill | Ask your agent | What it does |
 |---|---|---|
-| `setup` | "set up Job Duck", "import my resume", "import my LinkedIn" | Picks modules (`cv`, `find`, `track`, `apply`, `interview`), fills `profile.md` from a resume or LinkedIn PDF or export in `inbox/` (or points you at the dashboard Profile tab), then the Settings tab or one message per module for `permissions.toml`, and runs `doctor`. `setup --module <name>` re-runs one part. |
+| `setup` | "set up Job Duck", "import my resume", "import my LinkedIn" | Opens the dashboard's setup wizard (`jobduck dashboard --background --view welcome`) for your resume, Career DNA, targets and modules (`cv`, `find`, `track`, `apply`, `interview`), then fills `profile.md` from the resume or LinkedIn PDF or export in `inbox/`, points you at the Settings tab for `permissions.toml`, and runs `doctor`. Chat questions are only a fallback when you cannot use a browser. `setup --module <name>` re-runs one part. |
 | `find` | "find jobs" | `search_jobs` with your profile's filters, hard filters, a fit score, and a shortlist that marks postings you already track. |
 | `apply` | "apply to jobs" / "apply to <url>" | Dedupes, picks your CV, fills the form with your browser tool, stops at the approval gate set by `[apply] autonomy`, submits, and records the application. CAPTCHAs and verification codes always stop for you. |
 | `track` | "show my applications" | Lists applications, updates statuses when you report news, and runs `jobduck sync` for rejection emails. No mail access. |
@@ -153,25 +156,29 @@ Every tool returns compact JSON. Application writes (`record_application`, `upda
 ```bash
 jobduck dashboard                  # serves http://127.0.0.1:4848 and opens your browser
 jobduck dashboard --view profile   # open on the Profile tab
+jobduck dashboard --background --view welcome   # open the setup wizard, reusing a running dashboard
 jobduck dashboard --port 0 --no-open
 ```
 
-A local page with three tabs:
+A local page with four tabs:
 
 - **Applications**: the board over the same SQLite store (details below).
 - **Profile**: a form for every `profile.md` field, with a text area per section (Summary, Experience, Projects, Education, Writing style, Facts never to change) and room for your own sections. An empty profile shows the three ways to fill it: import a resume, import LinkedIn, or type it in.
 - **Settings**: every `permissions.toml` choice as a form: modules, the `[apply]` manifest with its consents and saved answers, email sync and CV settings. Fields for modules you have off stay hidden.
+- **Setup**: the onboarding wizard, in five steps. **Welcome** takes a resume or LinkedIn file (`.pdf`, `.docx`, `.doc`, `.md`, `.txt`, `.zip`, `.csv`) and saves it into the workspace `inbox/` (never overwriting: a second `resume.pdf` becomes `resume-1.pdf`); without an `inbox/` it tells you to put the file there yourself. **Career DNA** asks five questions: work mode goes to `work_modes`, startup or enterprise to `company_stages`, and all five answers to a `Career DNA` profile section. **Targets** sets `target_titles`, `locations`, `seniority` and `pay_floor`. **Modules** switches modules on in `permissions.toml`. **Done** reminds you to say "import my resume" in your agent when you uploaded a file. Every step can be skipped. With no tab in the URL, the page opens here while your profile has no name and no target titles.
 
 Saving writes the file with mode 0600, keeps keys the form does not know, and refuses with "this file changed since you opened it" when your agent or an editor changed it in the meantime. Edits by hand still work; the page reloads them when you come back to it.
 
 The Applications tab shows the applications board with status filters and search, a detail drawer (timeline, status, notes, title/company/location overrides, delete) and a "Needs a match" queue for rejection emails that could not be matched automatically. Status changes made here are recorded with source `dashboard`; matching a rejection closes the application as `deny_by_employer`.
 
-- `--view <name>`: open on `applications`, `profile` or `settings`.
-- `--port <n>`: port to listen on (default 4848; `0` picks a free one).
+- `--view <name>`: open on `applications`, `profile`, `settings` or `welcome` (the setup wizard).
+- `--port <n>`: port to listen on (default 4848, or a free one when something else holds 4848; `0` picks a free one).
 - `--no-open`: do not open a browser.
 - `--print-url`: print only the URL.
+- `--workspace <dir>`: the Job Duck workspace whose `inbox/` receives files uploaded in the wizard (default: current directory).
+- `--background`: if the dashboard recorded in `~/.jobduck/dashboard.json` is running, open the browser on it and exit; otherwise start one detached, wait up to 5 seconds for it, open the browser and print `Dashboard: <url>`.
 
-The server listens on `127.0.0.1` only, loads nothing from the internet, and refuses changes that do not come from its own page. Stop it with Ctrl+C.
+A running dashboard records `{ pid, port, url, workspace }` in `~/.jobduck/dashboard.json` (mode 0600) and removes it when it stops. The server listens on `127.0.0.1` only, loads nothing from the internet, and refuses changes that do not come from its own page. Stop it with Ctrl+C, or a background one with `kill <pid>`.
 
 ## Sync
 
@@ -207,6 +214,7 @@ Exit codes: `0` done; `1` network error, rejected token (`sync_token rejected; r
   permissions.toml     [modules] switches (all off by default), the [apply] manifest,
                        [track] and [cv] settings
   skills/              the six skills and a .version stamp (package-owned)
+  dashboard.json       the running dashboard's pid, port, URL and workspace (while it runs)
 
 ~/JobDuck/             your workspace (any folder you ran jobduck init in)
   AGENTS.md            the Job Duck block for your agent; add your own notes outside it

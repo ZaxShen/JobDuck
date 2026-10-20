@@ -1,3 +1,5 @@
+import { chmodSync, existsSync, writeFileSync } from 'node:fs'
+import { basename, extname, join } from 'node:path'
 import { z } from 'zod'
 import { RevisionConflict } from '../config/files'
 import { readStoredPermissions, writePermissions } from '../config/permissions'
@@ -20,6 +22,7 @@ export class ApiError extends Error {
 export interface ApiContext {
   db: Db
   home: string
+  workspace?: string
 }
 
 export interface ApiRequest {
@@ -62,6 +65,46 @@ const profileSchema = z.object({
 }).strict()
 
 const permissionsSchema = z.object({ permissions: z.unknown(), revision: z.string().max(64).optional() }).strict()
+
+export const INBOX_PATH = '/api/inbox'
+export const INBOX_EXTENSIONS = ['.pdf', '.docx', '.doc', '.md', '.txt', '.zip', '.csv'] as const
+
+const inboxSchema = z.object({
+  name: z.string().max(255),
+  data: z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/, 'must be base64').min(1, 'file is empty'),
+}).strict()
+
+function inboxName(raw: string): string {
+  const name = basename(raw.replace(/\\/g, '/')).trim()
+  if (name === '' || name.startsWith('.') || /[\x00-\x1f]/.test(name)) throw new ApiError(400, `invalid file name: ${raw}`)
+  const extension = extname(name).toLowerCase()
+  if (!(INBOX_EXTENSIONS as readonly string[]).includes(extension)) {
+    throw new ApiError(400, `unsupported file type ${extension || '(none)'}; use ${INBOX_EXTENSIONS.join(', ')}`)
+  }
+  return name
+}
+
+function saveToInbox(workspace: string | undefined, body: unknown) {
+  const inbox = workspace === undefined ? undefined : join(workspace, 'inbox')
+  if (inbox === undefined || !existsSync(inbox)) throw new ApiError(409, 'this workspace has no inbox/ folder')
+  const input = parse(inboxSchema, body ?? {})
+  const name = inboxName(input.name)
+  const bytes = Buffer.from(input.data, 'base64')
+  const extension = extname(name)
+  const stem = name.slice(0, name.length - extension.length)
+  for (let n = 0; ; n++) {
+    const candidate = n === 0 ? name : `${stem}-${n}${extension}`
+    const path = join(inbox, candidate)
+    try {
+      writeFileSync(path, bytes, { mode: 0o600, flag: 'wx' })
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') continue
+      throw error
+    }
+    chmodSync(path, 0o600)
+    return { path, name: candidate }
+  }
+}
 
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   const result = schema.safeParse(value)
@@ -177,6 +220,7 @@ const routes: { method: string; pattern: RegExp; handler: Handler }[] = [
       return permissionsView(home)
     },
   },
+  { method: 'POST', pattern: new RegExp(`^${INBOX_PATH}$`), handler: ({ workspace }, req) => saveToInbox(workspace, req.body) },
   { method: 'GET', pattern: /^\/api\/summary$/, handler: ({ db }) => summary(db) },
   {
     method: 'GET', pattern: /^\/api\/statuses$/,

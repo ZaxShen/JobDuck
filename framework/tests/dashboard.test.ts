@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 import { type Sandbox, migratedDb, sandbox } from './helpers'
+import { handleApi } from '../src/dashboard/api'
 import type { Db } from '../src/db/client'
 import { createApplication, listEvents } from '../src/db/applications'
 import { insertOutcome, listOutcomes } from '../src/db/outcomes'
@@ -230,4 +233,90 @@ test('permissions: PUT saves, rejects unknown keys and stale revisions, and need
   const unknown = await mutate('PUT', '/api/permissions', { permissions: { ...next, modules: { ...next.modules, fly: true } } })
   expect(unknown.res.status).toBe(400)
   expect((await get('/api/permissions')).body.permissions.modules.track).toBe(true)
+})
+
+test('wizard payloads save Career DNA, targets and modules through PUT /api/profile and /api/permissions', () => {
+  const ctx = { db, home: box.home }
+  const call = (method: string, path: string, body?: unknown) =>
+    handleApi(ctx, { method, path, query: new URLSearchParams(), body }) as { status: number; body: any }
+
+  const dna = '- Builder or Optimizer: 20/100, leans 0 → 1 Builder (0 = 0 → 1 Builder, 100 = 1 → 100 Optimizer)\n- Team size: Small teams'
+  const first = call('GET', '/api/profile')
+  const quiz = call('PUT', '/api/profile', {
+    front_matter: { work_modes: ['remote'], company_stages: ['startup'] },
+    sections: { 'Career DNA': dna },
+    revision: first.body.revision,
+  })
+  expect(quiz.status).toBe(200)
+  const targets = call('PUT', '/api/profile', {
+    front_matter: { target_titles: ['Software Engineer'], locations: ['Remote'], seniority: ['senior'], pay_floor: 120000 },
+    sections: {},
+    revision: quiz.body.revision,
+  })
+  expect(targets.status).toBe(200)
+
+  const profile = call('GET', '/api/profile').body
+  expect(profile.front_matter).toMatchObject({
+    work_modes: ['remote'], company_stages: ['startup'], target_titles: ['Software Engineer'],
+    locations: ['Remote'], seniority: ['senior'], pay_floor: 120000,
+  })
+  expect(profile.sections.find((section: any) => section.title === 'Career DNA').content).toBe(dna)
+
+  const current = call('GET', '/api/permissions').body
+  const permissions = structuredClone(current.permissions)
+  permissions.modules = { ...permissions.modules, apply: true, find: true, track: true }
+  expect(call('PUT', '/api/permissions', { permissions, revision: current.revision }).status).toBe(200)
+  expect(call('GET', '/api/permissions').body.permissions.modules).toMatchObject({ apply: true, find: true, track: true, cv: false })
+})
+
+const upload = (name: string, bytes: Buffer, origin = dash) => fetch(`${origin.url}/api/inbox`, {
+  method: 'POST',
+  headers: { 'X-JobDuck-Dashboard': '1', 'Content-Type': 'application/json', Origin: origin.url },
+  body: JSON.stringify({ name, data: bytes.toString('base64') }),
+})
+
+test('POST /api/inbox is refused with 409 when the workspace has no inbox/', async () => {
+  const res = await upload('resume.pdf', Buffer.from('%PDF-1.4'))
+  expect(res.status).toBe(409)
+  expect((await res.json() as any).error).toContain('inbox/')
+})
+
+test('POST /api/inbox writes the decoded file with mode 0600 and never overwrites', async () => {
+  const inbox = join(box.workspace, 'inbox')
+  mkdirSync(inbox)
+  const withInbox = await startDashboard({ home: box.home, workspace: box.workspace, port: 0, open: false, out: () => undefined })
+  try {
+    const bytes = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x00, 0xff, 0x10])
+    const first = await upload('Resume.PDF', bytes, withInbox)
+    expect(first.status).toBe(200)
+    expect(await first.json()).toEqual({ path: join(inbox, 'Resume.PDF'), name: 'Resume.PDF' })
+    expect(readFileSync(join(inbox, 'Resume.PDF'))).toEqual(bytes)
+    expect(statSync(join(inbox, 'Resume.PDF')).mode & 0o777).toBe(0o600)
+
+    const second = await upload('Resume.PDF', Buffer.from('again'), withInbox)
+    expect((await second.json() as any).name).toBe('Resume-1.PDF')
+    expect(readFileSync(join(inbox, 'Resume.PDF'))).toEqual(bytes)
+    expect(readFileSync(join(inbox, 'Resume-1.PDF'), 'utf8')).toBe('again')
+    expect(statSync(join(inbox, 'Resume-1.PDF')).mode & 0o777).toBe(0o600)
+
+    const escaped = await upload('../../linkedin.zip', Buffer.from('PK'), withInbox)
+    expect((await escaped.json() as any).path).toBe(join(inbox, 'linkedin.zip'))
+
+    const large = await upload('export.csv', Buffer.alloc(2 * 1024 * 1024, 0x61), withInbox)
+    expect(large.status).toBe(200)
+    expect((await upload('huge.pdf', Buffer.alloc(16 * 1024 * 1024), withInbox)).status).toBe(413)
+
+    for (const name of ['resume.exe', 'notes', '../../.bashrc', '..\\.profile', '.hidden.pdf', '']) {
+      const refused = await upload(name, Buffer.from('x'), withInbox)
+      expect(refused.status).toBe(400)
+    }
+    const unsafe = await fetch(`${withInbox.url}/api/inbox`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'a.pdf', data: 'eA==' }),
+    })
+    expect(unsafe.status).toBe(403)
+    expect(readdirSync(inbox).sort()).toEqual(['Resume-1.PDF', 'Resume.PDF', 'export.csv', 'linkedin.zip'])
+    expect(existsSync(join(box.root, 'linkedin.zip'))).toBe(false)
+  } finally {
+    await withInbox.close()
+  }
 })

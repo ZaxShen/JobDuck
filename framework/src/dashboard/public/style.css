@@ -154,6 +154,59 @@ code { background: var(--row-hover); padding: 1px 5px; border-radius: 4px; font-
 }
 .savebar span { color: var(--muted); margin-right: 6px; }
 
+.wizard { width: 100%; max-width: 34rem; margin: 24px auto 0; gap: 32px; }
+.wizard-head { display: grid; gap: 12px; justify-items: center; }
+.step-label { margin: 0; font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .15em; color: var(--muted); }
+.bars { display: flex; gap: 6px; justify-content: center; }
+.bar { height: 2px; width: 40px; border-radius: 999px; background: var(--border); transition: width .5s ease, background-color .5s ease; }
+.bar.on { width: 56px; background: var(--text); }
+.step { display: grid; gap: 32px; }
+.step > * { animation: rise .6s ease-out both; }
+.step > :nth-child(2) { animation-delay: 80ms; }
+.step > :nth-child(3) { animation-delay: 160ms; }
+@keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+.step-intro { text-align: center; }
+.step-intro h2 { margin: 0 0 8px; font-size: 26px; font-weight: 600; line-height: 1.25; letter-spacing: -.01em; }
+.step-intro p { margin: 0; color: var(--muted); font-size: 15px; }
+.drop {
+  display: grid; place-items: center; gap: 6px; text-align: center; padding: 40px 24px; cursor: pointer;
+  border: 2px dashed var(--border); border-radius: 12px; transition: border-color .3s, background-color .3s;
+}
+.drop:hover, .drop:focus-visible { border-color: var(--muted); background: var(--panel); outline: none; }
+.drop.over { border-color: var(--accent); background: var(--row-hover); }
+.drop.has-file { border-style: solid; background: var(--panel); }
+.drop-text { display: grid; gap: 6px; }
+.drop small { color: var(--muted); font-size: 12px; }
+.drop .link { text-decoration: underline; text-underline-offset: 4px; }
+.file { display: flex; align-items: center; gap: 12px; }
+.file span { color: var(--muted); font-size: 12px; }
+.questions, .fields, .module-list { display: grid; gap: 28px; }
+.module-list { gap: 10px; }
+.question { display: grid; gap: 10px; }
+.question h3 { margin: 0; font-size: 14px; }
+.question .hint { margin: -6px 0 0; padding: 0; font-size: 12px; }
+.question input[type="range"] { padding: 0; border: 0; background: transparent; accent-color: var(--text); }
+.ends { display: flex; justify-content: space-between; font-size: 11px; font-weight: 500; color: var(--muted); }
+.ends .lean { color: var(--text); }
+.segmented { display: flex; gap: 6px; padding: 4px; border-radius: 8px; background: var(--row-hover); }
+.segmented button { flex: 1; border: 0; background: transparent; color: var(--muted); font-size: 12px; font-weight: 500; padding: 8px 12px; }
+.segmented button.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
+.module {
+  display: flex; align-items: start; gap: 10px; padding: 12px 14px; cursor: pointer;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+}
+.module input { width: auto; margin: 3px 0 0; }
+.module span { display: grid; gap: 2px; }
+.module small { color: var(--muted); }
+.actions { display: flex; gap: 12px; }
+.actions button { flex: 1; padding: 10px 16px; }
+.actions button.ghost { color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .step > * { animation: none; }
+  .bar, .drop { transition: none; }
+}
+
 @media (max-width: 640px) {
   .top { padding: 10px 16px; }
   main { padding: 12px 16px 96px; }

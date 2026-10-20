@@ -9,6 +9,7 @@ export const PROFILE_FILE = 'profile.md'
 export const PERMISSIONS_FILE = 'permissions.toml'
 export const SKILLS_DIR = 'skills'
 export const SKILLS_VERSION_FILE = '.version'
+export const DASHBOARD_STATE_FILE = 'dashboard.json'
 export const PACKAGE_VERSION: string = pkg.version
 
 export function jobduckHome(): string {
@@ -20,6 +21,7 @@ export const dbPath = (home = jobduckHome()) => join(home, DB_FILE)
 export const profilePath = (home = jobduckHome()) => join(home, PROFILE_FILE)
 export const permissionsPath = (home = jobduckHome()) => join(home, PERMISSIONS_FILE)
 export const installedSkillsPath = (home = jobduckHome()) => join(home, SKILLS_DIR)
+export const dashboardStatePath = (home = jobduckHome()) => join(home, DASHBOARD_STATE_FILE)
 
 export function skillNames(): string[] {
   return Object.keys(SKILLS).sort()
@@ -49,6 +51,12 @@ export function installSkills(home = jobduckHome()): string[] {
   writeFileSync(versionFile, `${PACKAGE_VERSION}\n`, { mode: 0o600 })
   chmodSync(versionFile, 0o600)
   return written
+}
+
+export function refreshStaleSkills(home = jobduckHome()): boolean {
+  if (!existsSync(home) || skillsUpToDate(home)) return false
+  installSkills(home)
+  return true
 }
 
 export interface EnsureHomeResult {

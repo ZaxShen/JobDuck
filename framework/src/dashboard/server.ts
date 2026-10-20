@@ -5,21 +5,24 @@ import { DASHBOARD } from '../assets'
 import { openDb } from '../db/client'
 import { migrate } from '../db/migrate'
 import { dbPath, ensureHome, jobduckHome } from '../paths'
-import { ApiError, handleApi } from './api'
+import { ApiError, INBOX_PATH, handleApi } from './api'
 
 export const DASHBOARD_HOST = '127.0.0.1'
 export const DASHBOARD_HEADER = 'x-jobduck-dashboard'
 export const MAX_BODY_BYTES = 1024 * 1024
+export const INBOX_MAX_BODY_BYTES = 20 * 1024 * 1024
+export const DEFAULT_PORT = 4848
 
 export interface DashboardOptions {
   home?: string
+  workspace?: string
   port?: number
   open?: boolean
   view?: DashboardView
   out?: (line: string) => void
 }
 
-export const DASHBOARD_VIEWS = ['applications', 'profile', 'settings'] as const
+export const DASHBOARD_VIEWS = ['applications', 'profile', 'settings', 'welcome'] as const
 export type DashboardView = (typeof DASHBOARD_VIEWS)[number]
 
 export const pageUrl = (origin: string, view?: DashboardView) => (view ? `${origin}/#${view}` : origin)
@@ -56,14 +59,14 @@ function send(res: ServerResponse, status: number, type: string, body: string | 
 const sendJson = (res: ServerResponse, status: number, body: unknown) =>
   send(res, status, 'application/json; charset=utf-8', JSON.stringify(body))
 
-function readBody(req: IncomingMessage): Promise<string> {
+function readBody(req: IncomingMessage, limit: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
     let size = 0
     req.on('data', (chunk: Buffer) => {
       size += chunk.length
-      if (size > MAX_BODY_BYTES) {
-        reject(new ApiError(413, `request body exceeds ${MAX_BODY_BYTES} bytes`))
+      if (size > limit) {
+        reject(new ApiError(413, `request body exceeds ${limit} bytes`))
         req.removeAllListeners('data')
         req.resume()
         return
@@ -127,8 +130,9 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
         const requestOrigin = req.headers.origin
         if (requestOrigin !== undefined && requestOrigin !== origin) return sendJson(res, 403, { error: 'cross-origin request refused' })
       }
-      const body = MUTATIONS.has(method) ? parseJson(await readBody(req)) : undefined
-      const result = handleApi({ db, home }, { method, path: url.pathname, query: url.searchParams, body })
+      const limit = url.pathname === INBOX_PATH ? INBOX_MAX_BODY_BYTES : MAX_BODY_BYTES
+      const body = MUTATIONS.has(method) ? parseJson(await readBody(req, limit)) : undefined
+      const result = handleApi({ db, home, workspace: options.workspace }, { method, path: url.pathname, query: url.searchParams, body })
       sendJson(res, result.status, result.body)
     } catch (error) {
       if (error instanceof ApiError) return sendJson(res, error.status, { error: error.message })
@@ -139,7 +143,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
   try {
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
-      server.listen(options.port ?? 4848, DASHBOARD_HOST, () => {
+      server.listen(options.port ?? DEFAULT_PORT, DASHBOARD_HOST, () => {
         server.off('error', reject)
         resolve()
       })

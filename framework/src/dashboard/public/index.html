@@ -15,6 +15,7 @@
       <a href="#applications" data-view="applications">Applications</a>
       <a href="#profile" data-view="profile">Profile</a>
       <a href="#settings" data-view="settings">Settings</a>
+      <a href="#welcome" data-view="welcome">Setup</a>
     </nav>
   </header>
 
@@ -59,6 +60,14 @@
 
     <div id="view-settings" class="view" hidden>
       <form id="settings-form" class="form" novalidate></form>
+    </div>
+
+    <div id="view-welcome" class="view wizard" hidden>
+      <div class="wizard-head">
+        <p id="wizard-label" class="step-label"></p>
+        <div id="wizard-bars" class="bars" aria-hidden="true"></div>
+      </div>
+      <section id="wizard-step" class="step"></section>
     </div>
   </main>
 

@@ -1,7 +1,7 @@
 'use strict'
 
 const POLL_MS = 30000
-const VIEWS = ['applications', 'profile', 'settings']
+const VIEWS = ['applications', 'profile', 'settings', 'welcome']
 const state = { statuses: [], terminal: [], filter: '', q: '', selected: null, rows: [], view: 'applications' }
 const $ = (id) => document.getElementById(id)
 
@@ -674,6 +674,300 @@ async function saveForm(form) {
   }
 }
 
+const WIZARD_STEPS = ['Welcome', 'Career DNA', 'Targets', 'Modules', 'Done']
+const INBOX_TYPES = ['.pdf', '.docx', '.doc', '.md', '.txt', '.zip', '.csv']
+const MAX_UPLOAD_BYTES = 15 * 1024 * 1024
+const wizard = {
+  step: 0,
+  file: null,
+  uploaded: null,
+  noInbox: false,
+  profile: null,
+  permissions: null,
+  targets: null,
+  modules: null,
+  quiz: { builder: 50, team: 'small', mode: 'remote', risk: 50, motivation: 50 },
+}
+
+const QUIZ = [
+  { key: 'builder', title: 'Builder or Optimizer?', subtitle: 'Do you thrive creating from scratch, or perfecting what exists?', left: '0 → 1 Builder', right: '1 → 100 Optimizer' },
+  { key: 'team', title: 'Team size', subtitle: 'Where do you do your best work?', options: [['small', 'Small teams'], ['large', 'Large orgs']] },
+  { key: 'mode', title: 'Work mode', subtitle: 'How do you prefer to work?', options: [['remote', 'Remote'], ['hybrid', 'Hybrid'], ['onsite', 'On-site']] },
+  { key: 'risk', title: 'Risk appetite', subtitle: 'What kind of environment fits you?', left: 'Startup energy', right: 'Enterprise stability' },
+  { key: 'motivation', title: 'What drives you?', subtitle: 'What matters most in your next move?', left: 'Learning & growth', right: 'Compensation' },
+]
+
+const extension = (name) => { const dot = name.lastIndexOf('.'); return dot < 0 ? '' : name.slice(dot).toLowerCase() }
+const companyStages = (risk) => (risk < 34 ? ['startup'] : risk > 66 ? ['enterprise'] : ['startup', 'enterprise'])
+
+function careerDna(quiz) {
+  return QUIZ.map((question) => {
+    const title = question.title.replace(/\?$/, '')
+    const value = quiz[question.key]
+    if (question.options) return `- ${title}: ${question.options.find(([option]) => option === value)[1]}`
+    const lean = value < 34 ? `leans ${question.left}` : value > 66 ? `leans ${question.right}` : 'balanced'
+    return `- ${title}: ${value}/100, ${lean} (0 = ${question.left}, 100 = ${question.right})`
+  }).join('\n')
+}
+
+function goTo(step) {
+  wizard.step = step
+  renderWizard()
+  window.scrollTo(0, 0)
+}
+
+function stepActions(onSkip, onContinue) {
+  const next = h('button', {
+    type: 'button',
+    className: 'primary',
+    onclick: async () => {
+      next.disabled = true
+      try { await onContinue() } finally { next.disabled = false }
+    },
+  }, 'Continue')
+  return h('div', { className: 'actions' },
+    onSkip ? h('button', { type: 'button', className: 'ghost', onclick: onSkip }, 'Skip for now') : null, next)
+}
+
+const intro = (title, text) => h('div', { className: 'step-intro' }, h('h2', null, title), h('p', null, text))
+
+function base64Of(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''))
+    reader.onerror = () => reject(reader.error || new Error('Could not read the file.'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function dropZone() {
+  const input = h('input', { type: 'file', accept: INBOX_TYPES.join(','), hidden: true })
+  const zone = h('div', { role: 'button', tabindex: 0, 'aria-label': 'Choose a resume or LinkedIn file' })
+  const draw = () => {
+    zone.className = wizard.file ? 'drop has-file' : 'drop'
+    zone.replaceChildren(wizard.file
+      ? h('div', { className: 'file' },
+        h('strong', null, wizard.file.name),
+        h('span', null, `${Math.max(1, Math.round(wizard.file.size / 1024))} KB`),
+        h('button', {
+          type: 'button', className: 'ghost', 'aria-label': 'Remove file',
+          onclick: (event) => { event.stopPropagation(); wizard.file = null; input.value = ''; draw() },
+        }, 'Remove'))
+      : h('div', { className: 'drop-text' },
+        h('strong', null, 'Drop your resume or LinkedIn PDF here, or ', h('span', { className: 'link' }, 'browse')),
+        h('small', null, 'PDF, Word, Markdown or text, or a LinkedIn export (ZIP or CSV). Completely optional.')))
+  }
+  const choose = (file) => {
+    if (!file) return
+    if (!INBOX_TYPES.includes(extension(file.name))) return showMessage(`Use one of ${INBOX_TYPES.join(', ')}.`, true)
+    if (file.size > MAX_UPLOAD_BYTES) return showMessage('That file is over 15 MB. Put it in inbox/ yourself instead.', true)
+    wizard.file = file
+    draw()
+  }
+  zone.addEventListener('click', () => input.click())
+  zone.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); input.click() }
+  })
+  zone.addEventListener('dragover', (event) => { event.preventDefault(); zone.classList.add('over') })
+  zone.addEventListener('dragleave', () => zone.classList.remove('over'))
+  zone.addEventListener('drop', (event) => {
+    event.preventDefault()
+    zone.classList.remove('over')
+    choose(event.dataTransfer.files[0])
+  })
+  input.addEventListener('change', () => choose(input.files[0]))
+  draw()
+  return h('div', null, zone, input)
+}
+
+function inboxHelp() {
+  return h('section', { className: 'panel intake' },
+    h('h2', null, 'Put it in inbox/'),
+    h('p', { className: 'hint' }, 'This dashboard is not running in a Job Duck workspace, so it cannot take the file here.'),
+    h('ol', { className: 'ways' },
+      h('li', null, 'Save your resume or LinkedIn PDF into the ', h('code', null, 'inbox/'), ' folder of your Job Duck workspace.'),
+      h('li', null, 'Back in your agent, say "import my resume".')))
+}
+
+async function uploadAndContinue() {
+  if (!wizard.file || wizard.noInbox) return goTo(1)
+  try {
+    const data = await base64Of(wizard.file)
+    wizard.uploaded = await api('/api/inbox', { method: 'POST', body: { name: wizard.file.name, data } })
+    wizard.file = null
+    showMessage(`Saved to inbox/${wizard.uploaded.name}.`)
+    goTo(1)
+  } catch (error) {
+    if (error.status !== 409) return showMessage(error.message, true)
+    wizard.noInbox = true
+    renderWizard()
+  }
+}
+
+function welcomeStep() {
+  return [
+    intro('We value your worth, just as your future employer does.', 'Tell Job Duck who you are. It takes about a minute.'),
+    wizard.noInbox ? inboxHelp() : dropZone(),
+    stepActions(() => goTo(1), uploadAndContinue),
+  ]
+}
+
+function quizSlider(question) {
+  const id = `quiz-${question.key}`
+  const input = h('input', { type: 'range', id, min: 0, max: 100, step: 1, 'aria-label': question.title })
+  input.value = String(wizard.quiz[question.key])
+  const left = h('span', null, question.left)
+  const right = h('span', null, question.right)
+  const paint = () => {
+    const value = Number(input.value)
+    left.classList.toggle('lean', value <= 50)
+    right.classList.toggle('lean', value >= 50)
+  }
+  input.addEventListener('input', () => { wizard.quiz[question.key] = Number(input.value); paint() })
+  paint()
+  return [input, h('div', { className: 'ends' }, left, right)]
+}
+
+function quizToggle(question) {
+  const group = h('div', { className: 'segmented', role: 'radiogroup', 'aria-label': question.title })
+  const draw = () => group.replaceChildren(...question.options.map(([value, text]) => {
+    const on = wizard.quiz[question.key] === value
+    return h('button', {
+      type: 'button', role: 'radio', 'aria-checked': String(on), className: on ? 'on' : '',
+      onclick: () => { wizard.quiz[question.key] = value; draw() },
+    }, text)
+  }))
+  draw()
+  return [group]
+}
+
+async function saveProfile(frontMatter, sections) {
+  const current = await api('/api/profile')
+  wizard.profile = await api('/api/profile', {
+    method: 'PUT', body: { front_matter: frontMatter, sections, revision: current.revision },
+  })
+  forms.profile.loaded = false
+}
+
+function careerDnaStep() {
+  const save = () => guarded(async () => {
+    await saveProfile(
+      { work_modes: [wizard.quiz.mode], company_stages: companyStages(wizard.quiz.risk) },
+      { 'Career DNA': careerDna(wizard.quiz) },
+    )
+    goTo(2)
+  })
+  return [
+    intro('Your Career DNA', 'Five questions. Thirty seconds. No wrong answers.'),
+    h('div', { className: 'questions' }, ...QUIZ.map((question) => h('div', { className: 'question' },
+      h('h3', null, question.title),
+      h('p', { className: 'hint' }, question.subtitle),
+      ...(question.options ? quizToggle(question) : quizSlider(question))))),
+    stepActions(() => goTo(2), save),
+  ]
+}
+
+function targetsStep() {
+  if (!wizard.targets) {
+    const front = wizard.profile.front_matter
+    wizard.targets = {
+      target_titles: [...(front.target_titles || [])],
+      locations: [...(front.locations || [])],
+      seniority: [...(front.seniority || [])],
+      pay_floor: front.pay_floor || 0,
+    }
+  }
+  const draft = wizard.targets
+  const tags = (key, label, field) => {
+    const id = `wizard-${key}`
+    return h('div', { className: 'field' }, h('label', { for: id }, label),
+      tagInput(id, draft[key], field, (next) => { draft[key] = next }))
+  }
+  const pay = h('input', { type: 'number', id: 'wizard-pay_floor', min: 0, step: 1000, placeholder: '0 means no floor' })
+  pay.value = draft.pay_floor ? String(draft.pay_floor) : ''
+  pay.addEventListener('input', () => { draft.pay_floor = pay.value === '' ? 0 : Math.max(0, Number(pay.value)) })
+  const save = () => guarded(async () => {
+    await saveProfile({ ...draft }, {})
+    goTo(3)
+  })
+  return [
+    intro('What are you looking for?', 'The find and apply skills filter postings with these. Press Enter after each item.'),
+    h('div', { className: 'fields' },
+      tags('target_titles', 'Target titles', { placeholder: 'e.g. Software Engineer' }),
+      tags('locations', 'Cities or regions', { placeholder: 'e.g. Remote, New York' }),
+      tags('seniority', 'Seniority', { suggest: ['intern', 'junior', 'mid', 'senior', 'staff', 'principal', 'lead', 'manager', 'director'] }),
+      h('div', { className: 'field' }, h('label', { for: 'wizard-pay_floor' }, 'Minimum yearly pay'), pay,
+        h('small', null, 'Postings below this are skipped.'))),
+    stepActions(() => goTo(3), save),
+  ]
+}
+
+function modulesStep() {
+  if (!wizard.modules) wizard.modules = { ...wizard.permissions.permissions.modules }
+  const boxes = {}
+  const list = h('div', { className: 'module-list' }, ...MODULES.map(([key, label, help]) => {
+    const box = h('input', { type: 'checkbox', value: key })
+    box.checked = Boolean(wizard.modules[key])
+    boxes[key] = box
+    box.addEventListener('change', () => {
+      wizard.modules[key] = box.checked
+      if (key !== 'apply' || !box.checked) return
+      for (const other of ['find', 'track']) {
+        wizard.modules[other] = true
+        boxes[other].checked = true
+      }
+    })
+    return h('label', { className: 'module' }, box, h('span', null, h('strong', null, label), h('small', null, help)))
+  }))
+  const save = () => guarded(async () => {
+    const current = await api('/api/permissions')
+    const permissions = clone(current.permissions)
+    permissions.modules = { ...permissions.modules, ...wizard.modules }
+    wizard.permissions = await api('/api/permissions', { method: 'PUT', body: { permissions, revision: current.revision } })
+    forms.settings.loaded = false
+    goTo(4)
+  })
+  return [
+    intro('What should Job Duck do?', 'Nothing runs until its module is on. Change this any time in Settings.'),
+    list,
+    stepActions(() => goTo(4), save),
+  ]
+}
+
+function doneStep() {
+  const open = (hash, text, className) => h('button', { type: 'button', className, onclick: () => { location.hash = hash } }, text)
+  return [
+    intro("You're set up.", 'Your profile and settings are saved. Review or change them any time.'),
+    wizard.uploaded
+      ? h('section', { className: 'panel intake' },
+        h('h2', null, 'Back in your agent, say: import my resume'),
+        h('p', { className: 'hint' }, `It reads inbox/${wizard.uploaded.name} and fills in your profile for you to review.`))
+      : null,
+    h('div', { className: 'actions' }, open('#profile', 'Open Profile', ''), open('#applications', 'Open Applications', 'primary')),
+  ]
+}
+
+const WIZARD_RENDERERS = [welcomeStep, careerDnaStep, targetsStep, modulesStep, doneStep]
+
+function renderWizard() {
+  $('wizard-label').textContent = WIZARD_STEPS[wizard.step]
+  $('wizard-bars').replaceChildren(...WIZARD_STEPS.map((_, index) => h('span', { className: index <= wizard.step ? 'bar on' : 'bar' })))
+  $('wizard-step').replaceWith(h('section', { id: 'wizard-step', className: 'step' }, ...WIZARD_RENDERERS[wizard.step]()))
+}
+
+async function openWizard() {
+  const data = await guarded(() => Promise.all([api('/api/profile'), api('/api/permissions')]))
+  if (!data) return
+  wizard.profile = data[0]
+  wizard.permissions = data[1]
+  wizard.targets = null
+  wizard.modules = null
+  if (wizard.step === WIZARD_STEPS.length - 1) Object.assign(wizard, { step: 0, file: null, uploaded: null })
+  const mode = (wizard.profile.front_matter.work_modes || [])[0]
+  if (['remote', 'hybrid', 'onsite'].includes(mode)) wizard.quiz.mode = mode
+  renderWizard()
+}
+
 function route() {
   const name = location.hash.slice(1)
   const view = VIEWS.includes(name) ? name : 'applications'
@@ -688,7 +982,8 @@ function route() {
   if (view === 'applications') refresh()
   else {
     if (!$('drawer').hidden) closeDrawer()
-    if (!forms[view].loaded) loadForm(forms[view])
+    if (view === 'welcome') openWizard()
+    else if (!forms[view].loaded) loadForm(forms[view])
   }
   updateSavebar()
 }
@@ -705,6 +1000,9 @@ function bindForms() {
     if (form && form.loaded && !isDirty(form)) loadForm(form)
   })
   window.addEventListener('hashchange', route)
+  for (const type of ['dragover', 'drop']) {
+    window.addEventListener(type, (event) => { if (state.view === 'welcome') event.preventDefault() })
+  }
 }
 
 async function init() {
@@ -721,7 +1019,8 @@ async function init() {
   })
   if (!location.hash) {
     const profile = await loadForm(forms.profile)
-    if (profile && !profile.front_matter.name) history.replaceState(null, '', '#profile')
+    const front = profile && profile.front_matter
+    if (front && !front.name && (front.target_titles || []).length === 0) history.replaceState(null, '', '#welcome')
   }
   route()
   setInterval(() => { if (state.view === 'applications' && !document.hidden) refresh() }, POLL_MS)
