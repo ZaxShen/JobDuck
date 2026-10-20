@@ -2,7 +2,8 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { type Sandbox, migratedDb, sandbox } from './helpers'
-import { handleApi } from '../src/dashboard/api'
+import { INBOX_EXTENSIONS, INBOX_MAX_FILE_BYTES, handleApi } from '../src/dashboard/api'
+import { INBOX_TYPES, MAX_UPLOAD_BYTES } from '../web/src/lib/inbox'
 import type { Db } from '../src/db/client'
 import { createApplication, listEvents } from '../src/db/applications'
 import { insertOutcome, listOutcomes } from '../src/db/outcomes'
@@ -285,6 +286,22 @@ const upload = (name: string, bytes: Buffer, origin = dash) => fetch(`${origin.u
   method: 'POST',
   headers: { 'X-JobDuck-Dashboard': '1', 'Content-Type': 'application/json', Origin: origin.url },
   body: JSON.stringify({ name, data: bytes.toString('base64') }),
+})
+
+test('a file at the wizard upload limit fits the inbox body limit after base64 and JSON encoding', async () => {
+  expect(MAX_UPLOAD_BYTES).toBe(INBOX_MAX_FILE_BYTES)
+  expect(INBOX_TYPES).toEqual(INBOX_EXTENSIONS)
+  const inbox = join(box.workspace, 'inbox')
+  mkdirSync(inbox)
+  const withInbox = await startDashboard({ home: box.home, workspace: box.workspace, port: 0, open: false, out: () => undefined })
+  try {
+    const name = `${'é'.repeat(250)}.pdf`
+    const res = await upload(name, Buffer.alloc(MAX_UPLOAD_BYTES, 0x61), withInbox)
+    expect(res.status).toBe(200)
+    expect(statSync(join(inbox, name)).size).toBe(MAX_UPLOAD_BYTES)
+  } finally {
+    await withInbox.close()
+  }
 })
 
 test('POST /api/inbox is refused with 409 when the workspace has no inbox/', async () => {

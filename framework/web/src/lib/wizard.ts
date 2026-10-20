@@ -1,6 +1,6 @@
+import { INBOX_TYPES, MAX_UPLOAD_BYTES } from './inbox'
+
 export const WIZARD_STEPS = ['Welcome', 'Career DNA', 'Targets', 'Modules', 'Done'] as const
-export const INBOX_TYPES = ['.pdf', '.docx', '.doc', '.md', '.txt', '.zip', '.csv'] as const
-export const MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 export const WORK_MODES = ['remote', 'hybrid', 'onsite'] as const
 
 export interface Quiz {

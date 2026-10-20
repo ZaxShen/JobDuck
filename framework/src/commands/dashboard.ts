@@ -14,15 +14,19 @@ export interface DashboardRecord {
 }
 
 export type Spawner = (command: string, args: string[], env: NodeJS.ProcessEnv) => { pid?: number }
+export type Stopper = (record: DashboardRecord) => void | Promise<void>
 
 export interface BackgroundOptions {
   home?: string
   workspace?: string
   view?: DashboardView
   port?: number
+  open?: boolean
   openBrowser?: (url: string) => void
   spawn?: Spawner
+  stopDashboard?: Stopper
   timeoutMs?: number
+  out?: (line: string) => void
 }
 
 export interface DashboardCommandOptions {
@@ -35,6 +39,7 @@ export interface DashboardCommandOptions {
   background?: boolean
   openBrowser?: (url: string) => void
   spawn?: Spawner
+  stopDashboard?: Stopper
   stop?: Promise<void>
   out?: (line: string) => void
   err?: (line: string) => void
@@ -56,15 +61,19 @@ function readRecord(home: string): DashboardRecord | null {
   }
 }
 
+async function answers(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${url}/api/summary`, { signal: AbortSignal.timeout(PROBE_MS) })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 export async function liveDashboard(home: string, pid?: number): Promise<DashboardRecord | null> {
   const record = readRecord(home)
   if (!record || (pid !== undefined && record.pid !== pid)) return null
-  try {
-    const res = await fetch(`${record.url}/api/summary`, { signal: AbortSignal.timeout(PROBE_MS) })
-    return res.ok ? record : null
-  } catch {
-    return null
-  }
+  return (await answers(record.url)) ? record : null
 }
 
 function writeRecord(home: string, dashboard: Dashboard, workspace: string): void {
@@ -90,31 +99,51 @@ const spawnDetached: Spawner = (command, args, env) => {
   return { pid: child.pid }
 }
 
+const terminate: Stopper = (record) => {
+  process.kill(record.pid, 'SIGTERM')
+}
+
+async function replaceDashboard(record: DashboardRecord, stop: Stopper, timeoutMs: number): Promise<void> {
+  await Promise.resolve().then(() => stop(record)).catch(() => undefined)
+  const deadline = Date.now() + timeoutMs
+  while (await answers(record.url)) {
+    if (Date.now() >= deadline) {
+      throw new Error(`the dashboard at ${record.url} serves ${record.workspace} and did not stop; stop it and retry`)
+    }
+    await Bun.sleep(100)
+  }
+}
+
 export async function launchDashboard(options: BackgroundOptions = {}): Promise<string> {
   const home = options.home ?? jobduckHome()
   const workspace = resolve(options.workspace ?? process.cwd())
-  const open = options.openBrowser ?? ((url: string) => openBrowser(url))
+  const timeoutMs = options.timeoutMs ?? START_MS
+  const browse = options.openBrowser ?? ((url: string) => openBrowser(url))
   const show = (record: DashboardRecord) => {
     const page = pageUrl(record.url, options.view)
-    open(page)
+    if (options.open !== false) browse(page)
     return page
   }
 
   const running = await liveDashboard(home)
-  if (running) return show(running)
+  if (running?.workspace === workspace) return show(running)
+  if (running) {
+    options.out?.(`Restarting the dashboard for ${workspace} (it was serving ${running.workspace}).`)
+    await replaceDashboard(running, options.stopDashboard ?? terminate, timeoutMs)
+  }
 
   const [command, ...script] = selfCommand()
   const args = [...script, 'dashboard', '--no-open', '--workspace', workspace]
   if (options.port !== undefined) args.push('--port', String(options.port))
   const { pid } = (options.spawn ?? spawnDetached)(command!, args, { ...process.env, JOBDUCK_HOME: home })
 
-  const deadline = Date.now() + (options.timeoutMs ?? START_MS)
+  const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     await Bun.sleep(100)
     const started = await liveDashboard(home, pid)
     if (started) return show(started)
   }
-  throw new Error(`the dashboard did not start within ${(options.timeoutMs ?? START_MS) / 1000}s; run jobduck dashboard to see why`)
+  throw new Error(`the dashboard did not start within ${timeoutMs / 1000}s; run jobduck dashboard to see why`)
 }
 
 function waitForSignal(): Promise<void> {
@@ -152,7 +181,8 @@ export async function runDashboard(options: DashboardCommandOptions = {}): Promi
   if (options.background) {
     try {
       const page = await launchDashboard({
-        home, workspace, view, port: explicitPort ? port : undefined, openBrowser: options.openBrowser, spawn: options.spawn,
+        home, workspace, view, port: explicitPort ? port : undefined, open: options.open,
+        openBrowser: options.openBrowser, spawn: options.spawn, stopDashboard: options.stopDashboard, out: err,
       })
       out(options.printUrl ? page : `Dashboard: ${page}`)
       return 0

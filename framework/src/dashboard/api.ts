@@ -68,6 +68,9 @@ const permissionsSchema = z.object({ permissions: z.unknown(), revision: z.strin
 
 export const INBOX_PATH = '/api/inbox'
 export const INBOX_EXTENSIONS = ['.pdf', '.docx', '.doc', '.md', '.txt', '.zip', '.csv'] as const
+export const INBOX_MAX_FILE_BYTES = 15 * 1024 * 1024
+const INBOX_JSON_OVERHEAD_BYTES = 4096
+export const INBOX_MAX_BODY_BYTES = Math.ceil(INBOX_MAX_FILE_BYTES / 3) * 4 + INBOX_JSON_OVERHEAD_BYTES
 
 const inboxSchema = z.object({
   name: z.string().max(255),
