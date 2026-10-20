@@ -21,7 +21,7 @@ function QuestionHead({ question }: { question: Question }) {
 export function QuizStep({ quiz, onChange, onSkip, onContinue }: QuizStepProps) {
   return (
     <div className={cn('flex flex-col gap-10', stepMotion)}>
-      <StepIntro title="Your Career DNA">Five questions. Thirty seconds. No wrong answers.</StepIntro>
+      <StepIntro title="Your Career DNA">Five quick questions. No wrong answers.</StepIntro>
 
       <div className="space-y-8">
         {QUIZ.map((question, index) => (

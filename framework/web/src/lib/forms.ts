@@ -37,6 +37,7 @@ export interface Group {
 const fm = (key: string, label: string, extra: Partial<Field> = {}): Field => ({ key: `front_matter.${key}`, label, ...extra })
 
 export const SENIORITY = ['intern', 'junior', 'mid', 'senior', 'staff', 'principal', 'lead', 'manager', 'director'] as const
+export const COMPANY_STAGES = ['seed', 'series_a', 'series_b', 'series_c', 'growth', 'public'] as const
 
 export const PROFILE_GROUPS: Group[] = [
   {
@@ -65,16 +66,16 @@ export const PROFILE_GROUPS: Group[] = [
   },
   {
     title: "What you're looking for",
-    help: 'The find and apply skills filter postings with these. Press Enter after each item.',
+    help: 'Job Duck only suggests postings that match these. Press Enter after each one.',
     fields: [
       fm('target_titles', 'Target titles', { type: 'tags', wide: true, placeholder: 'e.g. Software Engineer' }),
       fm('seniority', 'Seniority', { type: 'tags', suggest: SENIORITY }),
       fm('work_modes', 'Work modes', { type: 'checks', options: [['remote', 'Remote'], ['hybrid', 'Hybrid'], ['onsite', 'On-site']] }),
       fm('countries', 'Countries', { type: 'tags', placeholder: 'ISO codes, e.g. US' }),
       fm('locations', 'Cities or regions', { type: 'tags' }),
-      fm('pay_floor', 'Minimum yearly pay', { type: 'number', step: 1000, help: 'Postings below this are skipped. 0 means no floor.' }),
+      fm('pay_floor', 'Minimum yearly pay', { type: 'number', step: 1000, help: 'Postings that pay less are skipped. Leave 0 for no minimum.' }),
       fm('currency', 'Currency', { placeholder: 'e.g. USD' }),
-      fm('company_stages', 'Company stages', { type: 'tags', suggest: ['seed', 'series_a', 'series_b', 'series_c', 'growth', 'public'] }),
+      fm('company_stages', 'Company stages', { type: 'tags', suggest: COMPANY_STAGES }),
       fm('deal_breakers', 'Deal-breakers', { type: 'tags', wide: true, placeholder: 'e.g. on-call rotation' }),
       fm('skip_companies', 'Companies to skip', { type: 'tags', wide: true }),
     ],

@@ -19,7 +19,7 @@ function InboxHelp() {
     <SectionCard title={<span className="flex items-center gap-2"><FolderInputIcon className="size-4" />Put it in inbox/</span>}
       description="This dashboard is not running in a Job Duck workspace, so it cannot take the file here.">
       <ol className="list-decimal space-y-2 pl-5 text-sm">
-        <li>Save your resume or LinkedIn PDF into the <code className="rounded bg-muted px-1">inbox/</code> folder of your Job Duck workspace.</li>
+        <li>Save your resume into the <code className="rounded bg-muted px-1">inbox/</code> folder of your Job Duck workspace.</li>
         <li>Back in your agent, say "import my resume".</li>
       </ol>
     </SectionCard>
@@ -46,16 +46,14 @@ export function WelcomeStep({ file, noInbox, onFile, onSkip, onContinue }: Welco
 
   return (
     <div className={cn('flex flex-col items-center gap-10', stepMotion)}>
-      <StepIntro title={<>We value your worth, just as<br className="hidden sm:block" /> your future employer does.</>}>
-        Tell Job Duck who you are. It takes about a minute.
-      </StepIntro>
+      <StepIntro title="Let's get you set up.">Tell Job Duck who you are. Every step is optional.</StepIntro>
 
       <div className="w-full">
         {noInbox ? <InboxHelp /> : (
           <div
             role="button"
             tabIndex={0}
-            aria-label="Choose a resume or LinkedIn file"
+            aria-label="Choose a resume file"
             className={cn(
               'group relative flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-10 transition-all duration-300 outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
               dragOver
@@ -114,17 +112,20 @@ export function WelcomeStep({ file, noInbox, onFile, onSkip, onContinue }: Welco
                 </div>
                 <div className="text-center">
                   <p className="text-sm font-medium">
-                    Drop your resume or LinkedIn PDF here, or{' '}
+                    Drop your resume here, or{' '}
                     <span className="text-foreground underline underline-offset-4">browse</span>
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    PDF, Word, Markdown or text, or a LinkedIn export (ZIP or CSV). Completely optional.
+                    PDF, Word, Markdown or text.
                   </p>
                 </div>
               </>
             )}
           </div>
         )}
+        <p className="mt-3 text-center text-xs text-muted-foreground">
+          No resume handy? Skip this, then tell your agent "import my LinkedIn". It reads your own LinkedIn profile, read-only.
+        </p>
       </div>
 
       <StepActions onSkip={onSkip} onContinue={onContinue} />

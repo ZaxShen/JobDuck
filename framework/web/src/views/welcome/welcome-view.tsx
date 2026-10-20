@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useFlash } from '@/hooks/use-flash'
 import { errorMessage, fetchJSON, isConflict, postJSON, putJSON } from '@/lib/api'
+import { MODULES } from '@/lib/forms'
 import { clone } from '@/lib/paths'
 import type { FrontMatter, InboxUpload, PermissionsView, ProfileView } from '@/lib/types'
 import { base64Of, careerDna, companyStages, DEFAULT_QUIZ, WIZARD_STEPS, WORK_MODES, type Quiz } from '@/lib/wizard'
+import { doneSummary, NOTHING_SAVED, type SavedSteps } from '@/lib/wizard-done'
 import { cn } from '@/lib/utils'
 import { DoneStep } from '@/views/welcome/done-step'
 import { ModulesStep } from '@/views/welcome/modules-step'
@@ -55,6 +57,7 @@ export function WelcomeView({ active, onProfileSaved, onSettingsSaved }: Welcome
   const [quiz, setQuiz] = useState<Quiz>(DEFAULT_QUIZ)
   const [targets, setTargets] = useState<Targets | null>(null)
   const [modules, setModules] = useState<Record<string, boolean> | null>(null)
+  const [saved, setSaved] = useState<SavedSteps>(NOTHING_SAVED)
   const [ready, setReady] = useState(false)
   const stepRef = useRef(0)
 
@@ -77,6 +80,7 @@ export function WelcomeView({ active, onProfileSaved, onSettingsSaved }: Welcome
         setStep(0)
         setFile(null)
         setUploaded(null)
+        setSaved(NOTHING_SAVED)
       }
       const mode = list(profile.front_matter.work_modes)[0]
       if ((WORK_MODES as readonly string[]).includes(mode ?? '')) setQuiz((prev) => ({ ...prev, mode: mode! }))
@@ -121,16 +125,20 @@ export function WelcomeView({ active, onProfileSaved, onSettingsSaved }: Welcome
   }
 
   const saveQuiz = () => guarded(async () => {
-    const saved = await saveProfile(
+    const profile = await saveProfile(
       { work_modes: [quiz.mode], company_stages: companyStages(quiz.risk) },
       { 'Career DNA': careerDna(quiz) },
     )
-    setTargets(targetsOf(saved.front_matter))
+    setTargets(targetsOf(profile.front_matter))
+    setSaved((prev) => ({ ...prev, quiz: true }))
     goTo(2)
   })
 
   const saveTargets = () => guarded(async () => {
-    if (targets) await saveProfile({ ...targets }, {})
+    if (targets) {
+      await saveProfile({ ...targets }, {})
+      setSaved((prev) => ({ ...prev, targets: true }))
+    }
     goTo(3)
   })
 
@@ -140,6 +148,7 @@ export function WelcomeView({ active, onProfileSaved, onSettingsSaved }: Welcome
     permissions.modules = { ...permissions.modules, ...modules }
     await putJSON<PermissionsView>('/api/permissions', { permissions, revision: current.revision })
     onSettingsSaved()
+    setSaved((prev) => ({ ...prev, modules: true }))
     goTo(4)
   })
 
@@ -163,7 +172,16 @@ export function WelcomeView({ active, onProfileSaved, onSettingsSaved }: Welcome
             {step === 3 && modules && (
               <ModulesStep modules={modules} onChange={setModules} onSkip={() => goTo(4)} onContinue={saveModules} />
             )}
-            {step === 4 && <DoneStep uploaded={uploaded} />}
+            {step === 4 && (
+              <DoneStep
+                uploaded={uploaded}
+                summary={doneSummary({
+                  uploaded: uploaded !== null,
+                  saved,
+                  modulesOn: MODULES.filter(([key]) => modules?.[key]).length,
+                })}
+              />
+            )}
           </div>
         )}
       </div>

@@ -1,5 +1,7 @@
+import { COMPANY_STAGES } from '@/lib/forms'
+
 export const WIZARD_STEPS = ['Welcome', 'Career DNA', 'Targets', 'Modules', 'Done'] as const
-export const INBOX_TYPES = ['.pdf', '.docx', '.doc', '.md', '.txt', '.zip', '.csv'] as const
+export const INBOX_TYPES = ['.pdf', '.docx', '.md', '.txt'] as const
 export const MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 export const WORK_MODES = ['remote', 'hybrid', 'onsite'] as const
 
@@ -31,11 +33,11 @@ interface ToggleQuestion {
 export type Question = SliderQuestion | ToggleQuestion
 
 export const QUIZ: readonly Question[] = [
-  { key: 'builder', title: 'Builder or Optimizer?', subtitle: 'Do you thrive creating from scratch, or perfecting what exists?', left: '0 → 1 Builder', right: '1 → 100 Optimizer' },
+  { key: 'builder', title: 'Build new or improve?', subtitle: 'Do you like starting things from scratch, or making existing things better?', left: 'Start from scratch', right: 'Improve what exists' },
   { key: 'team', title: 'Team size', subtitle: 'Where do you do your best work?', options: [['small', 'Small teams'], ['large', 'Large orgs']] },
   { key: 'mode', title: 'Work mode', subtitle: 'How do you prefer to work?', options: [['remote', 'Remote'], ['hybrid', 'Hybrid'], ['onsite', 'On-site']] },
-  { key: 'risk', title: 'Risk appetite', subtitle: 'What kind of environment fits you?', left: 'Startup energy', right: 'Enterprise stability' },
-  { key: 'motivation', title: 'What drives you?', subtitle: 'What matters most in your next move?', left: 'Learning & growth', right: 'Compensation' },
+  { key: 'risk', title: 'Startup or established company?', subtitle: 'What kind of environment fits you?', left: 'Startup', right: 'Established company' },
+  { key: 'motivation', title: 'What drives you?', subtitle: 'What matters most in your next move?', left: 'Learning and growth', right: 'Pay' },
 ]
 
 export const isToggle = (question: Question): question is ToggleQuestion => 'options' in question
@@ -45,7 +47,8 @@ export const extension = (name: string) => {
   return dot < 0 ? '' : name.slice(dot).toLowerCase()
 }
 
-export const companyStages = (risk: number) => (risk < 34 ? ['startup'] : risk > 66 ? ['enterprise'] : ['startup', 'enterprise'])
+export const companyStages = (risk: number): string[] =>
+  risk < 34 ? COMPANY_STAGES.slice(0, 4) : risk > 66 ? COMPANY_STAGES.slice(4) : []
 
 export function careerDna(quiz: Quiz): string {
   return QUIZ.map((question) => {
