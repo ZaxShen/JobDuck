@@ -40,7 +40,7 @@ test('pages the fixture, sends the UA and Accept headers, and waits when the rat
   expect(calls[0]?.url.searchParams.get('countries')).toBe('US')
   expect(calls[0]?.url.searchParams.get('posted_within_days')).toBe('7')
   expect(calls[0]?.headers['User-Agent']).toBe(USER_AGENT)
-  expect(USER_AGENT).toMatch(/^jobduck\/\d+\.\d+\.\d+ \(\+https:\/\/www\.npmjs\.com\/package\/jobduck\)$/)
+  expect(USER_AGENT).toMatch(/^jobduck\/\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)? \(\+https:\/\/www\.npmjs\.com\/package\/jobduck\)$/)
   expect(calls[0]?.headers.Accept).toBe('application/json')
   expect(sleeps).toEqual([2000])
   expect((result.jobs[0] as Record<string, unknown>).public_slug).toBe('staff-engineer-acme-1')
