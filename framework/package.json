@@ -27,6 +27,7 @@
     "build": "bun build --compile src/cli.ts --outfile dist/jobduck",
     "build:all": "bash scripts/build-all.sh",
     "build:web": "cd web && bun install --frozen-lockfile && bun run build",
+    "dev": "bun scripts/dev.ts",
     "smoke": "bash scripts/smoke.sh",
     "test": "bun test",
     "typecheck": "tsc --noEmit"

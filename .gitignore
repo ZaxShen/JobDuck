@@ -6,3 +6,6 @@ dist/
 
 # TMB plugin runtime state — never commit
 .claude/
+
+# Local dev sandbox (bun run dev)
+framework/.dev/
