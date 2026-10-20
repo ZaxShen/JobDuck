@@ -53,8 +53,9 @@ function seed(): void {
 mkdirSync(home, { recursive: true, mode: 0o700 })
 mkdirSync(workspace, { recursive: true })
 
-if (!existsSync(join(web, 'node_modules'))) {
-  const install = spawnSync('bun', ['install', '--frozen-lockfile'], { cwd: web, stdio: 'inherit' })
+for (const dir of [root, web]) {
+  if (existsSync(join(dir, 'node_modules'))) continue
+  const install = spawnSync('bun', ['install', '--frozen-lockfile'], { cwd: dir, stdio: 'inherit' })
   if (install.status !== 0) process.exit(install.status ?? 1)
 }
 

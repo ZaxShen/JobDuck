@@ -19,6 +19,7 @@ export default defineConfig({
     host: '127.0.0.1',
     port: webPort,
     strictPort: true,
+    cors: false,
     proxy: {
       '/api': {
         target: apiTarget,

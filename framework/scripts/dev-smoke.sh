@@ -83,6 +83,13 @@ patch() {
 }
 check 'PATCH from the dev origin is saved' patch 200 "$base"
 check 'PATCH from a foreign origin is refused' patch 403 'https://evil.example'
+
+no_cors() {
+  local headers
+  headers=$(curl -s -o /dev/null -D - -H 'Origin: http://localhost:9999' "$base/api/applications")
+  ! grep -qi '^access-control-allow-origin:' <<<"$headers" || { echo "     | CORS header sent to a foreign origin: $headers" >&2; return 1; }
+}
+check 'GET /api/applications from a foreign origin gets no CORS header' no_cors
 check 'the sandbox home has jobduck.db' test -f "$JOBDUCK_HOME/jobduck.db"
 
 if ((failures > 0)); then

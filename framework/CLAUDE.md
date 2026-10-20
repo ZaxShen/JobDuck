@@ -36,5 +36,7 @@ Agent-run Job Duck: a CLI plus a local SQLite store that the user's coding agent
 | `skills/` | workflow skills copied to `~/.jobduck/skills/` by `init`; hosts get `SKILL.md` pointers |
 | `templates/` | files copied into `~/.jobduck/` and the workspace |
 | `scripts/build-all.sh` | cross-compiles the five release binaries and `SHA256SUMS` into `dist/` |
+| `scripts/dev.ts` | `bun run dev`: sandbox home in `.dev/`, placeholder seed, API from source with `--watch`, Vite HMR proxying `/api` |
+| `scripts/dev-smoke.sh` | local check of `bun run dev` through the Vite proxy, including the foreign-origin and CORS refusals |
 | `scripts/release-gate.sh` | decides whether a pushed tag may be released (rc on `dev`, stable on `main` after its rc) |
 | `scripts/smoke.sh` | end-to-end smoke test of the compiled binary (`init`, `doctor`, `mcp`, `dashboard`) against faked hosts |
