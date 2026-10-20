@@ -16,6 +16,7 @@ const ARCHES = new Set(['arm64', 'x64'])
 
 export interface UpgradeOptions {
   version?: string
+  currentVersion?: string
   channel?: Channel
   check?: boolean
   fetch?: FetchLike
@@ -196,26 +197,27 @@ export async function runUpgrade(options: UpgradeOptions = {}): Promise<number> 
   const err = options.err ?? ((line: string) => console.error(line))
   const fetch = options.fetch ?? globalThis.fetch
   const platform = options.platform ?? process.platform
-  const userAgent = `jobduck/${PACKAGE_VERSION}`
+  const installed = options.currentVersion ?? PACKAGE_VERSION
+  const userAgent = `jobduck/${installed}`
 
   try {
     if (options.version && options.channel) throw new UpgradeError('give a version or --channel, not both')
-    const current = channelOf(PACKAGE_VERSION)
+    const current = channelOf(installed)
     const channel = options.channel ?? current
     const { release, version: target } = await findRelease(fetch, options.version, channel, userAgent)
     if (options.check) {
-      out(`current ${PACKAGE_VERSION}`)
+      out(`current ${installed}`)
       out(`${options.version ? 'requested' : 'latest'} ${target}`)
       if (!options.version) out(`channel ${channel}`)
       return 0
     }
-    if (target === PACKAGE_VERSION) {
-      out(`already up to date (${PACKAGE_VERSION})`)
+    if (target === installed) {
+      out(`already up to date (${installed})`)
       return 0
     }
-    const newer = compareVersions(target, PACKAGE_VERSION) > 0
+    const newer = compareVersions(target, installed) > 0
     if (!options.version && channel === current && channel !== 'dev' && !newer) {
-      out(`current ${PACKAGE_VERSION} is newer than the latest ${channel} release ${target}; \`jobduck upgrade ${target}\` installs it anyway`)
+      out(`current ${installed} is newer than the latest ${channel} release ${target}; \`jobduck upgrade ${target}\` installs it anyway`)
       return 0
     }
 
@@ -238,7 +240,7 @@ export async function runUpgrade(options: UpgradeOptions = {}): Promise<number> 
     }
 
     swap(execPath, bytes, platform)
-    out(`${newer ? 'upgraded' : 'downgraded'} ${PACKAGE_VERSION} -> ${target}`)
+    out(`${newer ? 'upgraded' : 'downgraded'} ${installed} -> ${target}`)
     return 0
   } catch (error) {
     err(`upgrade failed: ${error instanceof Error ? error.message : String(error)}`)

@@ -4,9 +4,9 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEV_TAG, RELEASE_REPO, assetName, channelOf, compareVersions, runUpgrade } from '../src/commands/upgrade'
-import { PACKAGE_VERSION } from '../src/paths'
 import type { FetchLike } from '../src/sync/client'
 
+const CURRENT_VERSION = '0.1.1'
 const NEW_VERSION = '9.9.9'
 const ASSET = 'jobduck-darwin-arm64'
 const NEW_BYTES = 'new jobduck binary'
@@ -55,7 +55,7 @@ function github(options: GithubOptions = {}): FetchLike {
 }
 
 const run = (fetch: FetchLike, extra: Parameters<typeof runUpgrade>[0] = {}) => runUpgrade({
-  fetch, execPath, platform: 'darwin', arch: 'arm64', out: (line) => { lines.push(line) }, err: (line) => { errors.push(line) }, ...extra,
+  fetch, execPath, currentVersion: CURRENT_VERSION, platform: 'darwin', arch: 'arm64', out: (line) => { lines.push(line) }, err: (line) => { errors.push(line) }, ...extra,
 })
 
 test('asset names follow jobduck-<os>-<arch> with .exe on Windows', () => {
@@ -72,11 +72,11 @@ test('a verified download replaces the executable', async () => {
   expect(statSync(execPath).mode & 0o777).toBe(0o755)
   expect(existsSync(`${execPath}.new`)).toBe(false)
   expect(existsSync(`${execPath}.old`)).toBe(false)
-  expect(lines).toEqual([`upgraded ${PACKAGE_VERSION} -> ${NEW_VERSION}`])
+  expect(lines).toEqual([`upgraded ${CURRENT_VERSION} -> ${NEW_VERSION}`])
   expect(errors).toEqual([])
   const api = calls[0]!
   expect(api.url).toBe(`https://api.github.com/repos/${RELEASE_REPO}/releases/latest`)
-  expect(api.init.headers).toMatchObject({ Accept: 'application/vnd.github+json', 'User-Agent': `jobduck/${PACKAGE_VERSION}` })
+  expect(api.init.headers).toMatchObject({ Accept: 'application/vnd.github+json', 'User-Agent': `jobduck/${CURRENT_VERSION}` })
   expect(calls.map((call) => call.url).slice(1)).toEqual([`${DOWNLOAD}/SHA256SUMS`, `${DOWNLOAD}/${ASSET}`, `${CDN}/${ASSET}?sig=abc`])
 })
 
@@ -97,7 +97,7 @@ test('a SHA256SUMS without a line for the asset refuses to upgrade', async () =>
 
 test('--check prints current and latest without downloading', async () => {
   expect(await run(github(), { check: true })).toBe(0)
-  expect(lines).toEqual([`current ${PACKAGE_VERSION}`, `latest ${NEW_VERSION}`, 'channel stable'])
+  expect(lines).toEqual([`current ${CURRENT_VERSION}`, `latest ${NEW_VERSION}`, 'channel stable'])
   expect(calls).toHaveLength(1)
   expect(readFileSync(execPath, 'utf8')).toBe('old jobduck binary')
 })
@@ -109,8 +109,8 @@ test('--check returns 1 on a network failure', async () => {
 })
 
 test('the same version reports already up to date and downloads nothing', async () => {
-  expect(await run(github({ tag: `v${PACKAGE_VERSION}` }))).toBe(0)
-  expect(lines).toEqual([`already up to date (${PACKAGE_VERSION})`])
+  expect(await run(github({ tag: `v${CURRENT_VERSION}` }))).toBe(0)
+  expect(lines).toEqual([`already up to date (${CURRENT_VERSION})`])
   expect(calls).toHaveLength(1)
 })
 
@@ -166,19 +166,19 @@ test('the rc channel picks the highest stable or rc release, skipping drafts and
   ]
   expect(await run(github({ api: () => list }), { channel: 'rc', check: true })).toBe(0)
   expect(calls[0]!.url).toBe(`https://api.github.com/repos/${RELEASE_REPO}/releases?per_page=30`)
-  expect(lines).toEqual([`current ${PACKAGE_VERSION}`, 'latest 9.9.9-rc.2', 'channel rc'])
+  expect(lines).toEqual([`current ${CURRENT_VERSION}`, 'latest 9.9.9-rc.2', 'channel rc'])
 })
 
 test('the stable channel never downgrades on its own', async () => {
   expect(await run(github({ tag: 'v0.0.1' }))).toBe(0)
-  expect(lines[0]).toContain(`current ${PACKAGE_VERSION} is newer than the latest stable release 0.0.1`)
+  expect(lines[0]).toContain(`current ${CURRENT_VERSION} is newer than the latest stable release 0.0.1`)
   expect(calls).toHaveLength(1)
   expect(readFileSync(execPath, 'utf8')).toBe('old jobduck binary')
 })
 
 test('switching channel installs that channel even when it is older', async () => {
   expect(await run(github({ api: () => [release('v0.0.1-rc.1')] }), { channel: 'rc' })).toBe(0)
-  expect(lines).toEqual([`downgraded ${PACKAGE_VERSION} -> 0.0.1-rc.1`])
+  expect(lines).toEqual([`downgraded ${CURRENT_VERSION} -> 0.0.1-rc.1`])
   expect(readFileSync(execPath, 'utf8')).toBe(NEW_BYTES)
 })
 
@@ -186,7 +186,7 @@ test('the dev channel installs the rolling dev-latest build named by its title',
   const dev = { ...release(DEV_TAG), name: '9.9.9-dev.4+abc1234' }
   expect(await run(github({ api: () => dev }), { channel: 'dev' })).toBe(0)
   expect(calls[0]!.url).toBe(`https://api.github.com/repos/${RELEASE_REPO}/releases/tags/${DEV_TAG}`)
-  expect(lines).toEqual([`upgraded ${PACKAGE_VERSION} -> 9.9.9-dev.4+abc1234`])
+  expect(lines).toEqual([`upgraded ${CURRENT_VERSION} -> 9.9.9-dev.4+abc1234`])
   expect(readFileSync(execPath, 'utf8')).toBe(NEW_BYTES)
 })
 
