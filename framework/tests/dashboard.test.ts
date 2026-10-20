@@ -335,7 +335,7 @@ test('POST /api/inbox writes the decoded file with mode 0600 and never overwrite
     expect(large.status).toBe(200)
     expect((await upload('huge.pdf', Buffer.alloc(16 * 1024 * 1024), withInbox)).status).toBe(413)
 
-    for (const name of ['resume.exe', 'notes', '../../.bashrc', '..\\.profile', '.hidden.pdf', '']) {
+    for (const name of ['resume.exe', 'notes', '../../.bashrc', '..\\.profile', '.hidden.pdf', '', `${'é'.repeat(126)}.pdf`]) {
       const refused = await upload(name, Buffer.from('x'), withInbox)
       expect(refused.status).toBe(400)
     }
