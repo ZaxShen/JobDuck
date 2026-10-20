@@ -295,7 +295,7 @@ test('a file at the wizard upload limit fits the inbox body limit after base64 a
   mkdirSync(inbox)
   const withInbox = await startDashboard({ home: box.home, workspace: box.workspace, port: 0, open: false, out: () => undefined })
   try {
-    const name = `${'é'.repeat(250)}.pdf`
+    const name = `${'a'.repeat(251)}.pdf`
     const res = await upload(name, Buffer.alloc(MAX_UPLOAD_BYTES, 0x61), withInbox)
     expect(res.status).toBe(200)
     expect(statSync(join(inbox, name)).size).toBe(MAX_UPLOAD_BYTES)
