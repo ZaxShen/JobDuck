@@ -2,7 +2,7 @@ import { useRef, useState, type DragEvent } from 'react'
 import { FileTextIcon, FolderInputIcon, UploadIcon, XIcon } from 'lucide-react'
 import { SectionCard } from '@/components/composed/section-card'
 import { useFlash } from '@/hooks/use-flash'
-import { INBOX_TYPES, inboxProblem } from '@/lib/wizard'
+import { inboxProblem, RESUME_TYPES } from '@/lib/wizard'
 import { cn } from '@/lib/utils'
 import { StepActions, StepIntro, stepMotion } from '@/views/welcome/step-parts'
 
@@ -79,7 +79,7 @@ export function WelcomeStep({ file, noInbox, onFile, onSkip, onContinue }: Welco
             <input
               ref={input}
               type="file"
-              accept={INBOX_TYPES.join(',')}
+              accept={RESUME_TYPES.join(',')}
               className="hidden"
               onChange={(event) => choose(event.target.files?.[0])}
             />

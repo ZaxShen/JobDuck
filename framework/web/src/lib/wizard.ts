@@ -1,8 +1,8 @@
 import { COMPANY_STAGES } from '@/lib/forms'
+import { MAX_UPLOAD_BYTES } from './inbox'
 
 export const WIZARD_STEPS = ['Welcome', 'Career DNA', 'Targets', 'Modules', 'Done'] as const
-export const INBOX_TYPES = ['.pdf', '.docx', '.md', '.txt'] as const
-export const MAX_UPLOAD_BYTES = 15 * 1024 * 1024
+export const RESUME_TYPES = ['.pdf', '.docx', '.md', '.txt'] as const
 export const WORK_MODES = ['remote', 'hybrid', 'onsite'] as const
 
 export interface Quiz {
@@ -64,7 +64,7 @@ export function careerDna(quiz: Quiz): string {
 }
 
 export function inboxProblem(file: File): string | undefined {
-  if (!(INBOX_TYPES as readonly string[]).includes(extension(file.name))) return `Use one of ${INBOX_TYPES.join(', ')}.`
+  if (!(RESUME_TYPES as readonly string[]).includes(extension(file.name))) return `Use one of ${RESUME_TYPES.join(', ')}.`
   if (file.size > MAX_UPLOAD_BYTES) return 'That file is over 15 MB. Put it in inbox/ yourself instead.'
   return undefined
 }
