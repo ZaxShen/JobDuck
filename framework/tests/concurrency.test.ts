@@ -59,7 +59,7 @@ test('a write waits for another process holding the write lock instead of failin
   expect(waited).toBeLessThan(BUSY_TIMEOUT_MS)
   expect(updated.status).toBe('interviewing')
   expect(getApplication(db, id)).toMatchObject({ status: 'interviewing', note: 'held by another process' })
-  expect(listEvents(db, id).map((event) => event.to_status)).toEqual(['applied', 'interviewing'])
+  expect(listEvents(db, id).map((event) => event.to_status)).toEqual(['saved', 'applied', 'interviewing'])
 })
 
 test('every connection sets busy_timeout, readonly ones included', () => {

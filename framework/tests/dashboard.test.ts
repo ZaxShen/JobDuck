@@ -15,12 +15,12 @@ import { type Dashboard, startDashboard } from '../src/dashboard/server'
 let box: Sandbox
 let db: Db
 let dash: Dashboard
-let ids: { acme: number; beta: number; gamma: number }
+let ids: { acme: number; beta: number; gamma: number; delta: number }
 
 beforeEach(async () => {
   box = sandbox()
   db = migratedDb(box.home)
-  const make = (n: number, company: string, title: string, location: string, status: 'applied' | 'pending' | 'interviewing') => {
+  const make = (n: number, company: string, title: string, location: string, status: 'saved' | 'applied' | 'pending' | 'interviewing') => {
     const posting = upsertPosting(db, { source: 'manual', url: `https://jobs.example.com/${n}`, title, company, location })
     const pendingReason = status === 'pending' ? 'Enter the emailed code on the form.' : undefined
     return createApplication(db, { postingId: posting.id, status, pendingReason }).id
@@ -29,6 +29,7 @@ beforeEach(async () => {
     acme: make(1, 'Acme', 'AI Engineer', 'Remote', 'applied'),
     beta: make(2, 'Beta Labs', 'ML Engineer', 'New York', 'pending'),
     gamma: make(3, 'Gamma', 'Data Scientist', 'Remote', 'interviewing'),
+    delta: make(4, 'Delta', 'Platform Engineer', 'Springfield', 'saved'),
   }
   dash = await startDashboard({ home: box.home, port: 0, open: false, out: () => undefined })
 })
@@ -90,16 +91,18 @@ test('requests with a foreign Host header are refused', async () => {
 
 test('summary and statuses describe the board', async () => {
   const { body: summary } = await get('/api/summary')
-  expect(summary.counts).toMatchObject({ pending: 1, applied: 1, interviewing: 1, offered: 0 })
-  expect(summary.counts).not.toHaveProperty('saved')
+  expect(summary.counts).toMatchObject({ saved: 1, pending: 1, applied: 1, interviewing: 1, offered: 0 })
   expect(summary.needs_match).toBe(0)
   const { body: statuses } = await get('/api/statuses')
+  expect(statuses.statuses.slice(0, 3)).toEqual(['saved', 'pending', 'applied'])
   expect(statuses.statuses).toContain('deny_by_employer')
   expect(statuses.terminal).toEqual(['accepted', 'deny_by_employer', 'deny_by_candidate', 'no_response'])
 })
 
 test('GET /api/applications filters by status and q', async () => {
-  expect((await get('/api/applications')).body).toHaveLength(3)
+  expect((await get('/api/applications')).body).toHaveLength(4)
+  expect((await get('/api/applications?status=saved')).body.map((row: any) => row.id)).toEqual([ids.delta])
+  expect((await get('/api/applications?status=pending')).body.map((row: any) => row.id)).toEqual([ids.beta])
   const applied = (await get('/api/applications?status=applied')).body
   expect(applied.map((row: any) => row.id)).toEqual([ids.acme])
   expect(applied[0]).toMatchObject({ company: 'Acme', title: 'AI Engineer', location: 'Remote' })
@@ -120,7 +123,7 @@ test('mutations without the dashboard header or from a foreign origin get 403', 
   const foreign = await mutate('PATCH', `/api/applications/${ids.acme}`, { status: 'offered' }, { Origin: 'https://evil.example' })
   expect(foreign.res.status).toBe(403)
   expect((await mutate('DELETE', `/api/applications/${ids.acme}`, undefined, { 'X-JobDuck-Dashboard': '0' })).res.status).toBe(403)
-  expect(listEvents(db, ids.acme)).toHaveLength(1)
+  expect(listEvents(db, ids.acme)).toHaveLength(2)
 })
 
 test('PATCH status writes a dashboard event and returns the joined row', async () => {
@@ -131,7 +134,7 @@ test('PATCH status writes a dashboard event and returns the joined row', async (
   expect(last).toMatchObject({ from_status: 'applied', to_status: 'interviewing', source: 'dashboard', note: 'phone screen' })
   const detail = (await get(`/api/applications/${ids.acme}`)).body
   expect(detail.application.status).toBe('interviewing')
-  expect(detail.events).toHaveLength(2)
+  expect(detail.events).toHaveLength(3)
 })
 
 test('PATCH to pending needs a pending_reason, stores it, and any later status clears it', async () => {
@@ -143,7 +146,7 @@ test('PATCH to pending needs a pending_reason, stores it, and any later status c
   expect((await mutate('PATCH', path, { status: 'pending', pending_reason: 'x'.repeat(501) })).res.status).toBe(400)
   expect((await mutate('PATCH', path, { status: 'offered', pending_reason: 'Call back' })).res.status).toBe(400)
   expect((await mutate('PATCH', path, { pending_reason: 'Call back' })).res.status).toBe(400)
-  expect(listEvents(db, ids.acme)).toHaveLength(1)
+  expect(listEvents(db, ids.acme)).toHaveLength(2)
 
   const applied = getApplication(db, ids.acme)!
   const pending = await mutate('PATCH', path, {
@@ -155,8 +158,12 @@ test('PATCH to pending needs a pending_reason, stores it, and any later status c
   expect(reworded.body.pending_reason).toBe('Answer the visa question by Friday.')
   const back = await mutate('PATCH', path, { status: 'applied' })
   expect(back.body).toMatchObject({ status: 'applied', pending_reason: null })
-  expect(listEvents(db, ids.acme).map((event) => event.to_status)).toEqual(['applied', 'pending', 'pending', 'applied'])
+  expect(listEvents(db, ids.acme).map((event) => event.to_status)).toEqual(['saved', 'applied', 'pending', 'pending', 'applied'])
   expect((await get('/api/applications?status=pending')).body.map((row: any) => row.id)).toEqual([ids.beta])
+
+  const unsubmitted = await mutate('PATCH', `/api/applications/${ids.beta}`, { status: 'saved' })
+  expect(unsubmitted.res.status).toBe(200)
+  expect(unsubmitted.body).toMatchObject({ status: 'saved', pending_reason: null, applied_at: null })
 })
 
 test('note and override updates do not write events', async () => {
@@ -167,7 +174,7 @@ test('note and override updates do not write events', async () => {
     note: 'Recruiter: Dana', title: 'Senior ML Engineer', company: 'Beta', location: 'New York',
     posting_title: 'ML Engineer', location_override: null,
   })
-  expect(listEvents(db, ids.beta)).toHaveLength(1)
+  expect(listEvents(db, ids.beta)).toHaveLength(2)
   expect((await get('/api/applications?q=senior')).body.map((row: any) => row.id)).toEqual([ids.beta])
 })
 
@@ -530,7 +537,7 @@ test('PATCH /api/applications/:id with a stale expected_updated_at gets 409 and 
   expect(getApplication(db, ids.acme)).toMatchObject({ note: 'agent note', updated_at: agent.updated_at })
   const staleStatus = await mutate('PATCH', `/api/applications/${ids.acme}`, { status: 'offered', expected_updated_at: opened })
   expect(staleStatus.res.status).toBe(409)
-  expect(listEvents(db, ids.acme)).toHaveLength(1)
+  expect(listEvents(db, ids.acme)).toHaveLength(2)
 
   const fresh = await mutate('PATCH', `/api/applications/${ids.acme}`, {
     note: 'dashboard note', expected_updated_at: agent.updated_at,

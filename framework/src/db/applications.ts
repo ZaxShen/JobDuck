@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { type Db, nowIso, one, transaction } from './client'
 
 export const APPLICATION_STATUSES = [
-  'pending', 'applied', 'interviewing', 'offered',
+  'saved', 'pending', 'applied', 'interviewing', 'offered',
   'accepted', 'deny_by_employer', 'deny_by_candidate', 'no_response',
 ] as const
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number]
@@ -12,11 +12,11 @@ export const EVENT_SOURCES = ['agent', 'dashboard', 'sync', 'user'] as const
 export type EventSource = (typeof EVENT_SOURCES)[number]
 
 export const isTerminal = (status: ApplicationStatus) => (TERMINAL_STATUSES as readonly string[]).includes(status)
+const isUnsubmitted = (status: ApplicationStatus) => status === 'saved' || status === 'pending'
 
 export const PENDING_REASON_MAX = 500
 export const PENDING_REASON_REQUIRED = 'pending_reason is required when status is pending'
 export const PENDING_REASON_ONLY_PENDING = 'pending_reason is only kept while status is pending'
-export const STATUS_REQUIRED = 'status is required unless a pending_reason is given'
 export const PendingReasonSchema = z.string().trim()
   .min(1, PENDING_REASON_REQUIRED)
   .max(PENDING_REASON_MAX, `pending_reason must be at most ${PENDING_REASON_MAX} characters`)
@@ -115,22 +115,29 @@ export function listEvents(db: Db, applicationId: number): ApplicationEvent[] {
 }
 
 export function createApplication(db: Db, input: CreateApplicationInput): Application {
-  const status = input.status ?? (input.pendingReason === undefined ? undefined : 'pending')
-  if (status === undefined) throw new Error(STATUS_REQUIRED)
+  const status = input.status ?? 'saved'
   const pendingReason = checkPendingReason(status, input.pendingReason)
   const source = input.source ?? 'agent'
   const now = nowIso()
-  const appliedAt = status === 'pending' ? null : (input.appliedAt ?? now)
+  const note = input.note ?? null
   const terminal = isTerminal(status)
   return transaction(db, () => {
-    const row = one<Application>(db.prepare(`INSERT INTO applications
-        (posting_id, status, pending_reason, applied_at, closed_at, closed_by, note, extracted, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    const saved = one<Application>(db.prepare(`INSERT INTO applications
+        (posting_id, status, note, extracted, created_at, updated_at)
+        VALUES (?, 'saved', ?, ?, ?, ?)
         RETURNING *`),
-      input.postingId, status, pendingReason, appliedAt, terminal ? now : null, terminal ? (input.closedBy ?? source) : null,
-      input.note ?? null, toJson(input.extracted), now, now)
-    if (!row) throw new Error('createApplication returned no row')
-    insertEvent(db, row.id, null, status, source, input.note ?? null, undefined, now)
+      input.postingId, note, toJson(input.extracted), now, now)
+    if (!saved) throw new Error('createApplication returned no row')
+    insertEvent(db, saved.id, null, 'saved', source, status === 'saved' ? note : null, undefined, now)
+    if (status === 'saved') return saved
+    const row = one<Application>(db.prepare(`UPDATE applications
+        SET status = ?, pending_reason = ?, applied_at = ?, closed_at = ?, closed_by = ?
+        WHERE id = ?
+        RETURNING *`),
+      status, pendingReason, isUnsubmitted(status) ? null : (input.appliedAt ?? now),
+      terminal ? now : null, terminal ? (input.closedBy ?? source) : null, saved.id)
+    if (!row) throw new Error(`application ${saved.id} not found`)
+    insertEvent(db, row.id, 'saved', status, source, note, undefined, now)
     return row
   })
 }
@@ -143,7 +150,7 @@ export function setStatus(db: Db, id: number, status: ApplicationStatus, options
     if (!current) throw new Error(`application ${id} not found`)
     const now = nowIso()
     const terminal = isTerminal(status)
-    const appliedAt = current.applied_at ?? (status === 'pending' ? null : now)
+    const appliedAt = current.applied_at ?? (isUnsubmitted(status) ? null : now)
     const note = options.note ?? null
     const row = one<Application>(db.prepare(`UPDATE applications
         SET status = ?, pending_reason = ?, applied_at = ?, closed_at = ?, closed_by = ?, updated_at = ?,

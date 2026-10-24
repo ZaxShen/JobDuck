@@ -3,7 +3,7 @@ CREATE TABLE applications_new (
   id INTEGER PRIMARY KEY,
   posting_id INTEGER NOT NULL REFERENCES postings (id),
   status TEXT NOT NULL CHECK (status IN (
-    'pending', 'applied', 'interviewing', 'offered',
+    'saved', 'pending', 'applied', 'interviewing', 'offered',
     'accepted', 'deny_by_employer', 'deny_by_candidate', 'no_response'
   )),
   pending_reason TEXT,
@@ -34,20 +34,13 @@ CREATE TABLE applications_new (
 );
 
 INSERT INTO applications_new (
-  id, posting_id, status, pending_reason, applied_at, closed_at, closed_by, note, extracted,
+  id, posting_id, status, applied_at, closed_at, closed_by, note, extracted,
   title_override, company_override, location_override, created_at, updated_at, deleted_at,
   salary_min, salary_max, salary_offered, rsu, options, bonus, sign_on, relocation_fee,
   currency, country_override, state_override, city_override
 )
 SELECT
-  id, posting_id,
-  CASE WHEN status IN (
-    'applied', 'interviewing', 'offered', 'accepted', 'deny_by_employer', 'deny_by_candidate', 'no_response'
-  ) THEN status ELSE 'pending' END,
-  CASE WHEN status IN (
-    'applied', 'interviewing', 'offered', 'accepted', 'deny_by_employer', 'deny_by_candidate', 'no_response'
-  ) THEN NULL ELSE 'Saved before submitting; check whether it was sent.' END,
-  applied_at, closed_at, closed_by, note, extracted,
+  id, posting_id, status, applied_at, closed_at, closed_by, note, extracted,
   title_override, company_override, location_override, created_at, updated_at, deleted_at,
   salary_min, salary_max, salary_offered, rsu, options, bonus, sign_on, relocation_fee,
   currency, country_override, state_override, city_override
@@ -58,10 +51,3 @@ ALTER TABLE applications_new RENAME TO applications;
 
 CREATE UNIQUE INDEX applications_live_posting ON applications (posting_id) WHERE deleted_at IS NULL;
 CREATE INDEX applications_status ON applications (status);
-
-UPDATE application_events SET from_status = 'pending' WHERE from_status NOT IN (
-  'applied', 'interviewing', 'offered', 'accepted', 'deny_by_employer', 'deny_by_candidate', 'no_response'
-);
-UPDATE application_events SET to_status = 'pending' WHERE to_status NOT IN (
-  'applied', 'interviewing', 'offered', 'accepted', 'deny_by_employer', 'deny_by_candidate', 'no_response'
-);

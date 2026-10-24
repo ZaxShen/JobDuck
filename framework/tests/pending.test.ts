@@ -6,15 +6,13 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { type Sandbox, migratedDb, sandbox } from './helpers'
 import { type Db, openDb } from '../src/db/client'
 import {
-  PENDING_REASON_ONLY_PENDING, PENDING_REASON_REQUIRED, STATUS_REQUIRED, createApplication, getApplication, listEvents,
-  setStatus,
+  PENDING_REASON_ONLY_PENDING, PENDING_REASON_REQUIRED, createApplication, getApplication, listEvents, setStatus,
 } from '../src/db/applications'
 import { FOREIGN_KEYS_OFF, currentVersion, loadMigrations, migrate } from '../src/db/migrate'
 import { upsertPosting } from '../src/db/postings'
 import { createServer, type JobduckServer } from '../src/mcp/server'
 import { dbPath } from '../src/paths'
 
-const SAVED_REASON = 'Saved before submitting; check whether it was sent.'
 const REASON = 'Enter the code emailed to you on the Acme form, then tell me to continue.'
 const NOW = '2026-01-02T03:04:05.000Z'
 
@@ -44,23 +42,20 @@ function versionThreeDb(): Db {
   return db
 }
 
-test('004 turns a saved row into pending with a reason and keeps events and outcomes', () => {
+test('004 keeps saved rows and their events and outcomes unchanged', () => {
   const db = versionThreeDb()
-  const events = count(db, 'SELECT COUNT(*) AS n FROM application_events')
+  const events = db.prepare('SELECT * FROM application_events ORDER BY id').all()
   const outcomeLinks = db.prepare('SELECT id, application_id FROM outcomes ORDER BY id').all()
 
   expect(migrate(db)).toEqual([4])
   expect(currentVersion(db)).toBe(4)
-  expect(count(db, "SELECT COUNT(*) AS n FROM applications WHERE status = 'pending'")).toBeGreaterThan(0)
   expect(getApplication(db, 1)).toMatchObject({
-    status: 'pending', pending_reason: SAVED_REASON, applied_at: null, note: 'draft', salary_offered: 120000, currency: 'USD',
+    status: 'saved', pending_reason: null, applied_at: null, note: 'draft', salary_offered: 120000, currency: 'USD',
   })
   expect(getApplication(db, 2)).toMatchObject({ status: 'deny_by_employer', pending_reason: null, applied_at: NOW })
-  expect(count(db, 'SELECT COUNT(*) AS n FROM application_events')).toBe(events)
+  expect(count(db, 'SELECT COUNT(*) AS n FROM application_events')).toBe(events.length)
+  expect(db.prepare('SELECT * FROM application_events ORDER BY id').all()).toEqual(events)
   expect(db.prepare('SELECT id, application_id FROM outcomes ORDER BY id').all()).toEqual(outcomeLinks)
-  expect(count(db, "SELECT COUNT(*) AS n FROM application_events WHERE from_status = 'saved' OR to_status = 'saved'")).toBe(0)
-  expect(listEvents(db, 2).map((event) => [event.from_status, event.to_status]))
-    .toEqual([[null, 'pending'], ['pending', 'applied'], ['applied', 'deny_by_employer']])
   expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([])
   expect(db.prepare('PRAGMA foreign_keys').get()).toEqual({ foreign_keys: 1 })
   const indexes = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'applications'")
@@ -71,17 +66,27 @@ test('004 turns a saved row into pending with a reason and keeps events and outc
   db.close()
 })
 
-test('the migrated CHECK rejects saved and pending without a reason', () => {
+test('the migrated CHECK rejects an unknown status and pending without a reason', () => {
   const db = versionThreeDb()
   migrate(db)
   const insert = (status: string, reason: string | null) => db.prepare(`INSERT INTO applications
     (posting_id, status, pending_reason, created_at, updated_at) VALUES (2, ?, ?, ?, ?)`).run(status, reason, NOW, NOW)
   db.prepare('UPDATE applications SET deleted_at = ? WHERE id = 2').run(NOW)
-  expect(() => insert('saved', null)).toThrow()
+  expect(() => insert('withdrawn', null)).toThrow()
   expect(() => insert('pending', null)).toThrow()
+  expect(() => db.prepare("UPDATE applications SET status = 'pending' WHERE id = 1").run()).toThrow()
+  db.prepare("UPDATE applications SET status = 'pending', pending_reason = ? WHERE id = 1").run(REASON)
   expect(() => db.prepare('UPDATE applications SET pending_reason = NULL WHERE id = 1').run()).toThrow()
-  expect(() => db.prepare("UPDATE applications SET status = 'saved' WHERE id = 1").run()).toThrow()
-  insert('pending', REASON)
+  db.close()
+})
+
+test('migrate refuses a foreign_keys=off migration inside an open transaction', () => {
+  const db = versionThreeDb()
+  db.exec('BEGIN')
+  expect(() => migrate(db)).toThrow('inside a transaction')
+  db.exec('ROLLBACK')
+  expect(currentVersion(db)).toBe(3)
+  expect(count(db, 'SELECT COUNT(*) AS n FROM application_events')).toBe(4)
   db.close()
 })
 
@@ -98,15 +103,17 @@ test('a foreign_keys=off migration rolls back when it leaves a broken reference'
 test('the data layer requires a reason to enter pending and clears it on the way out', () => {
   const db = migratedDb(box.home)
   const posting = (n: number) => upsertPosting(db, { source: 'manual', url: `https://acme.com/jobs/${n}`, title: 'Engineer', company: 'Acme' })
-  expect(() => createApplication(db, { postingId: posting(1).id })).toThrow(STATUS_REQUIRED)
+  expect(() => createApplication(db, { postingId: posting(1).id, pendingReason: REASON })).toThrow(PENDING_REASON_ONLY_PENDING)
   expect(() => createApplication(db, { postingId: posting(1).id, status: 'pending' })).toThrow(PENDING_REASON_REQUIRED)
   expect(() => createApplication(db, { postingId: posting(1).id, status: 'pending', pendingReason: ' ' })).toThrow(PENDING_REASON_REQUIRED)
   expect(() => createApplication(db, { postingId: posting(1).id, status: 'pending', pendingReason: 'x'.repeat(501) })).toThrow('500')
   expect(() => createApplication(db, { postingId: posting(1).id, status: 'applied', pendingReason: REASON }))
     .toThrow(PENDING_REASON_ONLY_PENDING)
 
-  const created = createApplication(db, { postingId: posting(1).id, pendingReason: REASON, appliedAt: NOW })
+  const created = createApplication(db, { postingId: posting(1).id, status: 'pending', pendingReason: REASON, appliedAt: NOW })
   expect(created).toMatchObject({ status: 'pending', pending_reason: REASON, applied_at: null })
+  expect(listEvents(db, created.id).map((event) => [event.from_status, event.to_status]))
+    .toEqual([[null, 'saved'], ['saved', 'pending']])
   const applied = setStatus(db, created.id, 'applied')
   expect(applied).toMatchObject({ status: 'applied', pending_reason: null })
   expect(applied.applied_at).not.toBeNull()
@@ -116,12 +123,17 @@ test('the data layer requires a reason to enter pending and clears it on the way
   const back = setStatus(db, created.id, 'pending', { pendingReason: 'Confirm the start date with the recruiter.' })
   expect(back).toMatchObject({ status: 'pending', pending_reason: 'Confirm the start date with the recruiter.', applied_at: applied.applied_at })
   expect(setStatus(db, created.id, 'deny_by_candidate').pending_reason).toBeNull()
+
+  const shortlisted = createApplication(db, { postingId: posting(2).id })
+  expect(shortlisted).toMatchObject({ status: 'saved', pending_reason: null, applied_at: null })
+  setStatus(db, shortlisted.id, 'pending', { pendingReason: REASON })
+  expect(setStatus(db, shortlisted.id, 'saved')).toMatchObject({ status: 'saved', pending_reason: null, applied_at: null })
   db.close()
 })
 
 interface ToolResult { isError?: boolean; content: { type: string; text: string }[] }
 
-test('record_application and update_status store pending_reason and refuse pending without one', async () => {
+test('record_application starts as saved, stores pending_reason, and both tools refuse pending without one', async () => {
   const jobduck: JobduckServer = createServer({ home: box.home })
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
   const client = new Client({ name: 'jobduck-test', version: '0.0.0' })
@@ -143,9 +155,23 @@ test('record_application and update_status store pending_reason and refuse pendi
 
     const { application } = await data('record_application', { ...posting, status: 'pending', pending_reason: REASON })
     expect(application).toMatchObject({ status: 'pending', pending_reason: REASON, applied_at: null })
+    const { application: saved } = await data('record_application', {
+      url: 'https://example.com/jobs/acme-saved', title: 'Platform Engineer', company: 'Acme',
+    })
+    expect(saved).toMatchObject({ status: 'saved', pending_reason: null, applied_at: null })
+    const { application: submitted } = await data('record_application', {
+      url: 'https://example.com/jobs/acme-applied', title: 'Data Engineer', company: 'Acme', status: 'applied',
+    })
+    expect(submitted.status).toBe('applied')
     const db = openDb(dbPath(box.home))
     try {
       expect(db.prepare('SELECT pending_reason FROM applications WHERE id = ?').get(application.id)).toEqual({ pending_reason: REASON })
+      expect(count(db, "SELECT COUNT(*) AS n FROM applications WHERE status = 'pending'")).toBeGreaterThan(0)
+      expect(listEvents(db, application.id).map((event) => [event.from_status, event.to_status]))
+        .toEqual([[null, 'saved'], ['saved', 'pending']])
+      expect(listEvents(db, saved.id).map((event) => [event.from_status, event.to_status])).toEqual([[null, 'saved']])
+      expect(listEvents(db, submitted.id).map((event) => [event.from_status, event.to_status]))
+        .toEqual([[null, 'saved'], ['saved', 'applied']])
     } finally {
       db.close()
     }

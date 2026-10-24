@@ -73,7 +73,7 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
     <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6 animate-in fade-in duration-500">
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Applications</h1>
-        <p className="text-sm text-muted-foreground">Everything your agent applied to or is waiting on you for, newest first.</p>
+        <p className="text-sm text-muted-foreground">Everything your agent saved, applied to or is waiting on you for, newest first.</p>
       </div>
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -159,7 +159,7 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
         {loaded && rows.length === 0 && (
           <div className="flex flex-col items-center gap-2 px-6 py-12 text-center text-sm text-muted-foreground">
             <InboxIcon className="size-5" />
-            No applications yet. Ask your agent to apply to a posting.
+            No applications yet. Ask your agent to save or apply to a posting.
           </div>
         )}
       </div>

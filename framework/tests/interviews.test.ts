@@ -41,22 +41,29 @@ test('addStage records an interview round with stage_type, scheduled_at and a pe
   })
   const row = db.prepare('SELECT stage_type, scheduled_at, outcome FROM application_events WHERE id = ?').get(stage.id)
   expect(row).toEqual({ stage_type: 'phone_screen', scheduled_at: '2026-11-03T17:00:00Z', outcome: 'pending' })
-  expect(listEvents(db, app.id)).toHaveLength(2)
+  expect(listEvents(db, app.id)).toHaveLength(3)
 })
 
-test('addStage advances pending and applied forward and never regresses', () => {
+test('addStage advances pending forward and clears its pending_reason', () => {
   const pending = application('pending')
-  expect(pending.applied_at).toBeNull()
-  expect(pending.pending_reason).not.toBeNull()
-  const first = addStage(db, pending.id, { kind: 'interviewing', stageType: 'information' }).application
+  expect(pending).toMatchObject({ applied_at: null, pending_reason: 'Answer the visa question on the form.' })
+  const first = addStage(db, pending.id, { kind: 'interviewing', stageType: 'information' })
+  expect(first.application).toMatchObject({ status: 'interviewing', pending_reason: null })
+  expect(first.application.applied_at).not.toBeNull()
+  expect(first.stage.from_status).toBe('pending')
+})
+
+test('addStage advances saved and applied forward and never regresses', () => {
+  const saved = application('saved')
+  expect(saved.applied_at).toBeNull()
+  const first = addStage(db, saved.id, { kind: 'interviewing', stageType: 'information' }).application
   expect(first.status).toBe('interviewing')
   expect(first.applied_at).not.toBeNull()
-  expect(first.pending_reason).toBeNull()
-  const offered = addStage(db, pending.id, { kind: 'offered', stageType: 'verbal' })
+  const offered = addStage(db, saved.id, { kind: 'offered', stageType: 'verbal' })
   expect(offered.application.status).toBe('offered')
   expect(offered.stage.outcome).toBeNull()
   expect(offered.stage.from_status).toBe('interviewing')
-  const late = addStage(db, pending.id, { kind: 'interviewing', stageType: 'onsite', scheduledAt: '2026-10-01' })
+  const late = addStage(db, saved.id, { kind: 'interviewing', stageType: 'onsite', scheduledAt: '2026-10-01' })
   expect(late.application.status).toBe('offered')
   expect(late.stage.from_status).toBe('offered')
   expect(late.stage.scheduled_at).toBe('2026-10-01')
@@ -92,7 +99,7 @@ test('addStage rejects a mismatched kind and stage_type, a bad outcome, date or 
     kind: 'interviewing', stageType: 'technical', contacts: Array.from({ length: 21 }, (_, i) => ({ name: `P${i}` })),
   })).toThrow('at most 20 contacts')
   expect(() => addStage(db, 9999, { kind: 'interviewing', stageType: 'technical' })).toThrow('application 9999 not found')
-  expect(listEvents(db, app.id)).toHaveLength(1)
+  expect(listEvents(db, app.id)).toHaveLength(2)
   expect(getApplication(db, app.id)?.status).toBe('applied')
 })
 
@@ -128,7 +135,7 @@ test('updateStage and deleteStage refuse non-stage events', () => {
     expect(() => updateStage(db, id, { outcome: 'advanced' })).toThrow('is not an interview or offer stage')
   }
   expect(() => deleteStage(db, 9999)).toThrow('event 9999 not found')
-  expect(listEvents(db, app.id)).toHaveLength(2)
+  expect(listEvents(db, app.id)).toHaveLength(3)
 })
 
 test('deleteStage removes the stage and leaves the application status alone', () => {

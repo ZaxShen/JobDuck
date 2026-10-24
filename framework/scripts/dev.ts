@@ -1,7 +1,7 @@
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { createApplication, listApplications, setStatus, type ApplicationStatus } from '../src/db/applications'
+import { createApplication, listApplications, type ApplicationStatus } from '../src/db/applications'
 import { openDb } from '../src/db/client'
 import { migrate } from '../src/db/migrate'
 import { upsertPosting } from '../src/db/postings'
@@ -28,7 +28,8 @@ const apiUrl = `http://127.0.0.1:${apiPort}`
 const webUrl = `http://127.0.0.1:${webPort}`
 
 const SEED: { company: string; title: string; slug: string; location: string; status: ApplicationStatus }[] = [
-  { company: 'Acme', title: 'Software Engineer', slug: 'acme-software-engineer', location: 'Remote', status: 'pending' },
+  { company: 'Acme', title: 'Software Engineer', slug: 'acme-software-engineer', location: 'Remote', status: 'saved' },
+  { company: 'Initech', title: 'Data Engineer', slug: 'initech-data-engineer', location: 'Austin', status: 'pending' },
   { company: 'Example Corp', title: 'Backend Developer', slug: 'example-corp-backend-developer', location: 'Springfield', status: 'applied' },
   { company: 'Globex', title: 'Platform Engineer', slug: 'globex-platform-engineer', location: 'Cypress Creek', status: 'interviewing' },
 ]
@@ -42,11 +43,10 @@ function seed(): void {
       const posting = upsertPosting(db, {
         source: 'manual', url: `https://example.com/jobs/${entry.slug}`, title: entry.title, company: entry.company, location: entry.location,
       })
-      const application = createApplication(db, {
-        postingId: posting.id, source: 'user', pendingReason: 'Placeholder: solve the CAPTCHA on the form, then tell the agent to continue.',
-        note: 'Placeholder application seeded by bun run dev',
+      createApplication(db, {
+        postingId: posting.id, status: entry.status, source: 'user', note: 'Placeholder application seeded by bun run dev',
+        pendingReason: entry.status === 'pending' ? 'Placeholder: solve the CAPTCHA on the form, then tell the agent to continue.' : undefined,
       })
-      if (entry.status !== 'pending') setStatus(db, application.id, entry.status, { source: 'user' })
     }
   } finally {
     db.close()

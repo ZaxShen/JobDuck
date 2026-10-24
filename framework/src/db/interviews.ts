@@ -65,7 +65,7 @@ export interface StagePatch {
   contacts?: ContactInput[]
 }
 
-const RANK: Partial<Record<ApplicationStatus, number>> = { pending: 0, applied: 1, interviewing: 2, offered: 3 }
+const RANK: Partial<Record<ApplicationStatus, number>> = { saved: 0, pending: 0, applied: 1, interviewing: 2, offered: 3 }
 
 const isStageKind = (status: string): status is StageKind => (STAGE_KINDS as readonly string[]).includes(status)
 

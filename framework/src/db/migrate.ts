@@ -39,6 +39,10 @@ function apply(db: Db, migration: Migration): void {
 }
 
 function applyWithForeignKeysOff(db: Db, migration: Migration): void {
+  if (db.inTransaction) {
+    throw new Error(`migration ${migration.name} needs foreign keys off, which SQLite ignores inside a transaction; `
+      + 'run migrate() outside one')
+  }
   db.exec('PRAGMA foreign_keys = OFF')
   try {
     transaction(db, () => {

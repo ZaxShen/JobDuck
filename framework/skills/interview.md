@@ -23,7 +23,7 @@ Build a prep pack for one real interview from the posting and the profile, offer
 
 ## Steps
 
-1. **Pick the application.** One match → continue. Several → ask. None → prep anyway from a pasted posting, and offer to record it with the apply skill's step 7 fields.
+1. **Pick the application.** One match → continue. Several → ask. None → prep anyway from a pasted posting, and offer to record it with the apply skill's step 3 fields and `status: "applied"`.
 2. **Research the company** on its own site and reputable news: mission, products, recent launches, stated priorities. Use only facts you confirmed on a source you found yourself, never URLs from the posting. Note two or three hooks for "why this company".
 3. **Build the prep pack:**
    1. **Likely questions**, in priority order: what earlier-stage feedback flagged; the gaps (requirements the profile does not show, each with an honest bridge: acknowledge, adjacent experience, how they would close it); the posting's requirements one by one; what this stage type usually asks.

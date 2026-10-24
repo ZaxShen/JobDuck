@@ -116,7 +116,8 @@ function postingView(posting: Posting | undefined, withText: boolean): Record<st
 }
 
 const Status = z.enum(APPLICATION_STATUSES)
-  .describe('pending: you stopped and the user must act (give pending_reason); applied, interviewing, offered; '
+  .describe('saved: chosen to apply to, not submitted yet; pending: you stopped and the user must act (give '
+    + 'pending_reason); applied, interviewing, offered; '
     + 'closed: accepted, deny_by_employer, deny_by_candidate, no_response')
 const PendingReason = PendingReasonSchema
   .describe(`required with status pending, 1 to ${PENDING_REASON_MAX} characters: one sentence naming what the user `
@@ -292,13 +293,14 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
 
   server.registerTool('record_application', {
     description: 'Record an application for a posting URL (requires the track module). Returns the JobDuck-Application-Id marker. '
-      + 'Use status pending with a pending_reason when you stopped and the user must act before it can be submitted.',
+      + 'Every application starts as saved (chosen, not submitted yet); status defaults to saved. Use status pending with '
+      + 'a pending_reason when you stopped and the user must act before it can be submitted.',
     inputSchema: z.object({
       url: z.string(),
       title: z.string(),
       company: z.string(),
       location: z.string().optional(),
-      status: Status.default('applied'),
+      status: Status.default('saved'),
       pending_reason: PendingReason.optional(),
       applied_at: z.string().optional(),
       note: z.string().optional(),
@@ -326,7 +328,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   server.registerTool('update_status', {
     description: 'Change an application status and log the event (requires the track module). '
       + 'A note is stored on the event and appended to the application note (newline-separated). '
-      + 'Status pending means you stopped and the user must act; it needs a pending_reason, which any later status clears.',
+      + 'Status saved means chosen but not submitted yet; pending means you stopped and the user must act and needs a '
+      + 'pending_reason, which any later status clears.',
     inputSchema: z.object({
       id: z.number().int().positive(),
       status: Status,
@@ -377,7 +380,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   server.registerTool('record_interview', {
     description: 'Record an interview round (kind interviewing) or an offer (kind offered) as a stage event '
       + '(requires the track module). Moves the status forward to the kind when it is behind '
-      + '(pending/applied -> interviewing -> offered, which clears pending_reason); never moves it back or reopens a '
+      + '(saved/pending/applied -> interviewing -> offered, which clears pending_reason); never moves it back or reopens a '
       + 'closed application. outcome defaults to pending for interviewing.',
     inputSchema: {
       application_id: Id,

@@ -74,7 +74,7 @@ const inspect = (fn: (db: Db) => void) => {
   try { fn(db) } finally { db.close() }
 }
 
-const application = { url: 'https://jobs.lever.co/acme/abc-123/apply', title: 'Staff Engineer', company: 'Acme' }
+const application = { url: 'https://jobs.lever.co/acme/abc-123/apply', title: 'Staff Engineer', company: 'Acme', status: 'applied' }
 
 test('tools/list returns every tool', async () => {
   const { tools } = await client.listTools()
@@ -137,7 +137,8 @@ test('record_application is refused while track is off and writes once enabled',
   })
   inspect((db) => {
     const events = listEvents(db, recorded.application.id)
-    expect(events.map((event) => [event.from_status, event.to_status, event.source])).toEqual([[null, 'applied', 'agent']])
+    expect(events.map((event) => [event.from_status, event.to_status, event.source]))
+      .toEqual([[null, 'saved', 'agent'], ['saved', 'applied', 'agent']])
   })
 
   const duplicate = await data('record_application', { ...application, url: 'https://jobs.lever.co/acme/abc-123' })
@@ -194,12 +195,12 @@ test('search_jobs upserts postings and reports known and application_status', as
   expect(JSON.stringify(first)).not.toContain('Build things')
 
   enableTrack()
-  const { application: applied } = await data('record_application', {
+  const { application: saved } = await data('record_application', {
     url: 'https://job-boards.greenhouse.io/acme/jobs/1001', title: 'Staff Engineer', company: 'Acme',
   })
   const second = await data('search_jobs', { q: 'engineer' })
   expect(second.jobs.every((job: any) => job.known === true)).toBe(true)
-  expect(second.jobs[0]).toMatchObject({ application_id: applied.id, application_status: 'applied' })
+  expect(second.jobs[0]).toMatchObject({ application_id: saved.id, application_status: 'saved' })
   expect(second.jobs[1]).toMatchObject({ application_id: null, application_status: null })
   inspect((db) => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM postings').get()).toEqual({ n: 3 })
