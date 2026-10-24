@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { MailIcon, PencilIcon, PhoneIcon, Trash2Icon } from 'lucide-react'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
@@ -6,6 +6,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import type { SaveResult } from '@/lib/api'
 import { safeUrl } from '@/lib/format'
 import { OUTCOME_TONES, dateInputValue, kindLabel, outcomeLabel, scheduledLabel, scheduledPatch, stageTypeLabel } from '@/lib/stages'
 import type { Contact, Stage, StageTypes } from '@/lib/types'
@@ -16,8 +17,9 @@ import { type StageDraft, StageFields } from '@/views/applications/stage-fields'
 interface StageCardProps {
   stage: Stage
   types: StageTypes
-  onSave: (body: Record<string, unknown>) => Promise<boolean>
-  onDelete: () => Promise<boolean>
+  openVersion: () => () => string
+  onSave: (body: Record<string, unknown>) => Promise<SaveResult>
+  onDelete: () => Promise<SaveResult>
 }
 
 const draftOf = (stage: Stage): StageDraft => ({
@@ -47,20 +49,28 @@ function ContactLine({ contact }: { contact: Contact }) {
   )
 }
 
-export function StageCard({ stage, types, onSave, onDelete }: StageCardProps) {
+export function StageCard({ stage, types, openVersion, onSave, onDelete }: StageCardProps) {
   const [draft, setDraft] = useState<StageDraft | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
+  const expected = useRef<() => string>(() => '')
   const interview = stage.to_status === 'interviewing'
+
+  const edit = () => {
+    expected.current = openVersion()
+    setDraft(draftOf(stage))
+  }
 
   const save = async () => {
     if (!draft) return
     setBusy(true)
-    const body: Record<string, unknown> = { stage_type: draft.stageType, note: draft.note, contacts: toContacts(draft.contacts) }
+    const body: Record<string, unknown> = {
+      stage_type: draft.stageType, note: draft.note, contacts: toContacts(draft.contacts), expected_updated_at: expected.current(),
+    }
     const scheduled = scheduledPatch(stage.scheduled_at, draft.date)
     if (scheduled !== undefined) body.scheduled_at = scheduled
     if (interview && draft.outcome !== stage.outcome) body.outcome = draft.outcome
-    if (await onSave(body)) setDraft(null)
+    if (await onSave(body) !== 'failed') setDraft(null)
     setBusy(false)
   }
 
@@ -79,7 +89,7 @@ export function StageCard({ stage, types, onSave, onDelete }: StageCardProps) {
         </div>
         {!draft && (
           <div className="flex shrink-0">
-            <Button type="button" variant="ghost" size="icon-sm" aria-label="Edit stage" onClick={() => setDraft(draftOf(stage))}>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label="Edit stage" onClick={edit}>
               <PencilIcon />
             </Button>
             <Button type="button" variant="ghost" size="icon-sm" aria-label="Delete stage" onClick={() => setConfirming(true)}>
@@ -126,7 +136,7 @@ export function StageCard({ stage, types, onSave, onDelete }: StageCardProps) {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
-              onClick={() => { void onDelete().then((ok) => { if (ok) setConfirming(false) }) }}
+              onClick={() => { void onDelete().then((result) => { if (result !== 'failed') setConfirming(false) }) }}
             >
               Delete
             </AlertDialogAction>

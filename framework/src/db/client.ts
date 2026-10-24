@@ -15,6 +15,7 @@ export interface Db {
   prepare(sql: string): Statement
   exec(sql: string): unknown
   close(): unknown
+  readonly inTransaction: boolean
 }
 
 export interface OpenOptions {
@@ -35,17 +36,24 @@ function bunSqlite(path: string, options: OpenOptions): Db {
     },
     exec: (sql) => db.exec(sql),
     close: () => db.close(),
+    get inTransaction() {
+      return db.inTransaction
+    },
   }
 }
 
+export const BUSY_TIMEOUT_MS = 5000
+
 export function openDb(path: string, options: OpenOptions = {}): Db {
   const db = bunSqlite(path, options)
+  db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`)
   if (!options.readonly) db.exec('PRAGMA journal_mode = WAL')
   db.exec('PRAGMA foreign_keys = ON')
   return db
 }
 
 export function transaction<T>(db: Db, fn: () => T): T {
+  if (db.inTransaction) return fn()
   db.exec('BEGIN IMMEDIATE')
   try {
     const result = fn()

@@ -9,13 +9,14 @@ import {
   getApplicationWithPosting, listApplicationsWithPostings, listEvents, setStatus, softDeleteApplication,
   updateApplicationFields,
 } from '../db/applications'
-import type { Db } from '../db/client'
+import { type Db, transaction } from '../db/client'
 import {
   ContactsSchema, INTERVIEW_STAGES, OFFER_STAGES, STAGE_KINDS, STAGE_OUTCOMES, STAGE_TYPES, addStage, deleteStage,
   getStage, listStages, updateStage,
 } from '../db/interviews'
 import {
-  FACT_BASES, FACT_CATEGORIES, FACT_CONFIDENCES, FACT_STATUSES, deleteFact, getFact, listFacts, updateFact,
+  FACT_BASES, FACT_CATEGORIES, FACT_CONFIDENCES, FACT_STATUSES, MAX_TAG_LENGTH, MAX_TAGS, SlugConflict, deleteFact,
+  getFact, listFacts, updateFact,
 } from '../db/profile-facts'
 import { OUTCOME_STATUSES, type Outcome, dismissOutcome, getOutcome, listOutcomes, matchOutcome } from '../db/outcomes'
 import { permissionsPath, profilePath } from '../paths'
@@ -50,7 +51,12 @@ const text = (max: number) => z.string().max(max).nullable().optional()
 const code = (pattern: RegExp, message: string) => text(3).refine((value) => value == null || pattern.test(value), message)
 const pay = z.number().int('must be a whole number').nonnegative('must be 0 or more').nullable().optional()
 
+export const STALE_MESSAGE = 'changed since you opened it; reloaded'
+const versioned = { expected_updated_at: z.string().max(40).optional() }
+const deleteSchema = z.object(versioned).strict()
+
 const patchSchema = z.object({
+  ...versioned,
   status: z.enum(APPLICATION_STATUSES).optional(),
   note: text(20_000),
   title_override: text(500),
@@ -73,12 +79,13 @@ const stageFields = {
 }
 
 const addStageSchema = z.object({
+  ...versioned,
   kind: z.enum(STAGE_KINDS),
   stage_type: z.enum(STAGE_TYPES),
   ...stageFields,
 }).strict()
 
-const stagePatchSchema = z.object({ stage_type: z.enum(STAGE_TYPES).optional(), ...stageFields }).strict()
+const stagePatchSchema = z.object({ ...versioned, stage_type: z.enum(STAGE_TYPES).optional(), ...stageFields }).strict()
 
 const matchSchema = z.object({ application_id: z.number().int().positive() }).strict()
 
@@ -91,9 +98,10 @@ const listQuerySchema = z.object({
 const factsQuerySchema = z.object({ status: z.enum(FACT_STATUSES).optional() })
 
 const factText = (max: number) => z.string().max(max).nullable().optional()
-const factTags = z.array(z.string().max(100)).max(100).optional()
+const factTags = z.array(z.string().max(MAX_TAG_LENGTH)).max(MAX_TAGS).optional()
 
 const factPatchSchema = z.object({
+  ...versioned,
   status: z.enum(FACT_STATUSES).optional(),
   slug: factText(100),
   company: factText(200),
@@ -205,18 +213,39 @@ function parseCandidates(value: string | null): unknown[] {
 
 const withCandidates = (outcome: Outcome) => ({ ...outcome, candidates: parseCandidates(outcome.candidates) })
 
-function patchApplication(db: Db, id: number, body: unknown) {
-  const input = parse(patchSchema, body ?? {})
+function checkVersion(row: { updated_at: string }, expected: string | undefined) {
+  if (expected !== undefined && expected !== row.updated_at) throw new ApiError(409, STALE_MESSAGE)
+}
+
+function currentApplication(db: Db, id: number, expected: string | undefined) {
   const current = getApplication(db, id)
   if (!current) throw new ApiError(404, `application ${id} not found`)
-  const changing = input.status !== undefined && input.status !== current.status
-  const fields = Object.fromEntries(Object.entries(input)
-    .filter(([key, value]) => key !== 'status' && !(key === 'note' && changing) && value !== undefined)) as ApplicationFields
-  if (Object.keys(fields).length > 0) saving(() => updateApplicationFields(db, id, fields))
-  if (changing && input.status !== undefined) {
-    setStatus(db, id, input.status, { source: 'dashboard', note: input.note ?? undefined })
-  }
-  return requireApplication(db, id)
+  checkVersion(current, expected)
+  return current
+}
+
+function patchApplication(db: Db, id: number, body: unknown) {
+  const { expected_updated_at: expected, ...input } = parse(patchSchema, body ?? {})
+  return transaction(db, () => {
+    const current = currentApplication(db, id, expected)
+    const changing = input.status !== undefined && input.status !== current.status
+    const fields = Object.fromEntries(Object.entries(input)
+      .filter(([key, value]) => key !== 'status' && !(key === 'note' && changing) && value !== undefined)) as ApplicationFields
+    if (Object.keys(fields).length > 0) saving(() => updateApplicationFields(db, id, fields))
+    if (changing && input.status !== undefined) {
+      setStatus(db, id, input.status, { source: 'dashboard', note: input.note ?? undefined })
+    }
+    return requireApplication(db, id)
+  })
+}
+
+function deleteApplication(db: Db, id: number, body: unknown) {
+  const { expected_updated_at: expected } = parse(deleteSchema, body ?? {})
+  return transaction(db, () => {
+    currentApplication(db, id, expected)
+    softDeleteApplication(db, id)
+    return { ok: true }
+  })
 }
 
 function requireStage(db: Db, id: number) {
@@ -230,20 +259,32 @@ function requireStage(db: Db, id: number) {
 
 function postStage(db: Db, id: number, body: unknown) {
   const input = parse(addStageSchema, body ?? {})
-  requireApplication(db, id)
-  return saving(() => addStage(db, id, {
-    kind: input.kind, stageType: input.stage_type, scheduledAt: input.scheduled_at, outcome: input.outcome,
-    note: input.note, contacts: input.contacts, source: 'dashboard',
-  }))
+  return transaction(db, () => {
+    currentApplication(db, id, input.expected_updated_at)
+    return saving(() => addStage(db, id, {
+      kind: input.kind, stageType: input.stage_type, scheduledAt: input.scheduled_at, outcome: input.outcome,
+      note: input.note, contacts: input.contacts, source: 'dashboard',
+    }))
+  })
 }
 
 function patchStage(db: Db, id: number, body: unknown) {
   const input = parse(stagePatchSchema, body ?? {})
-  requireStage(db, id)
-  return saving(() => updateStage(db, id, {
-    stageType: input.stage_type, scheduledAt: input.scheduled_at, outcome: input.outcome, note: input.note,
-    contacts: input.contacts,
-  }))
+  return transaction(db, () => {
+    currentApplication(db, requireStage(db, id).application_id, input.expected_updated_at)
+    return saving(() => updateStage(db, id, {
+      stageType: input.stage_type, scheduledAt: input.scheduled_at, outcome: input.outcome, note: input.note,
+      contacts: input.contacts,
+    }))
+  })
+}
+
+function removeStage(db: Db, id: number, body: unknown) {
+  const { expected_updated_at: expected } = parse(deleteSchema, body ?? {})
+  return transaction(db, () => {
+    currentApplication(db, requireStage(db, id).application_id, expected)
+    return deleteStage(db, id)
+  })
 }
 
 function requireFact(db: Db, id: number) {
@@ -253,9 +294,19 @@ function requireFact(db: Db, id: number) {
 }
 
 function patchFact(db: Db, id: number, body: unknown) {
-  const input = parse(factPatchSchema, body ?? {})
-  requireFact(db, id)
-  return saving(() => updateFact(db, id, input))
+  const { expected_updated_at: expected, ...input } = parse(factPatchSchema, body ?? {})
+  return transaction(db, () => {
+    checkVersion(requireFact(db, id), expected)
+    return saving(() => updateFact(db, id, input))
+  })
+}
+
+function removeFact(db: Db, id: number, body: unknown) {
+  const { expected_updated_at: expected } = parse(deleteSchema, body ?? {})
+  return transaction(db, () => {
+    checkVersion(requireFact(db, id), expected)
+    return deleteFact(db, id)
+  })
 }
 
 function profileView(home: string) {
@@ -287,7 +338,7 @@ function saving<T>(fn: () => T): T {
   try {
     return fn()
   } catch (error) {
-    if (error instanceof RevisionConflict) throw new ApiError(409, error.message)
+    if (error instanceof RevisionConflict || error instanceof SlugConflict) throw new ApiError(409, error.message)
     if (error instanceof Error && !(error instanceof ApiError) && !('code' in error)) throw new ApiError(400, error.message)
     throw error
   }
@@ -338,33 +389,18 @@ const routes: { method: string; pattern: RegExp; handler: Handler }[] = [
   },
   { method: 'POST', pattern: /^\/api\/applications\/(\d+)\/stages$/, handler: ({ db }, req, id) => postStage(db, id, req.body) },
   { method: 'PATCH', pattern: /^\/api\/stages\/(\d+)$/, handler: ({ db }, req, id) => patchStage(db, id, req.body) },
-  {
-    method: 'DELETE', pattern: /^\/api\/stages\/(\d+)$/,
-    handler: ({ db }, _req, id) => {
-      requireStage(db, id)
-      return deleteStage(db, id)
-    },
-  },
+  { method: 'DELETE', pattern: /^\/api\/stages\/(\d+)$/, handler: ({ db }, req, id) => removeStage(db, id, req.body) },
   { method: 'PATCH', pattern: /^\/api\/applications\/(\d+)$/, handler: ({ db }, req, id) => patchApplication(db, id, req.body) },
   {
     method: 'DELETE', pattern: /^\/api\/applications\/(\d+)$/,
-    handler: ({ db }, _req, id) => {
-      if (!softDeleteApplication(db, id)) throw new ApiError(404, `application ${id} not found`)
-      return { ok: true }
-    },
+    handler: ({ db }, req, id) => deleteApplication(db, id, req.body),
   },
   {
     method: 'GET', pattern: /^\/api\/profile-facts$/,
     handler: ({ db }, req) => ({ facts: listFacts(db, parse(factsQuerySchema, queryObject(req.query))) }),
   },
   { method: 'PATCH', pattern: /^\/api\/profile-facts\/(\d+)$/, handler: ({ db }, req, id) => patchFact(db, id, req.body) },
-  {
-    method: 'DELETE', pattern: /^\/api\/profile-facts\/(\d+)$/,
-    handler: ({ db }, _req, id) => {
-      requireFact(db, id)
-      return deleteFact(db, id)
-    },
-  },
+  { method: 'DELETE', pattern: /^\/api\/profile-facts\/(\d+)$/, handler: ({ db }, req, id) => removeFact(db, id, req.body) },
   {
     method: 'GET', pattern: /^\/api\/outcomes$/,
     handler: ({ db }, req) => listOutcomes(db, parse(outcomesQuerySchema, queryObject(req.query))).map(withCandidates),
@@ -373,17 +409,19 @@ const routes: { method: string; pattern: RegExp; handler: Handler }[] = [
     method: 'POST', pattern: /^\/api\/outcomes\/(\d+)\/match$/,
     handler: ({ db }, req, id) => {
       const { application_id } = parse(matchSchema, req.body ?? {})
-      if (!getOutcome(db, id)) throw new ApiError(404, `outcome ${id} not found`)
-      if (!getApplication(db, application_id)) throw new ApiError(404, `application ${application_id} not found`)
-      return matchOutcome(db, id, application_id, { source: 'dashboard' })
+      return transaction(db, () => {
+        if (!getOutcome(db, id)) throw new ApiError(404, `outcome ${id} not found`)
+        if (!getApplication(db, application_id)) throw new ApiError(404, `application ${application_id} not found`)
+        return matchOutcome(db, id, application_id, { source: 'dashboard' })
+      })
     },
   },
   {
     method: 'POST', pattern: /^\/api\/outcomes\/(\d+)\/dismiss$/,
-    handler: ({ db }, _req, id) => {
+    handler: ({ db }, _req, id) => transaction(db, () => {
       if (!getOutcome(db, id)) throw new ApiError(404, `outcome ${id} not found`)
       return dismissOutcome(db, id)
-    },
+    }),
   },
 ]
 

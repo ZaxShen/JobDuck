@@ -25,10 +25,12 @@ export const fetchJSON = <T>(path: string) => request<T>('GET', path)
 export const putJSON = <T>(path: string, body: unknown) => request<T>('PUT', path, body)
 export const postJSON = <T>(path: string, body?: unknown) => request<T>('POST', path, body)
 export const patchJSON = <T>(path: string, body: unknown) => request<T>('PATCH', path, body)
-export const deleteJSON = <T>(path: string) => request<T>('DELETE', path)
+export const deleteJSON = <T>(path: string, body?: unknown) => request<T>('DELETE', path, body)
 
 export const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error))
 export const isConflict = (error: unknown) => error instanceof ApiError && error.status === 409
+
+export type SaveResult = 'saved' | 'reloaded' | 'failed'
 
 export function applicationsPath(params: Record<string, string | undefined>): string {
   const query = new URLSearchParams()

@@ -5,9 +5,10 @@ import { type Sandbox, migratedDb, sandbox } from './helpers'
 import { INBOX_EXTENSIONS, INBOX_MAX_FILE_BYTES, handleApi } from '../src/dashboard/api'
 import { INBOX_TYPES, MAX_UPLOAD_BYTES } from '../web/src/lib/inbox'
 import type { Db } from '../src/db/client'
-import { createApplication, listEvents } from '../src/db/applications'
+import { createApplication, getApplication, listEvents, updateApplicationFields } from '../src/db/applications'
 import { insertOutcome, listOutcomes } from '../src/db/outcomes'
-import { getFact, saveFacts } from '../src/db/profile-facts'
+import { addStage } from '../src/db/interviews'
+import { getFact, saveFacts, updateFact } from '../src/db/profile-facts'
 import { upsertPosting } from '../src/db/postings'
 import { type Dashboard, startDashboard } from '../src/dashboard/server'
 
@@ -487,4 +488,94 @@ test('profile facts: invalid patches get 400, unknown ids 404, and mutations nee
   expect(bare.status).toBe(403)
   expect((await fetch(`${dash.url}/api/profile-facts/${first!.id}`, { method: 'DELETE' })).status).toBe(403)
   expect(getFact(db, first!.id)).toMatchObject({ status: 'proposed', action: first!.action })
+})
+
+const STALE = 'changed since you opened it; reloaded'
+const tick = () => Bun.sleep(5)
+
+test('PATCH /api/applications/:id with a stale expected_updated_at gets 409 and writes nothing', async () => {
+  const opened = getApplication(db, ids.acme)!.updated_at
+  await tick()
+  const agent = updateApplicationFields(db, ids.acme, { note: 'agent note' })
+  const stale = await mutate('PATCH', `/api/applications/${ids.acme}`, { note: 'dashboard note', expected_updated_at: opened })
+  expect(stale.res.status).toBe(409)
+  expect(stale.body.error).toBe(STALE)
+  expect(getApplication(db, ids.acme)).toMatchObject({ note: 'agent note', updated_at: agent.updated_at })
+  const staleStatus = await mutate('PATCH', `/api/applications/${ids.acme}`, { status: 'offered', expected_updated_at: opened })
+  expect(staleStatus.res.status).toBe(409)
+  expect(listEvents(db, ids.acme)).toHaveLength(1)
+
+  const fresh = await mutate('PATCH', `/api/applications/${ids.acme}`, {
+    note: 'dashboard note', expected_updated_at: agent.updated_at,
+  })
+  expect(fresh.res.status).toBe(200)
+  expect(fresh.body.note).toBe('dashboard note')
+  expect((await mutate('PATCH', `/api/applications/${ids.acme}`, { note: 'no token' })).res.status).toBe(200)
+})
+
+test('DELETE /api/applications/:id with a stale expected_updated_at gets 409 and keeps the row', async () => {
+  const opened = getApplication(db, ids.gamma)!.updated_at
+  await tick()
+  const agent = updateApplicationFields(db, ids.gamma, { note: 'agent note' })
+  expect((await mutate('DELETE', `/api/applications/${ids.gamma}`, { expected_updated_at: opened })).res.status).toBe(409)
+  expect(getApplication(db, ids.gamma)).toBeDefined()
+  expect((await mutate('DELETE', `/api/applications/${ids.gamma}`, { expected_updated_at: agent.updated_at })).res.status).toBe(200)
+  expect(getApplication(db, ids.gamma)).toBeUndefined()
+})
+
+test('stage POST, PATCH and DELETE check expected_updated_at against the parent application', async () => {
+  const { stage, application } = addStage(db, ids.acme, { kind: 'interviewing', stageType: 'phone_screen' })
+  await tick()
+  const agent = updateApplicationFields(db, ids.acme, { note: 'agent note' })
+
+  const stalePatch = await mutate('PATCH', `/api/stages/${stage.id}`, { outcome: 'advanced', expected_updated_at: application.updated_at })
+  expect(stalePatch.res.status).toBe(409)
+  expect(stalePatch.body.error).toBe(STALE)
+  const staleAdd = await mutate('POST', `/api/applications/${ids.acme}/stages`, {
+    kind: 'interviewing', stage_type: 'technical', expected_updated_at: application.updated_at,
+  })
+  expect(staleAdd.res.status).toBe(409)
+  expect((await mutate('DELETE', `/api/stages/${stage.id}`, { expected_updated_at: application.updated_at })).res.status).toBe(409)
+  const unchanged = (await get(`/api/applications/${ids.acme}`)).body
+  expect(unchanged.stages).toHaveLength(1)
+  expect(unchanged.stages[0].outcome).toBe('pending')
+  expect(unchanged.application.updated_at).toBe(agent.updated_at)
+
+  const patched = await mutate('PATCH', `/api/stages/${stage.id}`, { outcome: 'advanced', expected_updated_at: agent.updated_at })
+  expect(patched.res.status).toBe(200)
+  expect(patched.body.outcome).toBe('advanced')
+  const touched = getApplication(db, ids.acme)!.updated_at
+  expect((await mutate('DELETE', `/api/stages/${stage.id}`, { expected_updated_at: touched })).res.status).toBe(200)
+})
+
+test('PATCH and DELETE /api/profile-facts/:id with a stale expected_updated_at get 409 and write nothing', async () => {
+  const [first] = seedFacts()
+  await tick()
+  const agent = updateFact(db, first!.id, { outcome: 'Agent outcome.' })
+  const stale = await mutate('PATCH', `/api/profile-facts/${first!.id}`, { status: 'accepted', expected_updated_at: first!.updated_at })
+  expect(stale.res.status).toBe(409)
+  expect(stale.body.error).toBe(STALE)
+  expect((await mutate('DELETE', `/api/profile-facts/${first!.id}`, { expected_updated_at: first!.updated_at })).res.status).toBe(409)
+  expect(getFact(db, first!.id)).toMatchObject({ status: 'proposed', outcome: 'Agent outcome.', updated_at: agent.updated_at })
+
+  const fresh = await mutate('PATCH', `/api/profile-facts/${first!.id}`, { status: 'accepted', expected_updated_at: agent.updated_at })
+  expect(fresh.res.status).toBe(200)
+  expect(fresh.body).toMatchObject({ status: 'accepted', outcome: 'Agent outcome.' })
+})
+
+test('renaming a fact to another fact\'s slug gets 409', async () => {
+  const [first, second] = seedFacts()
+  const taken = await mutate('PATCH', `/api/profile-facts/${second!.id}`, { slug: first!.slug })
+  expect(taken.res.status).toBe(409)
+  expect(taken.body.error).toBe(`slug ${first!.slug} is already used by fact ${first!.id}`)
+  expect(getFact(db, second!.id)!.slug).toBe(second!.slug)
+})
+
+test('fact skills and tools are capped at 20 entries of at most 60 characters', async () => {
+  const [first] = seedFacts()
+  const many = Array.from({ length: 21 }, (_, n) => `skill_${n}`)
+  expect((await mutate('PATCH', `/api/profile-facts/${first!.id}`, { skills: many })).res.status).toBe(400)
+  expect((await mutate('PATCH', `/api/profile-facts/${first!.id}`, { tools: ['a'.repeat(61)] })).res.status).toBe(400)
+  expect((await mutate('PATCH', `/api/profile-facts/${first!.id}`, { skills: many.slice(0, 20), tools: ['a'.repeat(60)] })).res.status)
+    .toBe(200)
 })

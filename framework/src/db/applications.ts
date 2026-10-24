@@ -111,28 +111,26 @@ export function createApplication(db: Db, input: CreateApplicationInput): Applic
   })
 }
 
-export function applyStatus(db: Db, id: number, status: ApplicationStatus, options: SetStatusOptions = {}): Application {
-  const source = options.source ?? 'agent'
-  const current = getApplication(db, id)
-  if (!current) throw new Error(`application ${id} not found`)
-  const now = nowIso()
-  const terminal = isTerminal(status)
-  const appliedAt = current.applied_at ?? (status === 'saved' ? null : now)
-  const note = options.note ?? null
-  const row = one<Application>(db.prepare(`UPDATE applications
-      SET status = ?, applied_at = ?, closed_at = ?, closed_by = ?, updated_at = ?,
-        note = CASE WHEN ? IS NULL THEN note WHEN note IS NULL THEN ? ELSE note || char(10) || ? END
-      WHERE id = ?
-      RETURNING *`),
-    status, appliedAt, terminal ? now : null, terminal ? (options.closedBy ?? source) : null, now,
-    note, note, note, id)
-  if (!row) throw new Error(`application ${id} not found`)
-  insertEvent(db, id, current.status, status, source, note, options.metadata, now)
-  return row
-}
-
 export function setStatus(db: Db, id: number, status: ApplicationStatus, options: SetStatusOptions = {}): Application {
-  return transaction(db, () => applyStatus(db, id, status, options))
+  const source = options.source ?? 'agent'
+  return transaction(db, () => {
+    const current = getApplication(db, id)
+    if (!current) throw new Error(`application ${id} not found`)
+    const now = nowIso()
+    const terminal = isTerminal(status)
+    const appliedAt = current.applied_at ?? (status === 'saved' ? null : now)
+    const note = options.note ?? null
+    const row = one<Application>(db.prepare(`UPDATE applications
+        SET status = ?, applied_at = ?, closed_at = ?, closed_by = ?, updated_at = ?,
+          note = CASE WHEN ? IS NULL THEN note WHEN note IS NULL THEN ? ELSE note || char(10) || ? END
+        WHERE id = ?
+        RETURNING *`),
+      status, appliedAt, terminal ? now : null, terminal ? (options.closedBy ?? source) : null, now,
+      note, note, note, id)
+    if (!row) throw new Error(`application ${id} not found`)
+    insertEvent(db, id, current.status, status, source, note, options.metadata, now)
+    return row
+  })
 }
 
 export interface ListApplicationsFilter {
@@ -190,12 +188,14 @@ export function updateApplicationFields(db: Db, id: number, fields: ApplicationF
   const valid = parsed.data as ApplicationFields
   const keys = EDITABLE_FIELDS.filter((key) => valid[key] !== undefined)
   const assignments = [...keys.map((key) => `${key} = ?`), 'updated_at = ?']
-  const row = one<Application>(db.prepare(`UPDATE applications SET ${assignments.join(', ')}
-      WHERE id = ? AND deleted_at IS NULL
-      RETURNING *`),
-    ...keys.map((key) => valid[key]), nowIso(), id)
-  if (!row) throw new Error(`application ${id} not found`)
-  return row
+  return transaction(db, () => {
+    const row = one<Application>(db.prepare(`UPDATE applications SET ${assignments.join(', ')}
+        WHERE id = ? AND deleted_at IS NULL
+        RETURNING *`),
+      ...keys.map((key) => valid[key]), nowIso(), id)
+    if (!row) throw new Error(`application ${id} not found`)
+    return row
+  })
 }
 
 export function softDeleteApplication(db: Db, id: number): boolean {

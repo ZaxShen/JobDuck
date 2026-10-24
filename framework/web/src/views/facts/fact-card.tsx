@@ -9,19 +9,21 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import type { SaveResult } from '@/lib/api'
 import type { FactStatus, ProfileFact } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 interface FactCardProps {
   fact: ProfileFact
-  onSave: (body: Record<string, unknown>) => Promise<boolean>
-  onDelete: () => Promise<boolean>
+  onSave: (body: Record<string, unknown>) => Promise<SaveResult>
+  onDelete: () => Promise<SaveResult>
 }
 
 interface FactDraft {
   action: string
   outcome: string
   metrics: string
+  openedAt: string
 }
 
 const CONFIDENCE_TONES: Record<string, string> = {
@@ -39,7 +41,7 @@ const MOVES: { status: FactStatus; label: string; icon: typeof CheckIcon; primar
 const label = (tag: string) => tag.replace(/_/g, ' ')
 
 const draftOf = (fact: ProfileFact): FactDraft => ({
-  action: fact.action, outcome: fact.outcome ?? '', metrics: fact.metrics ?? '',
+  action: fact.action, outcome: fact.outcome ?? '', metrics: fact.metrics ?? '', openedAt: fact.updated_at,
 })
 
 function changes(fact: ProfileFact, draft: FactDraft): Record<string, unknown> {
@@ -60,15 +62,16 @@ export function FactCard({ fact, onSave, onDelete }: FactCardProps) {
   const [busy, setBusy] = useState(false)
   const id = `fact-${fact.id}`
 
-  const run = async (body: Record<string, unknown>) => {
+  const run = async (body: Record<string, unknown>, expected: string): Promise<SaveResult> => {
+    if (Object.keys(body).length === 0) return 'saved'
     setBusy(true)
-    const ok = Object.keys(body).length === 0 || await onSave(body)
+    const result = await onSave({ ...body, expected_updated_at: expected })
     setBusy(false)
-    return ok
+    return result
   }
 
   const save = async () => {
-    if (draft && await run(changes(fact, draft))) setDraft(null)
+    if (draft && await run(changes(fact, draft), draft.openedAt) !== 'failed') setDraft(null)
   }
 
   return (
@@ -140,7 +143,7 @@ export function FactCard({ fact, onSave, onDelete }: FactCardProps) {
               size="sm"
               variant={move.primary ? 'default' : 'outline'}
               disabled={busy}
-              onClick={() => void run({ status: move.status })}
+              onClick={() => void run({ status: move.status }, fact.updated_at)}
             >
               <move.icon />
               {move.label}
@@ -161,7 +164,7 @@ export function FactCard({ fact, onSave, onDelete }: FactCardProps) {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
-              onClick={() => { void onDelete().then((ok) => { if (ok) setConfirming(false) }) }}
+              onClick={() => { void onDelete().then((result) => { if (result !== 'failed') setConfirming(false) }) }}
             >
               Delete
             </AlertDialogAction>

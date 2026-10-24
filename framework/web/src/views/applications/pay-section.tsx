@@ -16,11 +16,12 @@ export type PayKey = (typeof PAY_FIELDS)[number][0]
 
 interface PaySectionProps {
   values: Record<PayKey | 'currency', string>
+  errors: Partial<Record<PayKey, string>>
   onChange: (key: PayKey | 'currency', value: string) => void
   onCommit: (key: PayKey | 'currency') => void
 }
 
-export function PaySection({ values, onChange, onCommit }: PaySectionProps) {
+export function PaySection({ values, errors, onChange, onCommit }: PaySectionProps) {
   return (
     <fieldset className="space-y-3">
       <legend className="mb-2 text-sm font-medium">Offer &amp; pay</legend>
@@ -30,14 +31,14 @@ export function PaySection({ values, onChange, onCommit }: PaySectionProps) {
             <Label htmlFor={`f-${key}`} className="text-muted-foreground">{label}</Label>
             <Input
               id={`f-${key}`}
-              type="number"
               inputMode="numeric"
-              min={0}
-              step={1}
               value={values[key]}
+              aria-invalid={errors[key] ? true : undefined}
+              aria-describedby={errors[key] ? `f-${key}-error` : undefined}
               onChange={(event) => onChange(key, event.target.value)}
               onBlur={() => onCommit(key)}
             />
+            {errors[key] && <p id={`f-${key}-error`} className="text-xs text-destructive">{errors[key]}</p>}
           </div>
         ))}
         <div className="space-y-1.5">

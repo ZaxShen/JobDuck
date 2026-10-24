@@ -462,3 +462,27 @@ test('profile fact tools reject invalid facts and missing ids without writing', 
   expect(missing.isError).toBe(true)
   expect(missing.content[0]?.text).toBe('fact 9999 not found')
 })
+
+test('save_profile_facts refuses more than 20 skills or a tool over 60 characters and saves nothing', async () => {
+  enableCv()
+  const manySkills = await call('save_profile_facts', {
+    facts: [inferredFact, { ...fact, skills: Array.from({ length: 21 }, (_, n) => `skill_${n}`) }],
+  })
+  expect(manySkills.isError).toBe(true)
+  const longTool = await call('save_profile_facts', { facts: [{ ...fact, tools: ['a'.repeat(61)] }] })
+  expect(longTool.isError).toBe(true)
+  inspect((db) => expect(db.prepare('SELECT COUNT(*) AS n FROM profile_facts').get()).toEqual({ n: 0 }))
+  const atLimit = await data('save_profile_facts', {
+    facts: [{ ...fact, skills: Array.from({ length: 20 }, (_, n) => `skill_${n}`), tools: ['a'.repeat(60)] }],
+  })
+  expect(atLimit.inserted).toBe(1)
+})
+
+test('update_profile_fact names the slug when it is taken by another fact', async () => {
+  enableCv()
+  const { facts } = await data('save_profile_facts', { facts: [fact, inferredFact] })
+  const taken = await call('update_profile_fact', { id: facts[1].id, slug: fact.slug })
+  expect(taken.isError).toBe(true)
+  expect(taken.content[0]?.text).toBe(`slug ${fact.slug} is already used by fact ${facts[0].id}`)
+  expect((await data('list_profile_facts')).facts.map((f: any) => f.slug)).toEqual(['pm-001', 'pm-002'])
+})

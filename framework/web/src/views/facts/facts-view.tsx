@@ -3,7 +3,8 @@ import { LightbulbIcon } from 'lucide-react'
 import { SectionCard } from '@/components/composed/section-card'
 import { Button } from '@/components/ui/button'
 import { useFlash } from '@/hooks/use-flash'
-import { deleteJSON, errorMessage, fetchJSON, patchJSON } from '@/lib/api'
+import { useVisiblePoll } from '@/hooks/use-visible-poll'
+import { type SaveResult, deleteJSON, errorMessage, fetchJSON, isConflict, patchJSON } from '@/lib/api'
 import type { FactStatus, ProfileFact } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { FactCard } from '@/views/facts/fact-card'
@@ -72,15 +73,19 @@ export function FactsView({ active }: { active: boolean }) {
     return () => window.removeEventListener('focus', onFocus)
   }, [active, refresh])
 
-  const mutate = useCallback(async (call: () => Promise<unknown>, done: string) => {
+  useVisiblePoll(refresh, active)
+
+  const mutate = useCallback(async (call: () => Promise<unknown>, done: string): Promise<SaveResult> => {
     try {
       await call()
       flash(done)
       await refresh()
-      return true
+      return 'saved'
     } catch (error) {
       flash(errorMessage(error), true)
-      return false
+      if (!isConflict(error)) return 'failed'
+      await refresh()
+      return 'reloaded'
     }
   }, [flash, refresh])
 
@@ -138,7 +143,10 @@ export function FactsView({ active }: { active: boolean }) {
                             () => patchJSON(`/api/profile-facts/${fact.id}`, body),
                             typeof body.status === 'string' ? MOVED[body.status as FactStatus] : 'Fact saved',
                           )}
-                          onDelete={() => mutate(() => deleteJSON(`/api/profile-facts/${fact.id}`), 'Fact deleted')}
+                          onDelete={() => mutate(
+                            () => deleteJSON(`/api/profile-facts/${fact.id}`, { expected_updated_at: fact.updated_at }),
+                            'Fact deleted',
+                          )}
                         />
                       ))}
                     </ul>

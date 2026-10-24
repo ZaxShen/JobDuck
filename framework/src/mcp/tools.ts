@@ -8,14 +8,15 @@ import {
   getLiveApplicationForPosting, getPostingDescription, listApplicationsWithPostings, PAY_FIELDS, setStatus, summarizeApplication,
   updateApplicationFields,
 } from '../db/applications'
-import { type Db, one } from '../db/client'
+import { type Db, one, transaction } from '../db/client'
 import {
   addStage, deleteStage, listStages, MAX_CONTACTS, SCHEDULED_AT, SCHEDULED_AT_MESSAGE, STAGE_KINDS, STAGE_OUTCOMES,
   STAGE_TYPES, updateStage,
 } from '../db/interviews'
 import { findPostingByUrl, type Posting, upsertPosting } from '../db/postings'
 import {
-  deleteFact, FACT_BASES, FACT_CATEGORIES, FACT_CONFIDENCES, FACT_STATUSES, listFacts, saveFacts, updateFact,
+  deleteFact, FACT_BASES, FACT_CATEGORIES, FACT_CONFIDENCES, FACT_STATUSES, listFacts, MAX_TAG_LENGTH, MAX_TAGS, saveFacts,
+  updateFact,
 } from '../db/profile-facts'
 import { type FetchLike, searchJobs } from '../freehire/client'
 import { toPostingInput } from '../freehire/map'
@@ -136,7 +137,8 @@ const Pay = z.number().int().nonnegative().nullable().optional()
 const OptionalText = z.string().nullable().optional()
 
 const FactStatus = z.enum(FACT_STATUSES)
-const Tags = z.array(z.string()).describe('lowercase snake_case tags, e.g. ["data_modeling"]')
+const Tags = z.array(z.string().max(MAX_TAG_LENGTH)).max(MAX_TAGS)
+  .describe(`at most ${MAX_TAGS} lowercase snake_case tags of at most ${MAX_TAG_LENGTH} characters, e.g. ["data_modeling"]`)
 const factFields = {
   slug: OptionalText.describe('stable id scoped to the project, e.g. abc-001; saving an existing slug updates that fact'),
   company: OptionalText,
@@ -225,7 +227,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     },
   }, (args) => run(async () => {
     const result = await searchJobs(args, { fetch: deps.fetch, sleep: deps.sleep })
-    const jobs = result.jobs.map((job) => {
+    const jobs = transaction(db, () => result.jobs.map((job) => {
       const input = toPostingInput(job)
       const known = findPostingByUrl(db, input.url) !== undefined
       const posting = upsertPosting(db, input)
@@ -250,7 +252,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         application_id: application?.id ?? null,
         application_status: application?.status ?? null,
       }
-    })
+    }))
     return { total: result.total, returned: jobs.length, jobs }
   }))
 
@@ -296,17 +298,19 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   }, (args) => run(() => {
     requireTrack()
     const extracted = args.extracted === undefined ? undefined : filterExtracted(args.extracted)
-    const existing = findPostingByUrl(db, args.url)
-    const duplicate = existing ? getLiveApplicationForPosting(db, existing.id) : undefined
-    if (duplicate) return { duplicate: true, application: duplicate }
-    const posting = upsertPosting(db, {
-      source: 'agent', url: args.url, title: args.title, company: args.company, location: args.location,
+    return transaction(db, () => {
+      const existing = findPostingByUrl(db, args.url)
+      const duplicate = existing ? getLiveApplicationForPosting(db, existing.id) : undefined
+      if (duplicate) return { duplicate: true, application: duplicate }
+      const posting = upsertPosting(db, {
+        source: 'agent', url: args.url, title: args.title, company: args.company, location: args.location,
+      })
+      const application = createApplication(db, {
+        postingId: posting.id, status: args.status, source: args.source,
+        appliedAt: args.applied_at, note: args.note, extracted,
+      })
+      return { application, posting, marker: `JobDuck-Application-Id: ${application.id}` }
     })
-    const application = createApplication(db, {
-      postingId: posting.id, status: args.status, source: args.source,
-      appliedAt: args.applied_at, note: args.note, extracted,
-    })
-    return { application, posting, marker: `JobDuck-Application-Id: ${application.id}` }
   }))
 
   server.registerTool('update_status', {

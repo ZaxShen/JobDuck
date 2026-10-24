@@ -6,14 +6,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useFlash } from '@/hooks/use-flash'
+import { useVisiblePoll } from '@/hooks/use-visible-poll'
 import { applicationsPath, errorMessage, fetchJSON } from '@/lib/api'
 import { day, statusLabel } from '@/lib/format'
 import type { ApplicationRow, Outcome, Summary } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { ApplicationSheet } from '@/views/applications/application-sheet'
 import { OutcomeItem } from '@/views/applications/outcome-item'
-
-const POLL_MS = 30_000
 
 interface ApplicationsViewProps {
   active: boolean
@@ -52,11 +51,7 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
     if (active) void refresh()
   }, [active, refresh])
 
-  useEffect(() => {
-    if (!active) return
-    const timer = setInterval(() => { if (!document.hidden) void refresh() }, POLL_MS)
-    return () => clearInterval(timer)
-  }, [active, refresh])
+  useVisiblePoll(refresh, active)
 
   useEffect(() => {
     const timer = setTimeout(() => setQ(search.trim()), 200)

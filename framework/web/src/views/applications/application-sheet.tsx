@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ExternalLinkIcon, Trash2Icon } from 'lucide-react'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
@@ -12,7 +12,8 @@ import { Separator } from '@/components/ui/separator'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { useFlash } from '@/hooks/use-flash'
-import { deleteJSON, errorMessage, fetchJSON, patchJSON, postJSON } from '@/lib/api'
+import { POLL_MS, isVisible } from '@/hooks/use-visible-poll'
+import { type SaveResult, deleteJSON, errorMessage, fetchJSON, isConflict, patchJSON, postJSON } from '@/lib/api'
 import { safeUrl, stamp, statusLabel } from '@/lib/format'
 import { kindLabel, outcomeLabel, stageTypeLabel } from '@/lib/stages'
 import type { ApplicationEvent, ApplicationRow, Stage, StageKind, StageTypes } from '@/lib/types'
@@ -36,14 +37,20 @@ const OVERRIDE_HINTS: Partial<Record<OverrideKey, string>> = {
 }
 
 type OverrideKey = `${(typeof OVERRIDES)[number][0]}_override`
-type FieldKey = OverrideKey | PayKey | 'currency'
+type FieldKey = OverrideKey | PayKey | 'currency' | 'note'
+type Form = Record<FieldKey, string>
+type FillMode = 'poll' | 'saved' | 'reload'
 
 const FIELD_KEYS: FieldKey[] = [
-  ...OVERRIDES.map(([field]) => `${field}_override` as const), ...PAY_FIELDS.map(([key]) => key), 'currency',
+  ...OVERRIDES.map(([field]) => `${field}_override` as const), ...PAY_FIELDS.map(([key]) => key), 'currency', 'note',
 ]
 const PAY_KEYS = new Set<FieldKey>(PAY_FIELDS.map(([key]) => key))
+const PAY_ERROR = 'Enter a whole number, 0 or more.'
 
 const storedText = (app: ApplicationRow, key: FieldKey) => (app[key] === null ? '' : String(app[key]))
+const formOf = (app: ApplicationRow | null) =>
+  Object.fromEntries(FIELD_KEYS.map((key) => [key, app ? storedText(app, key) : ''])) as Form
+const parsePay = (text: string) => (/^\d+$/.test(text) ? Number(text) : null)
 
 const isStageEvent = (event: ApplicationEvent) =>
   event.stage_type !== null && (event.to_status === 'interviewing' || event.to_status === 'offered')
@@ -75,71 +82,110 @@ interface ApplicationSheetProps {
 export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }: ApplicationSheetProps) {
   const flash = useFlash()
   const [detail, setDetail] = useState<Detail | null>(null)
-  const [note, setNote] = useState('')
-  const [fields, setFields] = useState<Record<FieldKey, string>>(
-    () => Object.fromEntries(FIELD_KEYS.map((key) => [key, ''])) as Record<FieldKey, string>,
-  )
+  const [form, setForm] = useState<Form>(() => formOf(null))
+  const [payErrors, setPayErrors] = useState<Partial<Record<PayKey, string>>>({})
   const [types, setTypes] = useState<StageTypes | null>(null)
   const [confirming, setConfirming] = useState(false)
+  const shown = useRef<number | null>(null)
+  const version = useRef('')
+  const latest = useRef('')
+  const outsideChanges = useRef(0)
+  const dirty = useRef(new Set<FieldKey>())
+  const queue = useRef<Promise<unknown>>(Promise.resolve())
 
-  const fill = (data: Detail) => {
+  const fill = useCallback((data: Detail, mode: FillMode) => {
+    if (data.application.id !== shown.current) return
+    if (mode === 'reload') dirty.current.clear()
+    if (mode !== 'poll' || dirty.current.size === 0) version.current = data.application.updated_at
+    if (mode !== 'saved' && data.application.updated_at !== latest.current) outsideChanges.current += 1
+    latest.current = data.application.updated_at
+    const keep = new Set(dirty.current)
+    const next = formOf(data.application)
     setDetail(data)
-    setNote(data.application.note ?? '')
-    setFields(Object.fromEntries(FIELD_KEYS.map((key) => [key, storedText(data.application, key)])) as Record<FieldKey, string>)
-  }
+    setForm((current) => Object.fromEntries(FIELD_KEYS.map((key) => [key, keep.has(key) ? current[key] : next[key]])) as Form)
+  }, [])
+
+  const enqueue = useCallback(<T,>(task: () => Promise<T>) => {
+    const next = queue.current.then(task)
+    queue.current = next.catch(() => undefined)
+    return next
+  }, [])
+
+  const load = useCallback((target: number, mode: FillMode) =>
+    fetchJSON<Detail>(`/api/applications/${target}`).then((data) => fill(data, mode)), [fill])
 
   useEffect(() => {
     fetchJSON<StageTypes>('/api/stage-types').then(setTypes).catch((error: unknown) => flash(errorMessage(error), true))
   }, [flash])
 
   useEffect(() => {
+    shown.current = id
+    dirty.current.clear()
+    setPayErrors({})
     if (id === null) return
-    let live = true
-    fetchJSON<Detail>(`/api/applications/${id}`)
-      .then((data) => { if (live) fill(data) })
-      .catch((error: unknown) => {
-        flash(errorMessage(error), true)
-        onClose()
-      })
-    return () => { live = false }
-  }, [id, flash, onClose])
-
-  const run = async (action: () => Promise<unknown>, message: string) => {
-    if (id === null) return false
-    try {
-      await action()
-      fill(await fetchJSON<Detail>(`/api/applications/${id}`))
-      flash(message)
-      await onChanged()
-      return true
-    } catch (error) {
+    void enqueue(() => load(id, 'reload')).catch((error: unknown) => {
       flash(errorMessage(error), true)
-      return false
-    }
+      onClose()
+    })
+    const timer = setInterval(() => {
+      if (isVisible()) void enqueue(() => load(id, 'poll')).catch(() => undefined)
+    }, POLL_MS)
+    return () => clearInterval(timer)
+  }, [id, flash, onClose, enqueue, load])
+
+  const run = (action: () => Promise<unknown>, message: string, done?: () => void): Promise<SaveResult> =>
+    enqueue(async () => {
+      if (id === null) return 'failed'
+      try {
+        await action()
+      } catch (error) {
+        flash(errorMessage(error), true)
+        if (!isConflict(error)) return 'failed'
+        await load(id, 'reload').catch((reloadError: unknown) => flash(errorMessage(reloadError), true))
+        await onChanged()
+        return 'reloaded'
+      }
+      flash(message)
+      if (done) done()
+      else await load(id, 'saved').catch((error: unknown) => flash(errorMessage(error), true))
+      await onChanged()
+      return 'saved'
+    })
+
+  const expected = () => ({ expected_updated_at: version.current })
+
+  const openVersion = () => {
+    const opened = latest.current
+    const mark = outsideChanges.current
+    return () => (outsideChanges.current === mark ? latest.current : opened)
   }
 
   const patch = (body: Record<string, unknown>, message: string) =>
-    run(() => patchJSON(`/api/applications/${id}`, body), message)
+    run(() => patchJSON(`/api/applications/${id}`, { ...body, ...expected() }), message)
 
   const commit = (key: FieldKey) => {
-    if (!app || fields[key] === storedText(app, key)) return
-    const text = fields[key].trim()
-    void patch({ [key]: PAY_KEYS.has(key) ? (text === '' ? null : Number(text)) : text }, 'Saved.')
+    if (!app || !dirty.current.has(key)) return
+    dirty.current.delete(key)
+    if (form[key] === storedText(app, key)) return
+    const text = form[key].trim()
+    if (PAY_KEYS.has(key) && text !== '' && parsePay(text) === null) {
+      setPayErrors((current) => ({ ...current, [key]: PAY_ERROR }))
+      setForm((current) => ({ ...current, [key]: storedText(app, key) }))
+      return
+    }
+    const value = PAY_KEYS.has(key) ? (text === '' ? null : parsePay(text)) : key === 'note' ? form[key] : text
+    void patch({ [key]: value }, key === 'note' ? 'Note saved.' : 'Saved.')
   }
 
-  const setField = (key: FieldKey, value: string) => setFields((current) => ({ ...current, [key]: value }))
+  const setField = (key: FieldKey, value: string) => {
+    dirty.current.add(key)
+    if (PAY_KEYS.has(key)) setPayErrors((current) => ({ ...current, [key]: undefined }))
+    setForm((current) => ({ ...current, [key]: value }))
+  }
 
   const remove = async () => {
-    if (id === null) return
-    try {
-      await deleteJSON(`/api/applications/${id}`)
-      setConfirming(false)
-      onClose()
-      flash('Application deleted.')
-      await onChanged()
-    } catch (error) {
-      flash(errorMessage(error), true)
-    }
+    const result = await run(() => deleteJSON(`/api/applications/${id}`, expected()), 'Application deleted.', onClose)
+    if (result !== 'failed') setConfirming(false)
   }
 
   const app = detail?.application.id === id ? detail.application : null
@@ -186,9 +232,9 @@ export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }:
                 id="f-note"
                 rows={5}
                 placeholder="Interview notes, contacts, next steps"
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-                onBlur={() => { if (note !== (app.note ?? '')) void patch({ note }, 'Note saved.') }}
+                value={form.note}
+                onChange={(event) => setField('note', event.target.value)}
+                onBlur={() => commit('note')}
               />
             </div>
             <fieldset className="space-y-3">
@@ -200,7 +246,7 @@ export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }:
                     <Label htmlFor={`f-${key}`} className="text-muted-foreground">{label}</Label>
                     <Input
                       id={`f-${key}`}
-                      value={fields[key]}
+                      value={form[key]}
                       maxLength={key === 'country_override' ? 2 : undefined}
                       placeholder={OVERRIDE_HINTS[key] ?? app[`posting_${field as 'title' | 'company' | 'location'}`] ?? ''}
                       onChange={(event) => setField(key, key === 'country_override' ? event.target.value.toUpperCase() : event.target.value)}
@@ -222,20 +268,21 @@ export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }:
                         key={stage.id}
                         stage={stage}
                         types={types}
+                        openVersion={openVersion}
                         onSave={(body) => run(() => patchJSON(`/api/stages/${stage.id}`, body), 'Stage saved.')}
-                        onDelete={() => run(() => deleteJSON(`/api/stages/${stage.id}`), 'Stage deleted.')}
+                        onDelete={() => run(() => deleteJSON(`/api/stages/${stage.id}`, expected()), 'Stage deleted.')}
                       />
                     ))}
                   </ul>
                   <AddStageForm
                     types={types}
-                    onAdd={(body) => run(() => postJSON(`/api/applications/${app.id}/stages`, body), 'Stage added.')}
+                    onAdd={(body) => run(() => postJSON(`/api/applications/${app.id}/stages`, { ...body, ...expected() }), 'Stage added.')}
                   />
                 </>
               )}
             </section>
             <Separator />
-            <PaySection values={fields} onChange={setField} onCommit={commit} />
+            <PaySection values={form} errors={payErrors} onChange={setField} onCommit={commit} />
             <Separator />
             <div className="space-y-3">
               <h3 className="text-sm font-medium">Timeline</h3>

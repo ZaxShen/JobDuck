@@ -69,6 +69,8 @@ test('validation rejects a bad category, a non-snake_case tag and a long rationa
   expect(() => saveFacts(db, [stated, { ...inferred, category: 'hobby' as never }])).toThrow('facts[1]: category')
   expect(() => saveFacts(db, [{ ...stated, skills: ['Data Migration'] }])).toThrow('lowercase snake_case')
   expect(() => saveFacts(db, [{ ...stated, tools: ['data-migration'] }])).toThrow('lowercase snake_case')
+  expect(() => saveFacts(db, [{ ...stated, tools: ['a'.repeat(61)] }])).toThrow('tools')
+  expect(() => saveFacts(db, [{ ...stated, skills: Array.from({ length: 21 }, (_, i) => `skill_${i}`) }])).toThrow('skills')
   const long = Array.from({ length: 26 }, (_, i) => `word${i}`).join(' ')
   expect(() => saveFacts(db, [{ ...inferred, rationale: long }])).toThrow('at most 25 words')
   expect(() => saveFacts(db, [{ ...stated, project: '' }])).toThrow('project')

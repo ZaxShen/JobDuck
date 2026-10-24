@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { PlusIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import type { SaveResult } from '@/lib/api'
 import { kindLabel } from '@/lib/stages'
 import type { StageKind, StageTypes } from '@/lib/types'
 import { contactsValid, toContacts } from '@/views/applications/contacts-editor'
@@ -19,7 +20,7 @@ const emptyDraft = (types: StageTypes, kind: StageKind): StageDraft => ({
 
 interface AddStageFormProps {
   types: StageTypes
-  onAdd: (body: Record<string, unknown>) => Promise<boolean>
+  onAdd: (body: Record<string, unknown>) => Promise<SaveResult>
 }
 
 export function AddStageForm({ types, onAdd }: AddStageFormProps) {
@@ -43,7 +44,7 @@ export function AddStageForm({ types, onAdd }: AddStageFormProps) {
     }
     if (draft.contacts.length > 0) body.contacts = toContacts(draft.contacts)
     if (kind === 'interviewing') body.outcome = draft.outcome
-    if (await onAdd(body)) {
+    if (await onAdd(body) === 'saved') {
       setOpen(false)
       setKind('interviewing')
       setDraft(emptyDraft(types, 'interviewing'))

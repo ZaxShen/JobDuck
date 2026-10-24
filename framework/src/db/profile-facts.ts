@@ -15,13 +15,15 @@ export type FactConfidence = (typeof FACT_CONFIDENCES)[number]
 export type FactStatus = (typeof FACT_STATUSES)[number]
 
 export const MAX_RATIONALE_WORDS = 25
-export const MAX_TAGS = 30
+export const MAX_TAGS = 20
+export const MAX_TAG_LENGTH = 60
 export const SNAKE_CASE = /^[a-z0-9]+(_[a-z0-9]+)*$/
 
 const requiredText = (max: number) => z.string().trim().min(1, 'is required').max(max)
 const optionalText = (max: number) => z.string().trim().max(max).nullish()
   .transform((value) => (value ? value : null))
-const tag = z.string().regex(SNAKE_CASE, 'tags must be lowercase snake_case, e.g. data_modeling')
+const tag = z.string().max(MAX_TAG_LENGTH, `tags must be at most ${MAX_TAG_LENGTH} characters`)
+  .regex(SNAKE_CASE, 'tags must be lowercase snake_case, e.g. data_modeling')
 const tags = z.array(tag).max(MAX_TAGS, `at most ${MAX_TAGS} tags`).nullish()
   .transform((values) => [...new Set(values ?? [])])
 
@@ -54,6 +56,12 @@ export const FactSchema = z.object({
     if (fact.rationale !== null) ctx.addIssue({ code: 'custom', path: ['rationale'], message: 'stated facts take no rationale' })
   }
 })
+
+export class SlugConflict extends Error {
+  constructor(readonly slug: string, readonly owner: number) {
+    super(`slug ${slug} is already used by fact ${owner}`)
+  }
+}
 
 export type FactInput = z.input<typeof FactSchema>
 type ValidFact = z.output<typeof FactSchema>
@@ -206,7 +214,7 @@ export function updateFact(db: Db, id: number, patch: FactPatch): ProfileFact {
       `fact ${id}`)
     if (fact.slug !== null) {
       const owner = findBySlug(db, fact.slug)
-      if (owner && owner.id !== id) throw new Error(`slug ${fact.slug} is already used by fact ${owner.id}`)
+      if (owner && owner.id !== id) throw new SlugConflict(fact.slug, owner.id)
     }
     const row = rewrite(db, id, fact, nextStatus, nowIso())
     if (!row) throw new Error(`fact ${id} not found`)
