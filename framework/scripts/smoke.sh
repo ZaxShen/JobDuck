@@ -52,7 +52,7 @@ check "--help lists every command" bash -c "\"$binary\" --help | grep -q init &&
 run "$root/dry.log" "$binary" init --dry-run --workspace "$workspace"
 check "init --dry-run exits 0" true
 check "dry run detects all hosts" contains 'Hosts: Claude Code, Codex CLI, Gemini CLI' "$root/dry.log"
-check "dry run groups skill pointers" contains 'create .claude/skills/jobduck-*/SKILL.md (6 skill pointers)' "$root/dry.log"
+check "dry run groups skill pointers" contains 'create .claude/skills/jobduck-*/SKILL.md (7 skill pointers)' "$root/dry.log"
 check "dry run shows codex config under ~" contains 'update ~/.codex/config.toml' "$root/dry.log"
 check "dry run prints no unified diff" lacks '^[-+@]{2,3} ' "$root/dry.log"
 check "dry run stays short" eval '[[ "$(wc -l < "$root/dry.log")" -le 20 ]]'
@@ -68,13 +68,13 @@ check "init points at profile intake" contains 'jobduck dashboard --view profile
 check "init creates document folders" eval '[[ -d "$workspace/inbox" && -d "$workspace/cv" && -d "$workspace/cover-letters" ]]'
 check "AGENTS.md carries the managed block" contains '<!-- jobduck:end -->' "$workspace/AGENTS.md"
 check "home has profile, permissions and db" eval '[[ -f "$JOBDUCK_HOME/profile.md" && -f "$JOBDUCK_HOME/permissions.toml" && -f "$JOBDUCK_HOME/jobduck.db" ]]'
-check "six skills installed" eval '[[ "$(ls "$JOBDUCK_HOME/skills"/*.md | wc -l)" -eq 6 && -f "$JOBDUCK_HOME/skills/.version" ]]'
+check "seven skills installed" eval '[[ "$(ls "$JOBDUCK_HOME/skills"/*.md | wc -l)" -eq 7 && -f "$JOBDUCK_HOME/skills/.version" ]]'
 check "claude: .mcp.json registers jobduck" contains '"jobduck"' "$workspace/.mcp.json"
 check "claude: AGENTS.md and CLAUDE.md pointer" bash -c "[[ -f '$workspace/AGENTS.md' ]] && grep -q '@AGENTS.md' '$workspace/CLAUDE.md'"
-check "claude: six skill pointers" eval '[[ "$(ls "$workspace"/.claude/skills/jobduck-*/SKILL.md | wc -l)" -eq 6 ]]'
+check "claude: seven skill pointers" eval '[[ "$(ls "$workspace"/.claude/skills/jobduck-*/SKILL.md | wc -l)" -eq 7 ]]'
 check "codex: config.toml registers jobduck" contains '[mcp_servers.jobduck]' "$HOME/.codex/config.toml"
 check "codex: existing config preserved" contains 'model = "o4-mini"' "$HOME/.codex/config.toml"
-check "codex: six skill pointers" eval '[[ "$(ls "$workspace"/.agents/skills/jobduck-*/SKILL.md | wc -l)" -eq 6 ]]'
+check "codex: seven skill pointers" eval '[[ "$(ls "$workspace"/.agents/skills/jobduck-*/SKILL.md | wc -l)" -eq 7 ]]'
 check "gemini: settings.json registers jobduck" contains '"jobduck"' "$HOME/.gemini/settings.json"
 check "gemini: existing settings preserved" contains '"theme"' "$HOME/.gemini/settings.json"
 check "gemini: GEMINI.md pointer" contains 'See AGENTS.md' "$workspace/GEMINI.md"

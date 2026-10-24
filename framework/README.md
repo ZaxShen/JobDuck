@@ -130,13 +130,14 @@ Skills are plain markdown workflows any agent can follow. `init` copies them to 
 | `apply` | "apply to jobs" / "apply to <url>" | Dedupes, picks your CV, fills the form with your browser tool, stops at the approval gate set by `[apply] autonomy`, submits, and records the application. CAPTCHAs and verification codes always stop for you. |
 | `track` | "show my applications" | Lists applications, updates statuses when you report news, and runs `jobduck sync` for rejection emails. No mail access. |
 | `cv` | "tailor my CV for <role>" | Writes `cv/<slug>.md` in the workspace strictly from `profile.md`, within `[cv] page_limit`, with a fact-check list. |
+| `augment` | "augment my profile" | Splits each role in `profile.md` into projects and writes atomic facts (one action each, metrics exactly as written, stated or inferred with a confidence and a rationale) via `save_profile_facts` as `proposed`; you accept or archive each one with `update_profile_fact`. |
 | `interview` | "prep me for my interview at <company>" | Prep pack from the posting and your profile, mock interview, each round and offer via `record_interview` / `update_interview`, offer pay via `update_application`, the final result via `update_status`. |
 
 Skills are owned by the package; your answers live in `profile.md` and `permissions.toml`, so upgrading never loses them. Questions the `apply` skill meets on a form and cannot answer from your profile are asked once and saved under `[apply.answers]`.
 
 ## Tools
 
-Every tool returns compact JSON. Application writes (`record_application`, `update_status`, `update_application`, `record_interview`, `update_interview`, `delete_interview`) are refused until `track = true` in `permissions.toml`; `update_profile` always works.
+Every tool returns compact JSON. Application writes (`record_application`, `update_status`, `update_application`, `record_interview`, `update_interview`, `delete_interview`) are refused until `track = true` in `permissions.toml`, and profile fact writes (`save_profile_facts`, `update_profile_fact`, `delete_profile_fact`) until `cv = true`; `update_profile` always works.
 
 | Tool | Arguments | Returns |
 |---|---|---|
@@ -153,6 +154,10 @@ Every tool returns compact JSON. Application writes (`record_application`, `upda
 | `record_interview` | `application_id`, `kind?` (`interviewing`, default, or `offered`), `stage_type` (`information`, `phone_screen`, `online_assessment`, `hiring_manager`, `technical`, `behavioral`, `system_design`, `onsite`, `take_home`, `other`; or `verbal` / `written` for an offer), `scheduled_at?` (ISO date or timestamp), `outcome?` (`pending`, `advanced`, `rejected`, `ghosted`, `cancelled`; default `pending` for a round), `note?`, `contacts?` (up to 20 of `{ name, title?, email?, phone?, linkedin? }`), `source?` | `{ application, stage }`; the status moves forward to `kind` when it is behind (`saved` / `applied` → `interviewing` → `offered`), never back, and a closed application keeps its status |
 | `update_interview` | `event_id`, `stage_type?`, `scheduled_at?`, `outcome?`, `note?`, `contacts?` | `{ stage }`; edits interview and offer stages only, the status does not change |
 | `delete_interview` | `event_id` | `{ deleted }`; deletes an interview or offer stage only, the status does not change |
+| `list_profile_facts` | `status?` (`proposed`, `accepted`, `archived`; one or an array), `company?`, `project?` (exact, case-insensitive) | `{ facts[] }` ordered by company, project and `sort_order`; `skills` and `tools` are arrays |
+| `save_profile_facts` | `facts` (1 to 100 of `{ slug?, company?, role?, project, category, action, outcome?, metrics?, skills?, tools?, basis, confidence?, rationale?, sort_order? }`) | `{ facts, inserted, updated }`; all saved as `proposed` in one transaction, or none when one is invalid. `category` is `skill`, `tool`, `action`, `outcome`, `methodology`, `context`, `challenge`, `domain-knowledge` or `leadership`; `skills` / `tools` are snake_case tags; `basis` `inferred` needs `confidence` (`low`, `medium`, `high`) and a `rationale` of at most 25 words, `stated` takes neither. A slug that already exists updates that fact and returns it to `proposed` |
+| `update_profile_fact` | `id`, any fact field, `status?` | `{ fact }`; only the fields given change and `null` clears an optional one; the result is validated as a whole (a status-only change is not) |
+| `delete_profile_fact` | `id` | `{ deleted }` |
 
 `search_jobs` uses the public [freehire.me](https://freehire.me) API (no key; 50 results per page, at most 10 000 deep). It, [`jobduck sync`](#sync) (your own Apps Script URL) and [`jobduck upgrade`](#upgrade) (GitHub Releases) are the only network calls Job Duck makes.
 
@@ -212,13 +217,13 @@ Exit codes: `0` done; `1` network error, rejected token (`sync_token rejected; r
 
 ```
 ~/.jobduck/            (override with JOBDUCK_HOME; mode 0700)
-  jobduck.db           SQLite: postings, applications, application_events, outcomes, settings
+  jobduck.db           SQLite: postings, applications, application_events, outcomes, profile_facts, settings
   profile.md           TOML front matter (contact, links, work authorization, search preferences,
                        [[cv_files]]) and sections: Summary, Experience, Projects, Education,
                        Writing style, Facts never to change
   permissions.toml     [modules] switches (all off by default), the [apply] manifest,
                        [track] and [cv] settings
-  skills/              the six skills and a .version stamp (package-owned)
+  skills/              the seven skills and a .version stamp (package-owned)
   dashboard.json       the running dashboard's pid, port, URL and workspace (while it runs)
 
 ~/JobDuck/             your workspace (any folder you ran jobduck init in)
