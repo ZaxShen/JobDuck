@@ -111,3 +111,26 @@ export interface InboxUpload {
   path: string
   name: string
 }
+
+export type FactStatus = 'proposed' | 'accepted' | 'archived'
+
+export interface ProfileFact {
+  id: number
+  slug: string | null
+  company: string | null
+  role: string | null
+  project: string
+  category: string
+  action: string
+  outcome: string | null
+  metrics: string | null
+  skills: string[]
+  tools: string[]
+  basis: 'stated' | 'inferred'
+  confidence: 'low' | 'medium' | 'high' | null
+  rationale: string | null
+  status: FactStatus
+  sort_order: number
+  created_at: string
+  updated_at: string
+}

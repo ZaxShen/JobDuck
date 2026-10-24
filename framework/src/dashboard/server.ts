@@ -21,7 +21,7 @@ export interface DashboardOptions {
   out?: (line: string) => void
 }
 
-export const DASHBOARD_VIEWS = ['applications', 'profile', 'settings', 'welcome'] as const
+export const DASHBOARD_VIEWS = ['applications', 'profile', 'facts', 'settings', 'welcome'] as const
 export type DashboardView = (typeof DASHBOARD_VIEWS)[number]
 
 export const pageUrl = (origin: string, view?: DashboardView) => (view ? `${origin}/#${view}` : origin)

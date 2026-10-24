@@ -370,9 +370,21 @@ test('interview tools reject mismatched stages, bad values and non-stage events'
   const refused = await call('delete_interview', { event_id: firstEvent })
   expect(refused.isError).toBe(true)
   expect(refused.content[0]?.text).toBe(`event ${firstEvent} is not an interview or offer stage`)
+  expect((await data('get_application', { id: created.id })).posting_description).toBeNull()
   const missing = await call('get_application', { id: 9999 })
   expect(missing.isError).toBe(true)
   expect(missing.content[0]?.text).toBe('application 9999 not found')
+})
+
+test('get_application returns the posting description, list_applications does not', async () => {
+  enableTrack()
+  const description = '<p>Build data pipelines at Acme.</p>'
+  inspect((db) => { upsertPosting(db, { source: 'manual', ...application, description }) })
+  const { application: created } = await data('record_application', application)
+  expect((await data('get_application', { id: created.id })).posting_description).toBe(description)
+  const { applications } = await data('list_applications')
+  expect(applications[0]).not.toHaveProperty('posting_description')
+  expect(applications[0]).not.toHaveProperty('description')
 })
 
 const fact = {

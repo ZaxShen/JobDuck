@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
-export const VIEWS = ['applications', 'profile', 'settings', 'welcome'] as const
+export const VIEWS = ['applications', 'profile', 'facts', 'settings', 'welcome'] as const
 export type View = (typeof VIEWS)[number]
 
 const current = (): View => {

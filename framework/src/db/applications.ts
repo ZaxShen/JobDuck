@@ -291,3 +291,9 @@ export function listApplicationsWithPostings(db: Db, filter: ListApplicationsWit
 export function getApplicationWithPosting(db: Db, id: number): ApplicationWithPosting | undefined {
   return one<ApplicationWithPosting>(db.prepare(`${JOINED_SELECT} WHERE a.id = ? AND a.deleted_at IS NULL`), id)
 }
+
+export function getPostingDescription(db: Db, applicationId: number): string | null {
+  const row = one<{ description: string | null }>(db.prepare(`SELECT p.description FROM applications a
+      JOIN postings p ON p.id = a.posting_id WHERE a.id = ? AND a.deleted_at IS NULL`), applicationId)
+  return row?.description ?? null
+}

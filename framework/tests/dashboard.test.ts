@@ -7,6 +7,7 @@ import { INBOX_TYPES, MAX_UPLOAD_BYTES } from '../web/src/lib/inbox'
 import type { Db } from '../src/db/client'
 import { createApplication, listEvents } from '../src/db/applications'
 import { insertOutcome, listOutcomes } from '../src/db/outcomes'
+import { getFact, saveFacts } from '../src/db/profile-facts'
 import { upsertPosting } from '../src/db/postings'
 import { type Dashboard, startDashboard } from '../src/dashboard/server'
 
@@ -431,4 +432,59 @@ test('PATCH pay fields and location overrides round-trips, invalid values get 40
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ salary_min: 1 }),
   })
   expect(bare.status).toBe(403)
+})
+
+const seedFacts = () => saveFacts(db, [
+  {
+    slug: 'acme-001', company: 'Acme', role: 'Data Engineer', project: 'Pipeline Migration', category: 'action',
+    action: 'Migrated nightly batch jobs to a workflow orchestrator.', metrics: '14 jobs', basis: 'stated',
+  },
+  {
+    slug: 'acme-002', company: 'Acme', role: 'Data Engineer', project: 'Pipeline Migration', category: 'outcome',
+    action: 'Added retries to flaky jobs.', basis: 'inferred', confidence: 'medium', rationale: 'Migrations usually need it.',
+  },
+]).facts
+
+test('profile facts: GET filters by status, PATCH accepts and edits, DELETE removes', async () => {
+  const [first, second] = seedFacts()
+  const all = await get('/api/profile-facts')
+  expect(all.res.status).toBe(200)
+  expect(all.body.facts.map((fact: any) => fact.slug)).toEqual(['acme-001', 'acme-002'])
+  expect((await get('/api/profile-facts?status=accepted')).body.facts).toEqual([])
+
+  const accepted = await mutate('PATCH', `/api/profile-facts/${first!.id}`, { status: 'accepted' })
+  expect(accepted.res.status).toBe(200)
+  expect(accepted.body).toMatchObject({ id: first!.id, status: 'accepted', action: first!.action })
+  const onlyAccepted = await get('/api/profile-facts?status=accepted')
+  expect(onlyAccepted.body.facts.map((fact: any) => fact.id)).toEqual([first!.id])
+  expect((await get('/api/profile-facts?status=proposed')).body.facts.map((fact: any) => fact.id)).toEqual([second!.id])
+
+  const edited = await mutate('PATCH', `/api/profile-facts/${second!.id}`, {
+    action: 'Added retries with backoff to flaky jobs.', outcome: 'Fewer reruns.', metrics: '',
+  })
+  expect(edited.res.status).toBe(200)
+  expect(edited.body).toMatchObject({ action: 'Added retries with backoff to flaky jobs.', outcome: 'Fewer reruns.', metrics: null })
+  expect(edited.body.status).toBe('proposed')
+
+  const removed = await mutate('DELETE', `/api/profile-facts/${second!.id}`)
+  expect(removed.res.status).toBe(200)
+  expect(removed.body.id).toBe(second!.id)
+  expect(getFact(db, second!.id)).toBeUndefined()
+})
+
+test('profile facts: invalid patches get 400, unknown ids 404, and mutations need the dashboard header', async () => {
+  const [first] = seedFacts()
+  for (const bad of [{ status: 'deleted' }, { action: '' }, { basis: 'inferred', rationale: null }, { unknown: 1 }]) {
+    expect((await mutate('PATCH', `/api/profile-facts/${first!.id}`, bad)).res.status).toBe(400)
+  }
+  expect((await get('/api/profile-facts?status=deleted')).res.status).toBe(400)
+  expect((await mutate('PATCH', '/api/profile-facts/999', { status: 'accepted' })).res.status).toBe(404)
+  expect((await mutate('DELETE', '/api/profile-facts/999')).res.status).toBe(404)
+
+  const bare = await fetch(`${dash.url}/api/profile-facts/${first!.id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'accepted' }),
+  })
+  expect(bare.status).toBe(403)
+  expect((await fetch(`${dash.url}/api/profile-facts/${first!.id}`, { method: 'DELETE' })).status).toBe(403)
+  expect(getFact(db, first!.id)).toMatchObject({ status: 'proposed', action: first!.action })
 })

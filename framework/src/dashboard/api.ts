@@ -14,6 +14,9 @@ import {
   ContactsSchema, INTERVIEW_STAGES, OFFER_STAGES, STAGE_KINDS, STAGE_OUTCOMES, STAGE_TYPES, addStage, deleteStage,
   getStage, listStages, updateStage,
 } from '../db/interviews'
+import {
+  FACT_BASES, FACT_CATEGORIES, FACT_CONFIDENCES, FACT_STATUSES, deleteFact, getFact, listFacts, updateFact,
+} from '../db/profile-facts'
 import { OUTCOME_STATUSES, type Outcome, dismissOutcome, getOutcome, listOutcomes, matchOutcome } from '../db/outcomes'
 import { permissionsPath, profilePath } from '../paths'
 
@@ -84,6 +87,29 @@ const listQuerySchema = z.object({
   q: z.string().max(200).optional(),
   limit: z.coerce.number().int().min(1).max(5000).optional(),
 })
+
+const factsQuerySchema = z.object({ status: z.enum(FACT_STATUSES).optional() })
+
+const factText = (max: number) => z.string().max(max).nullable().optional()
+const factTags = z.array(z.string().max(100)).max(100).optional()
+
+const factPatchSchema = z.object({
+  status: z.enum(FACT_STATUSES).optional(),
+  slug: factText(100),
+  company: factText(200),
+  role: factText(200),
+  project: z.string().max(200).optional(),
+  category: z.enum(FACT_CATEGORIES).optional(),
+  action: z.string().max(1000).optional(),
+  outcome: factText(1000),
+  metrics: factText(1000),
+  skills: factTags,
+  tools: factTags,
+  basis: z.enum(FACT_BASES).optional(),
+  confidence: z.enum(FACT_CONFIDENCES).nullable().optional(),
+  rationale: factText(500),
+  sort_order: z.number().int().optional(),
+}).strict()
 
 const outcomesQuerySchema = z.object({ status: z.enum(OUTCOME_STATUSES).optional() })
 
@@ -220,6 +246,18 @@ function patchStage(db: Db, id: number, body: unknown) {
   }))
 }
 
+function requireFact(db: Db, id: number) {
+  const fact = getFact(db, id)
+  if (!fact) throw new ApiError(404, `fact ${id} not found`)
+  return fact
+}
+
+function patchFact(db: Db, id: number, body: unknown) {
+  const input = parse(factPatchSchema, body ?? {})
+  requireFact(db, id)
+  return saving(() => updateFact(db, id, input))
+}
+
 function profileView(home: string) {
   const stored = readStoredProfile(profilePath(home))
   const { sections } = splitSections(stored.body)
@@ -313,6 +351,18 @@ const routes: { method: string; pattern: RegExp; handler: Handler }[] = [
     handler: ({ db }, _req, id) => {
       if (!softDeleteApplication(db, id)) throw new ApiError(404, `application ${id} not found`)
       return { ok: true }
+    },
+  },
+  {
+    method: 'GET', pattern: /^\/api\/profile-facts$/,
+    handler: ({ db }, req) => ({ facts: listFacts(db, parse(factsQuerySchema, queryObject(req.query))) }),
+  },
+  { method: 'PATCH', pattern: /^\/api\/profile-facts\/(\d+)$/, handler: ({ db }, req, id) => patchFact(db, id, req.body) },
+  {
+    method: 'DELETE', pattern: /^\/api\/profile-facts\/(\d+)$/,
+    handler: ({ db }, _req, id) => {
+      requireFact(db, id)
+      return deleteFact(db, id)
     },
   },
   {

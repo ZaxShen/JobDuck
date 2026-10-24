@@ -129,8 +129,8 @@ Skills are plain markdown workflows any agent can follow. `init` copies them to 
 | `find` | "find jobs" | `search_jobs` with your profile's filters, hard filters, a fit score, and a shortlist that marks postings you already track. |
 | `apply` | "apply to jobs" / "apply to <url>" | Dedupes, picks your CV, fills the form with your browser tool, stops at the approval gate set by `[apply] autonomy`, submits, and records the application. CAPTCHAs and verification codes always stop for you. |
 | `track` | "show my applications" | Lists applications, updates statuses when you report news, and runs `jobduck sync` for rejection emails. No mail access. |
-| `cv` | "tailor my CV for <role>" | Writes `cv/<slug>.md` in the workspace strictly from `profile.md`, within `[cv] page_limit`, with a fact-check list. |
-| `augment` | "augment my profile" | Splits each role in `profile.md` into projects and writes atomic facts (one action each, metrics exactly as written, stated or inferred with a confidence and a rationale) via `save_profile_facts` as `proposed`; you accept or archive each one with `update_profile_fact`. |
+| `cv` | "tailor my CV for <role>" | Writes `cv/<slug>.md` in the workspace within `[cv] page_limit`, with a fact-check list. Bullets come from your accepted profile facts (`list_profile_facts`, one fact per bullet, metrics copied exactly); contact details, titles, employers, dates, education and skills come from `profile.md`. With no accepted facts it uses the profile's Experience bullets. To tailor for a tracked application it reads the posting with `get_application`. |
+| `augment` | "augment my profile" | Splits each role in `profile.md` into projects and writes atomic facts (one action each, metrics exactly as written, stated or inferred with a confidence and a rationale) via `save_profile_facts` as `proposed`; you accept or archive each one in the dashboard's Experience facts tab or by asking your agent (`update_profile_fact`). |
 | `interview` | "prep me for my interview at <company>" | Prep pack from the posting and your profile, mock interview, each round and offer via `record_interview` / `update_interview`, offer pay via `update_application`, the final result via `update_status`. |
 
 Skills are owned by the package; your answers live in `profile.md` and `permissions.toml`, so upgrading never loses them. Questions the `apply` skill meets on a form and cannot answer from your profile are asked once and saved under `[apply.answers]`.
@@ -149,7 +149,7 @@ Every tool returns compact JSON. Application writes (`record_application`, `upda
 | `record_application` | `url`, `title`, `company`, `location?`, `status?` (default `applied`), `applied_at?`, `note?`, `extracted?`, `source?` | `{ application, posting, marker }`, or `{ duplicate: true, application }` when the posting already has one |
 | `update_status` | `id`, `status`, `note?`, `source?` | `{ application }`; every change is logged in `application_events`, and `note` is also appended to the application's note |
 | `list_applications` | `status?` (one status or an array), `since?` (ISO date `YYYY-MM-DD` or timestamp), `limit?` (default 50, max 200) | `{ applications[] }` with title, company, location and URL from the posting |
-| `get_application` | `id` | `{ application, stages[] }`: the application with title, company, location and URL from the posting, offer pay and overrides, and its interview and offer stages ordered by date, each with `contacts` |
+| `get_application` | `id` | `{ application, stages[], posting_description }`: the application with title, company, location and URL from the posting, offer pay and overrides, its interview and offer stages ordered by date, each with `contacts`, and the posting's stored description (`null` when none) |
 | `update_application` | `id`, `salary_min?`, `salary_max?`, `salary_offered?`, `rsu?`, `options?`, `bonus?`, `sign_on?`, `relocation_fee?` (whole amounts, 0 or more), `currency?` (3 letters), `title_override?`, `company_override?`, `location_override?`, `country_override?` (2 uppercase letters), `state_override?`, `city_override?` | `{ application }`; only the fields given change and `null` clears one; never touches the note or status |
 | `record_interview` | `application_id`, `kind?` (`interviewing`, default, or `offered`), `stage_type` (`information`, `phone_screen`, `online_assessment`, `hiring_manager`, `technical`, `behavioral`, `system_design`, `onsite`, `take_home`, `other`; or `verbal` / `written` for an offer), `scheduled_at?` (ISO date or timestamp), `outcome?` (`pending`, `advanced`, `rejected`, `ghosted`, `cancelled`; default `pending` for a round), `note?`, `contacts?` (up to 20 of `{ name, title?, email?, phone?, linkedin? }`), `source?` | `{ application, stage }`; the status moves forward to `kind` when it is behind (`saved` / `applied` → `interviewing` → `offered`), never back, and a closed application keeps its status |
 | `update_interview` | `event_id`, `stage_type?`, `scheduled_at?`, `outcome?`, `note?`, `contacts?` | `{ stage }`; edits interview and offer stages only, the status does not change |
@@ -166,14 +166,16 @@ Every tool returns compact JSON. Application writes (`record_application`, `upda
 ```bash
 jobduck dashboard                  # serves http://127.0.0.1:4848 and opens your browser
 jobduck dashboard --view profile   # open on the Profile tab
+jobduck dashboard --view facts     # open on the Experience facts tab
 jobduck dashboard --background --view welcome   # open the setup wizard, reusing a running dashboard
 jobduck dashboard --port 0 --no-open
 ```
 
-A local page with four tabs:
+A local page with five tabs:
 
 - **Applications**: the board over the same SQLite store (details below).
 - **Profile**: a form for every `profile.md` field, with a text area per section (Summary, Experience, Projects, Education, Writing style, Facts never to change) and room for your own sections. An empty profile shows the three ways to fill it: import a resume, import LinkedIn, or type it in.
+- **Experience facts**: the profile facts the `augment` skill proposed, under Proposed, Accepted and Archived (with counts), grouped by company and project. Each card shows the action, outcome, metrics, skills and tools, whether it is stated or inferred, and an inferred fact's confidence and rationale. Accept, archive or restore a fact to proposed, edit its action, outcome and metrics in place, or delete it. Only accepted facts go into CVs.
 - **Settings**: every `permissions.toml` choice as a form: modules, the `[apply]` manifest with its consents and saved answers, email sync and CV settings. Fields for modules you have off stay hidden.
 - **Setup**: the onboarding wizard, in five steps. **Welcome** takes a resume or LinkedIn file (`.pdf`, `.docx`, `.doc`, `.md`, `.txt`, `.zip`, `.csv`) and saves it into the workspace `inbox/` (never overwriting: a second `resume.pdf` becomes `resume-1.pdf`); without an `inbox/` it tells you to put the file there yourself. **Career DNA** asks five questions: work mode goes to `work_modes`, startup or enterprise to `company_stages`, and all five answers to a `Career DNA` profile section. **Targets** sets `target_titles`, `locations`, `seniority` and `pay_floor`. **Modules** switches modules on in `permissions.toml`. **Done** reminds you to say "import my resume" in your agent when you uploaded a file. Every step can be skipped. With no tab in the URL, the page opens here while your profile has no name and no target titles.
 
@@ -181,7 +183,7 @@ Saving writes the file with mode 0600, keeps keys the form does not know, and re
 
 The Applications tab shows the applications board with status filters and search, a detail drawer (status, notes, title/company/location/country/state/city overrides, interview and offer rounds with date, outcome, notes and contacts, offer pay, timeline, delete) and a "Needs a match" queue for rejection emails that could not be matched automatically. Adding an interview round moves a saved or applied application to `interviewing`, and adding an offer moves it to `offered`; neither reopens a closed application. Status changes made here are recorded with source `dashboard`; matching a rejection closes the application as `deny_by_employer`.
 
-- `--view <name>`: open on `applications`, `profile`, `settings` or `welcome` (the setup wizard).
+- `--view <name>`: open on `applications`, `profile`, `facts`, `settings` or `welcome` (the setup wizard).
 - `--port <n>`: port to listen on (default 4848, or a free one when something else holds 4848; `0` picks a free one).
 - `--no-open`: do not open a browser.
 - `--print-url`: print only the URL.
