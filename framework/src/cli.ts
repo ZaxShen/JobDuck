@@ -7,12 +7,20 @@ import { runMcp } from './commands/mcp'
 import { runSync } from './commands/sync'
 import { CHANNELS, type Channel, runUpgrade } from './commands/upgrade'
 import { HOST_IDS } from './hosts'
-import { PACKAGE_VERSION } from './paths'
+import { PACKAGE_VERSION, refreshStaleSkills } from './paths'
 
 const program = new Command()
   .name('jobduck')
   .description('Agent-run job search: local store, profile, and host registration')
   .version(PACKAGE_VERSION)
+  .hook('preAction', (_program, command) => {
+    if (command.name() === 'upgrade' || command.name() === 'init') return
+    try {
+      refreshStaleSkills()
+    } catch {
+      return
+    }
+  })
 
 program
   .command('init')
@@ -22,13 +30,15 @@ program
   .option('--dry-run', 'print the plan without writing anything')
   .option('--diff', 'also print a unified diff of every file the plan touches')
   .option('--yes', 'apply without asking')
-  .action(async (opts: { workspace: string; hosts?: string; dryRun?: boolean; diff?: boolean; yes?: boolean }) => {
+  .option('--no-dashboard', 'do not open the setup wizard in your browser afterwards')
+  .action(async (opts: { workspace: string; hosts?: string; dryRun?: boolean; diff?: boolean; yes?: boolean; dashboard: boolean }) => {
     process.exitCode = await runInit({
       workspace: opts.workspace,
       hosts: opts.hosts?.split(',').map((host) => host.trim()).filter(Boolean),
       dryRun: opts.dryRun,
       diff: opts.diff,
       yes: opts.yes,
+      dashboard: opts.dashboard,
     })
   })
 
@@ -43,13 +53,17 @@ program
 
 program
   .command('dashboard')
-  .description('Serve the local dashboard (applications, profile, settings) on 127.0.0.1')
-  .option('--port <n>', 'port to listen on (0 picks a free port)', '4848')
+  .description('Serve the local dashboard (applications, profile, settings, setup wizard) on 127.0.0.1')
+  .option('--port <n>', 'port to listen on (default 4848, or a free port when 4848 is taken; 0 picks a free port)')
   .option('--no-open', 'do not open a browser')
   .option('--print-url', 'print only the URL')
-  .option('--view <name>', 'open on a tab: applications, profile or settings')
-  .action(async (opts: { port: string; open: boolean; printUrl?: boolean; view?: string }) => {
-    process.exitCode = await runDashboard({ port: opts.port, open: opts.open, printUrl: opts.printUrl, view: opts.view })
+  .option('--view <name>', 'open on a tab: applications, profile, settings or welcome (the setup wizard)')
+  .option('--workspace <dir>', 'Job Duck workspace whose inbox/ receives uploaded files', process.cwd())
+  .option('--background', 'reuse the running dashboard or start one in the background, open the browser, and exit')
+  .action(async (opts: { port?: string; open: boolean; printUrl?: boolean; view?: string; workspace: string; background?: boolean }) => {
+    process.exitCode = await runDashboard({
+      port: opts.port, open: opts.open, printUrl: opts.printUrl, view: opts.view, workspace: opts.workspace, background: opts.background,
+    })
   })
 
 program

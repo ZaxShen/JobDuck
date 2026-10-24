@@ -111,6 +111,8 @@ done
 check "dashboard prints a loopback URL" eval '[[ -n "$url" ]]'
 if [[ -n "$url" ]]; then
   check "dashboard serves the page" bash -c "curl -fsS -o /dev/null -w '%{http_code}' '$url/' | grep -q '^200$'"
+  check "dashboard page loads app.js and style.css" bash -c "curl -fsS '$url/' | grep -q 'src=\"/app.js\"' && curl -fsS '$url/' | grep -q 'href=\"/style.css\"'"
+  check "dashboard serves its embedded font" bash -c "font=\$(curl -fsS '$url/style.css' | grep -oE '/geist-latin-wght-normal\.woff2' | head -1) && [[ -n \"\$font\" ]] && curl -fsS -D - -o '$root/font.woff2' \"$url\$font\" | grep -qi '^content-type: font/woff2' && [[ \"\$(head -c 4 '$root/font.woff2')\" == wOF2 ]]"
   check "dashboard API answers" bash -c "curl -fsS '$url/api/summary' | grep -q '{'"
   check "dashboard serves the profile" bash -c "curl -fsS '$url/api/profile' | grep -q '\"revision\"'"
   check "dashboard serves the permissions" bash -c "curl -fsS '$url/api/permissions' | grep -q '\"modules\"'"

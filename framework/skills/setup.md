@@ -28,9 +28,13 @@ Get the profile and settings filled in with as little typing in chat as possible
 1. Run `jobduck upgrade --check`. If a newer version exists, tell the user that `jobduck upgrade` installs it; never run the upgrade yourself. If the check fails (offline), say so in one line and go on.
 2. Check that the current folder is a Job Duck workspace: `AGENTS.md` contains the `jobduck:start` block and `inbox/`, `cv/`, `cover-letters/` exist. If it is a code project or the home folder, recommend a dedicated folder once, in two lines: CVs, cover letters, imports and your notes stay together there, apart from any code. Suggest `mkdir ~/JobDuck && cd ~/JobDuck && jobduck init`, then reopen the agent there. Go on here only if the user prefers.
 
-### Step 1: Pick modules
+### Step 1: Setup wizard in the browser
 
-Ask once:
+1. Run `jobduck dashboard --background --view welcome --workspace <workspace>`. It reuses the running dashboard or starts one in the background, opens the browser on the setup wizard and prints its URL. Tell the user to finish the wizard there, in one message: drop a resume or LinkedIn PDF (it lands in `inbox/`), answer the five Career DNA questions, set target titles, locations, seniority and minimum pay, and pick modules. Wait until they say they are done.
+2. Call `get_profile` and `get_permissions` to see what the wizard saved. If `interview` is on without `track`, say that recording outcomes needs `track` and let the user choose.
+3. Go on with Step 2 to import the files now in `inbox/`.
+
+Only when the user cannot use a browser (no display, a remote shell, or the command fails) pick modules in chat instead. Ask once:
 
 > Which parts of Job Duck do you want?
 > 1. **cv**: build your profile and write CVs from it (nothing else)
@@ -43,7 +47,7 @@ Ask once:
 
 ### Step 2: Profile intake
 
-Skip what `get_profile` already holds. Otherwise offer the three ways in one message and let the user pick:
+Skip what `get_profile` already holds. If the wizard put files in `inbox/`, import them now without asking again. Otherwise offer the three ways in one message and let the user pick:
 
 1. **Resume**: save it into `inbox/` and say "import my resume".
 2. **LinkedIn**, any of:
@@ -60,11 +64,11 @@ To import, for each file in `inbox/` the user pointed at (or all of them):
 4. Show a short summary of what you will write, then call `update_profile` with `front_matter`, `sections` and the `revision` from `get_profile`. If it fails with a revision error, call `get_profile` again and redo the write on the new version.
 5. Tell the user to review and correct it in `jobduck dashboard --view profile`. List the gaps still empty (for example phone or work authorization) in one message; the user fills them there or answers that one message.
 
-If the user has nothing to import and prefers chat, ask the basics in one message, never one by one, and write them with `update_profile`. Replace every template placeholder section with `(nothing provided yet)` so later skills never read placeholders as facts.
+If the user has nothing to import and cannot use a browser, ask the basics in one message, never one by one, and write them with `update_profile`. Replace every template placeholder section with `(nothing provided yet)` so later skills never read placeholders as facts.
 
 ### Step 3: Module settings
 
-The dashboard Settings tab (`jobduck dashboard --view settings`) covers every module below with defaults and explanations; point the user there first. If they would rather answer in chat, ask each chosen module's questions in a single message with defaults shown, confirm the answers back, then write them: preference keys with `update_profile`, `[apply]`, `[cv]` and `[track]` in `permissions.toml` with your file tools, keeping it valid TOML. Run the sections in order cv, find, track, apply, interview, and only for chosen modules.
+The dashboard Settings tab (`jobduck dashboard --view settings`) covers every module below with defaults and explanations; point the user there first. If they cannot use a browser, ask each chosen module's questions in a single message with defaults shown, confirm the answers back, then write them: preference keys with `update_profile`, `[apply]`, `[cv]` and `[track]` in `permissions.toml` with your file tools, keeping it valid TOML. Run the sections in order cv, find, track, apply, interview, and only for chosen modules.
 
 ### Step 4: Verify
 

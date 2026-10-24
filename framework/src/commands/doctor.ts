@@ -10,6 +10,7 @@ import { PACKAGE_VERSION, SKILLS_VERSION_FILE, dbPath, ensureHome, installedSkil
 export interface Check {
   name: string
   ok: boolean
+  warn?: boolean
   detail: string
 }
 
@@ -97,6 +98,13 @@ export function runDoctor(options: DoctorOptions = {}): number {
     if (missing.length > 0) throw new Error(`missing ${missing.join(', ')} (version ${version}); run jobduck init`)
     return `${installed.length} installed (version ${version})`
   }))
+  const skills = checks.at(-1)!
+  const stamped = join(installedSkillsPath(home), SKILLS_VERSION_FILE)
+  const installedVersion = existsSync(stamped) ? readFileSync(stamped, 'utf8').trim() : null
+  if (skills.ok && installedVersion !== null && installedVersion !== PACKAGE_VERSION) {
+    skills.warn = true
+    skills.detail = `version ${installedVersion} installed, jobduck is ${PACKAGE_VERSION}; run jobduck init to refresh them`
+  }
 
   const ctx: HostContext = {
     workspace: resolve(options.workspace ?? process.cwd()),
@@ -116,7 +124,7 @@ export function runDoctor(options: DoctorOptions = {}): number {
   if (options.json) {
     out(JSON.stringify({ ok, home, checks, hosts }, null, 2))
   } else {
-    for (const check of checks) out(`${check.ok ? 'ok  ' : 'FAIL'} ${check.name}: ${check.detail}`)
+    for (const check of checks) out(`${check.warn ? 'warn' : check.ok ? 'ok  ' : 'FAIL'} ${check.name}: ${check.detail}`)
     for (const host of hosts) {
       const state = host.registered ? 'registered' : host.detected ? 'detected, not registered' : 'not detected'
       out(`     host ${host.label}: ${state} (${host.config})`)

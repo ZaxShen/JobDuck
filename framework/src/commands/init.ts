@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import { createInterface } from 'node:readline/promises'
+import type { DashboardView } from '../dashboard/server'
 import { openDb } from '../db/client'
 import { migrate, pendingMigrations } from '../db/migrate'
 import { type FileChange, type Host, type HostContext, allHosts, hostById, userHomeOf } from '../hosts'
@@ -8,6 +9,7 @@ import {
   PACKAGE_VERSION, PERMISSIONS_FILE, PROFILE_FILE, dbPath, ensureHome, installSkills, installedSkillsPath, jobduckHome,
   skillNames, skillsUpToDate,
 } from '../paths'
+import { launchDashboard } from './dashboard'
 
 export interface InitOptions {
   workspace?: string
@@ -18,6 +20,8 @@ export interface InitOptions {
   userHome?: string
   pathEnv?: string
   isTTY?: boolean
+  dashboard?: boolean
+  launchDashboard?: (options: { view: DashboardView; workspace: string }) => Promise<string>
   out?: (line: string) => void
   confirm?: (question: string) => Promise<boolean>
 }
@@ -164,12 +168,13 @@ export async function runInit(options: InitOptions = {}): Promise<number> {
   }
   if (!isDedicatedWorkspace(ctx)) for (const line of DEDICATED_TIP) out(line)
 
+  const isTTY = options.isTTY ?? Boolean(process.stdin.isTTY && process.stdout.isTTY)
   if (options.dryRun) {
     out('Dry run: nothing written.')
     return 0
   }
   if (!options.yes) {
-    if (!(options.isTTY ?? (process.stdin.isTTY && process.stdout.isTTY))) {
+    if (!isTTY) {
       out('Not a terminal: pass --yes to apply or --dry-run to preview.')
       return 1
     }
@@ -195,11 +200,24 @@ export async function runInit(options: InitOptions = {}): Promise<number> {
   if (applied.length > 0) out(`applied migrations ${applied.join(', ')}`)
   for (const line of planLines(written, ctx, 'past')) out(line)
   if (folders.length > 0) out(`created ${folders.map((folder) => `${folder}/`).join(', ')}`)
-  if (hosts.length > 0) {
-    out('Done. Open your agent in this workspace and say "set up Job Duck".')
-    out(existsSync(join(ctx.workspace, 'inbox'))
-      ? 'To fill in your profile, drop your resume or LinkedIn PDF in inbox/, or run: jobduck dashboard --view profile'
-      : 'To fill in your profile, run: jobduck dashboard --view profile')
-  }
+  if (hosts.length > 0) await finishSetup(ctx.workspace, isTTY, options, out)
   return 0
+}
+
+async function finishSetup(workspace: string, isTTY: boolean, options: InitOptions, out: (line: string) => void) {
+  out('Done. Open your agent in this workspace once the setup wizard is finished.')
+  if (isTTY && options.dashboard !== false) {
+    try {
+      const url = await (options.launchDashboard ?? launchDashboard)({ view: 'welcome', workspace })
+      out(`Finish setup in your browser: ${url}`)
+      return
+    } catch (error) {
+      out(`Could not start the dashboard: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+  const elsewhere = workspace === resolve(process.cwd()) ? '' : ` --workspace ${JSON.stringify(workspace)}`
+  out(`Finish setup in your browser: jobduck dashboard --background --view welcome${elsewhere}`)
+  out(existsSync(join(workspace, 'inbox'))
+    ? 'To fill in your profile later, drop your resume or LinkedIn PDF in inbox/, or run: jobduck dashboard --view profile'
+    : 'To fill in your profile later, run: jobduck dashboard --view profile')
 }
