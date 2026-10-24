@@ -1,20 +1,27 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { delimiter, dirname, join } from 'node:path'
+import { delimiter, dirname, join, relative, resolve, sep } from 'node:path'
 import { claudeCode } from './claude-code'
 import { codex } from './codex'
 import { unifiedDiff } from './diff'
 import { gemini } from './gemini'
 import { SKILLS } from '../assets'
-import { skillNames } from '../paths'
+import { defaultHome, skillNames } from '../paths'
 
 export const HOST_IDS = ['claude', 'codex', 'gemini'] as const
 export type HostId = (typeof HOST_IDS)[number]
 
 export const MCP_SERVER = { command: 'jobduck', args: ['mcp'] }
 
+export interface McpServerEntry {
+  command: string
+  args: string[]
+  env?: { JOBDUCK_HOME: string }
+}
+
 export interface HostContext {
   workspace: string
+  home: string
   userHome?: string
   pathEnv?: string
   dryRun: boolean
@@ -36,7 +43,26 @@ export interface Host {
   register(ctx: HostContext): FileChange[]
 }
 
-export const userHomeOf = (ctx: HostContext) => ctx.userHome ?? homedir()
+export const userHomeOf = (ctx: Pick<HostContext, 'userHome'>) => ctx.userHome ?? homedir()
+
+export const isDefaultHome = (ctx: HostContext) => resolve(ctx.home) === defaultHome(userHomeOf(ctx))
+
+export const isWorkspaceLocal = (ctx: HostContext) =>
+  !isDefaultHome(ctx) && dirname(resolve(ctx.home)) === resolve(ctx.workspace)
+
+const slashes = (path: string) => path.split(sep).join('/')
+
+export function homeLabel(ctx: HostContext): string {
+  const home = resolve(ctx.home)
+  if (isWorkspaceLocal(ctx)) return slashes(relative(resolve(ctx.workspace), home))
+  const user = resolve(userHomeOf(ctx))
+  const prefix = user.endsWith(sep) ? user : `${user}${sep}`
+  return home.startsWith(prefix) ? `~/${slashes(home.slice(prefix.length))}` : home
+}
+
+export function mcpServer(ctx: HostContext): McpServerEntry {
+  return isDefaultHome(ctx) ? MCP_SERVER : { ...MCP_SERVER, env: { JOBDUCK_HOME: resolve(ctx.home) } }
+}
 
 export function onPath(binary: string, pathEnv = process.env.PATH ?? ''): boolean {
   const names = process.platform === 'win32' ? [`${binary}.cmd`, `${binary}.exe`, binary] : [binary]
@@ -74,13 +100,13 @@ export function skillFrontMatter(text: string): Record<string, string> {
   return fields
 }
 
-export function skillPointers(dir: string): Array<FileChange | null> {
+export function skillPointers(dir: string, label: string): Array<FileChange | null> {
   return skillNames().map((name) => {
     const { description = '' } = skillFrontMatter(SKILLS[name]!)
     const pointer = `jobduck-${name}`
     return planChange(
       join(dir, pointer, 'SKILL.md'),
-      `---\nname: ${pointer}\ndescription: ${JSON.stringify(description)}\n---\n\nRead and follow \`~/.jobduck/skills/${name}.md\`.\n`,
+      `---\nname: ${pointer}\ndescription: ${JSON.stringify(description)}\n---\n\nRead and follow \`${label}/skills/${name}.md\`.\n`,
     )
   })
 }
@@ -95,13 +121,13 @@ export function readJsonObject(path: string): Record<string, unknown> {
   return parsed as Record<string, unknown>
 }
 
-export function mergeMcpServersJson(path: string): string {
+export function mergeMcpServersJson(path: string, server: McpServerEntry): string {
   const config = readJsonObject(path)
   const existing = config.mcpServers
   const servers = typeof existing === 'object' && existing !== null && !Array.isArray(existing)
     ? (existing as Record<string, unknown>)
     : {}
-  return `${JSON.stringify({ ...config, mcpServers: { ...servers, jobduck: MCP_SERVER } }, null, 2)}\n`
+  return `${JSON.stringify({ ...config, mcpServers: { ...servers, jobduck: server } }, null, 2)}\n`
 }
 
 export function hasJsonMcpServer(path: string): boolean {

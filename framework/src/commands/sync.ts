@@ -15,6 +15,7 @@ export interface SyncOptions {
   dryRun?: boolean
   json?: boolean
   home?: string
+  workspace?: string
   fetch?: FetchLike
   out?: (line: string) => void
   err?: (line: string) => void
@@ -154,7 +155,7 @@ function openForPlan(home: string): Db | null {
 export async function runSync(options: SyncOptions = {}): Promise<number> {
   const out = options.out ?? ((line: string) => console.log(line))
   const err = options.err ?? ((line: string) => console.error(line))
-  const home = options.home ?? jobduckHome()
+  const home = options.home ?? jobduckHome(options.workspace)
   const dryRun = options.dryRun ?? false
 
   const config = configured(home)

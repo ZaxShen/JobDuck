@@ -5,7 +5,9 @@ import { loadProfile } from '../config/profile'
 import { openDb } from '../db/client'
 import { currentVersion, loadMigrations, migrate } from '../db/migrate'
 import { type HostContext, allHosts } from '../hosts'
-import { PACKAGE_VERSION, SKILLS_VERSION_FILE, dbPath, ensureHome, installedSkillsPath, jobduckHome, skillNames } from '../paths'
+import {
+  PACKAGE_VERSION, SKILLS_VERSION_FILE, dbPath, ensureHome, installedSkillsPath, jobduckHome, permissionsPath, profilePath, skillNames,
+} from '../paths'
 
 export interface Check {
   name: string
@@ -46,7 +48,8 @@ function attempt(name: string, fn: () => string): Check {
 
 export function runDoctor(options: DoctorOptions = {}): number {
   const out = options.out ?? ((line: string) => console.log(line))
-  const home = jobduckHome()
+  const workspace = resolve(options.workspace ?? process.cwd())
+  const home = jobduckHome(workspace, options.userHome)
   const checks: Check[] = []
 
   checks.push({ name: 'runtime', ok: true, detail: `jobduck ${PACKAGE_VERSION} on bun ${Bun.version}` })
@@ -78,12 +81,12 @@ export function runDoctor(options: DoctorOptions = {}): number {
   }))
 
   checks.push(attempt('permissions.toml', () => {
-    const enabled = Object.entries(loadPermissions().modules).filter(([, on]) => on).map(([name]) => name)
+    const enabled = Object.entries(loadPermissions(permissionsPath(home)).modules).filter(([, on]) => on).map(([name]) => name)
     return `parses; modules enabled: ${enabled.length > 0 ? enabled.join(', ') : 'none'}`
   }))
 
   checks.push(attempt('profile.md', () => {
-    loadProfile()
+    loadProfile(profilePath(home))
     return 'parses'
   }))
 
@@ -107,7 +110,8 @@ export function runDoctor(options: DoctorOptions = {}): number {
   }
 
   const ctx: HostContext = {
-    workspace: resolve(options.workspace ?? process.cwd()),
+    workspace,
+    home,
     userHome: options.userHome,
     pathEnv: options.pathEnv,
     dryRun: true,

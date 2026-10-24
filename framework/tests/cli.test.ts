@@ -150,8 +150,8 @@ test('doctor fails the path check when jobduck is not on PATH', () => {
 })
 
 function launcher() {
-  const calls: Array<{ view: string; workspace: string }> = []
-  const launch = async (options: { view: string; workspace: string }) => {
+  const calls: Array<{ view: string; workspace: string; home: string }> = []
+  const launch = async (options: { view: string; workspace: string; home: string }) => {
     calls.push(options)
     return 'http://127.0.0.1:4848/#welcome'
   }
@@ -161,7 +161,7 @@ function launcher() {
 test('init on a TTY opens the setup wizard in the background dashboard', async () => {
   const { calls, launch } = launcher()
   expect(await runInit({ ...base(), hosts: ['codex'], yes: true, isTTY: true, launchDashboard: launch })).toBe(0)
-  expect(calls).toEqual([{ view: 'welcome', workspace: box.workspace }])
+  expect(calls).toEqual([{ view: 'welcome', workspace: box.workspace, home: box.home }])
   expect(lines).toContain('Finish setup in your browser: http://127.0.0.1:4848/#welcome')
   expect(lines.some((line) => line.includes('set up Job Duck'))).toBe(false)
 })

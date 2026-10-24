@@ -32,7 +32,7 @@ Build a prep pack for one real interview from the posting and the profile, offer
    4. **Tough questions** with tailored answers ("why us" uses the verified hooks; salary follows the user's stated expectations, never invented).
    5. **Questions to ask**: four to six, fitted to the stage, none the research already answers.
    6. **Logistics**: date, format, interviewers.
-   Present it in chat and save it to `~/.jobduck/interview/<company>-<role>-<stage>.md` with your file tools.
+   Present it in chat and save it to `<home>/interview/<company>-<role>-<stage>.md` in the Job Duck home (named in AGENTS.md) with your file tools.
 4. **Mock interview** on request: warm-up, two or three role questions, one or two behavioral questions tied to the posting, one curveball. After each answer: what worked, what to sharpen, which story would have served better.
 5. **New facts.** When the user recalls a metric, a scope or a story, write it into the `profile.md` body (with their OK) so later CVs and prep can use it.
 6. **Record the outcome** when the user reports it (`source: "user"` on every write). Confirm what you will write in one line before writing; `get_application` shows the rounds already recorded.

@@ -1,9 +1,10 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import pkg from '../package.json'
 import { SKILLS, TEMPLATES } from './assets'
 
+export const HOME_DIR = '.jobduck'
 export const DB_FILE = 'jobduck.db'
 export const PROFILE_FILE = 'profile.md'
 export const PERMISSIONS_FILE = 'permissions.toml'
@@ -12,9 +13,27 @@ export const SKILLS_VERSION_FILE = '.version'
 export const DASHBOARD_STATE_FILE = 'dashboard.json'
 export const PACKAGE_VERSION: string = pkg.version
 
-export function jobduckHome(): string {
+export const defaultHome = (userHome = homedir()) => join(resolve(userHome), HOME_DIR)
+
+export function isMarkedHome(dir: string): boolean {
+  return [DB_FILE, PERMISSIONS_FILE].some((file) => existsSync(join(dir, file)))
+}
+
+export function findHome(start: string): string | undefined {
+  let dir = resolve(start)
+  while (true) {
+    const candidate = join(dir, HOME_DIR)
+    if (isMarkedHome(candidate)) return candidate
+    const parent = dirname(dir)
+    if (parent === dir) return undefined
+    dir = parent
+  }
+}
+
+export function jobduckHome(start = process.cwd(), userHome = homedir()): string {
   const fromEnv = process.env.JOBDUCK_HOME
-  return fromEnv ? resolve(fromEnv) : join(homedir(), '.jobduck')
+  if (fromEnv) return resolve(fromEnv)
+  return findHome(start) ?? defaultHome(userHome)
 }
 
 export const dbPath = (home = jobduckHome()) => join(home, DB_FILE)

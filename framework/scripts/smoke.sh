@@ -37,6 +37,7 @@ check() {
 show() { sed 's/^/     | /' "$1" >&2; return 1; }
 contains() { grep -qF -- "$1" "$2" || show "$2"; }
 lacks() { ! grep -qE -- "$1" "$2" || show "$2"; }
+matches() { grep -qE -- "$1" "$2" || show "$2"; }
 count() { [[ "$(grep -cE -- "$1" "$2")" == "$3" ]] || show "$2"; }
 
 run() {
@@ -120,6 +121,19 @@ if [[ -n "$url" ]]; then
 fi
 kill "$dashboard_pid" 2>/dev/null || true
 wait "$dashboard_pid" 2>/dev/null || true
+
+local_ws="$root/local-workspace"
+mkdir -p "$local_ws"
+run "$root/local.log" env -u JOBDUCK_HOME "$binary" init --yes --no-dashboard --workspace "$local_ws"
+check "local: init keeps the home in the workspace" eval '[[ -f "$local_ws/.jobduck/jobduck.db" && -f "$local_ws/.jobduck/.gitignore" ]]'
+check "local: codex registers in the workspace" contains 'JOBDUCK_HOME' "$local_ws/.codex/config.toml"
+check "local: gemini registers in the workspace" contains 'JOBDUCK_HOME' "$local_ws/.gemini/settings.json"
+check "local: claude entry carries the home" contains 'JOBDUCK_HOME' "$local_ws/.mcp.json"
+check "local: init names the codex trust step" contains 'trusted projects' "$root/local.log"
+check "local: global configs untouched" eval '! grep -q local-workspace "$HOME/.codex/config.toml" "$HOME/.gemini/settings.json"'
+mkdir -p "$local_ws/cv/deep"
+(cd "$local_ws/cv/deep" && env -u JOBDUCK_HOME "$binary" doctor --json > "$root/local-doctor.json" 2>&1) || true
+check "local: doctor finds the home from a subfolder" matches '"home": ".*local-workspace.{1,2}\.jobduck"' "$root/local-doctor.json"
 
 if (( failures > 0 )); then
   echo "smoke: $failures check(s) failed" >&2

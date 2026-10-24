@@ -7,7 +7,7 @@ import { runMcp } from './commands/mcp'
 import { runSync } from './commands/sync'
 import { CHANNELS, type Channel, runUpgrade } from './commands/upgrade'
 import { HOST_IDS } from './hosts'
-import { PACKAGE_VERSION, refreshStaleSkills } from './paths'
+import { PACKAGE_VERSION, jobduckHome, refreshStaleSkills } from './paths'
 
 const program = new Command()
   .name('jobduck')
@@ -16,7 +16,7 @@ const program = new Command()
   .hook('preAction', (_program, command) => {
     if (command.name() === 'upgrade' || command.name() === 'init') return
     try {
-      refreshStaleSkills()
+      refreshStaleSkills(jobduckHome(command.opts().workspace))
     } catch {
       return
     }
@@ -24,16 +24,18 @@ const program = new Command()
 
 program
   .command('init')
-  .description('Create ~/.jobduck, apply migrations, and register Job Duck with your agent hosts')
+  .description('Create the Job Duck home, apply migrations, and register Job Duck with your agent hosts')
   .option('--workspace <dir>', 'project directory for workspace-scoped host files', process.cwd())
+  .option('--home <dir>', 'Job Duck home to use, relative to the workspace (default: an existing home, else <workspace>/.jobduck in a dedicated folder, else ~/.jobduck)')
   .option('--hosts <list>', `comma-separated hosts (${HOST_IDS.join(',')}); default: detected`)
   .option('--dry-run', 'print the plan without writing anything')
   .option('--diff', 'also print a unified diff of every file the plan touches')
   .option('--yes', 'apply without asking')
   .option('--no-dashboard', 'do not open the setup wizard in your browser afterwards')
-  .action(async (opts: { workspace: string; hosts?: string; dryRun?: boolean; diff?: boolean; yes?: boolean; dashboard: boolean }) => {
+  .action(async (opts: { workspace: string; home?: string; hosts?: string; dryRun?: boolean; diff?: boolean; yes?: boolean; dashboard: boolean }) => {
     process.exitCode = await runInit({
       workspace: opts.workspace,
+      home: opts.home,
       hosts: opts.hosts?.split(',').map((host) => host.trim()).filter(Boolean),
       dryRun: opts.dryRun,
       diff: opts.diff,
@@ -71,8 +73,9 @@ program
   .description('Pull rejection emails from your Apps Script web app, match them to applications, and acknowledge them')
   .option('--dry-run', 'fetch and print the plan without storing or acknowledging anything')
   .option('--json', 'print the result as JSON')
-  .action(async (opts: { dryRun?: boolean; json?: boolean }) => {
-    process.exitCode = await runSync({ dryRun: opts.dryRun, json: opts.json })
+  .option('--workspace <dir>', 'Job Duck workspace whose home to sync', process.cwd())
+  .action(async (opts: { dryRun?: boolean; json?: boolean; workspace: string }) => {
+    process.exitCode = await runSync({ dryRun: opts.dryRun, json: opts.json, workspace: opts.workspace })
   })
 
 program

@@ -104,7 +104,7 @@ export function openBrowser(url: string, onError: () => void = () => undefined):
 }
 
 export async function startDashboard(options: DashboardOptions = {}): Promise<Dashboard> {
-  const home = options.home ?? jobduckHome()
+  const home = options.home ?? jobduckHome(options.workspace)
   const out = options.out ?? ((line: string) => console.log(line))
   const assets = Object.fromEntries(await Promise.all(Object.entries(ASSETS)
     .map(async ([path, asset]) => [path, { type: asset.type, body: await assetBody(asset.file) }] as const)))

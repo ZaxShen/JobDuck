@@ -178,12 +178,12 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   }
 
   server.registerTool('get_profile', {
-    description: 'Read the user profile (~/.jobduck/profile.md): TOML front matter, markdown body and its revision.',
+    description: 'Read the user profile (profile.md in the Job Duck home named in AGENTS.md): TOML front matter, markdown body and its revision.',
     annotations: { readOnlyHint: true },
   }, () => run(() => ({ ...readStoredProfile(profilePath(home)) })))
 
   server.registerTool('update_profile', {
-    description: 'Write the user profile (~/.jobduck/profile.md). front_matter sets only the keys given '
+    description: 'Write the user profile (profile.md in the Job Duck home named in AGENTS.md). front_matter sets only the keys given '
       + '(links merge key by key; lists and cv_files are replaced whole); unknown keys are rejected. '
       + 'sections replaces or adds "# Title" body sections by title, case-insensitive. '
       + 'Afterwards ask the user to review it in the dashboard Profile tab (jobduck dashboard --view profile).',

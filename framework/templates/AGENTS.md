@@ -16,7 +16,7 @@ This folder is a dedicated Job Duck workspace: one place for the user's job sear
 | Cover letters | `cover-letters/` | the apply skill |
 | Notes about this search | `notes.md` | you, when the user tells you something worth keeping that the profile does not hold |
 
-`~/.jobduck` is the default; `JOBDUCK_HOME` moves it.
+`~/.jobduck` is this workspace's Job Duck home; `jobduck doctor` shows where it is.
 
 ## Rules
 
