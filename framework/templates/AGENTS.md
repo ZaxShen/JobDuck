@@ -38,5 +38,6 @@ When a request matches a trigger, read the skill file and follow it.
 | apply | "apply to jobs", "submit applications", "apply to this posting <url>" | `~/.jobduck/skills/apply.md` |
 | track | "show my applications", "mark <company> as rejected", "what's my pipeline" | `~/.jobduck/skills/track.md` |
 | cv | "write my CV", "tailor my resume for <role>" | `~/.jobduck/skills/cv.md` |
+| augment | "augment my profile", "enrich my experience", "break my experience into facts" | `~/.jobduck/skills/augment.md` |
 | interview | "prep me for my interview at <company>", "I got an offer", "record the outcome" | `~/.jobduck/skills/interview.md` |
 <!-- jobduck:end -->

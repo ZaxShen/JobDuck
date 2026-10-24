@@ -11,14 +11,14 @@ import { PACKAGE_VERSION, installSkills, skillNames, skillsUpToDate } from '../s
 const skillsDir = () => join(import.meta.dir, '..', 'skills')
 const templatesDir = () => join(import.meta.dir, '..', 'templates')
 
-const SKILLS = ['apply', 'cv', 'find', 'interview', 'setup', 'track']
+const SKILLS = ['apply', 'augment', 'cv', 'find', 'interview', 'setup', 'track']
 const read = (name: string) => readFileSync(join(skillsDir(), `${name}.md`), 'utf8')
 
 let box: Sandbox
 beforeEach(() => { box = sandbox() })
 afterEach(() => box.cleanup())
 
-test('the package ships exactly the six skills', () => {
+test('the package ships exactly the seven skills', () => {
   expect(skillNames()).toEqual(SKILLS)
 })
 
@@ -77,7 +77,7 @@ test('apply records every EXTRACTED v3 key', () => {
 test('installSkills copies the skills privately and stamps the version', () => {
   expect(skillsUpToDate(box.home)).toBe(false)
   const written = installSkills(box.home)
-  expect(written).toHaveLength(6)
+  expect(written).toHaveLength(7)
   const dir = join(box.home, 'skills')
   expect(readdirSync(dir).sort()).toEqual(['.version', ...SKILLS.map((name) => `${name}.md`)])
   for (const name of SKILLS) {

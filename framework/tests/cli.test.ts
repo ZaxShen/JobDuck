@@ -7,7 +7,7 @@ import { runDoctor } from '../src/commands/doctor'
 import { runInit } from '../src/commands/init'
 import { PACKAGE_VERSION, installSkills } from '../src/paths'
 
-const SKILLS = ['apply', 'cv', 'find', 'interview', 'setup', 'track']
+const SKILLS = ['apply', 'augment', 'cv', 'find', 'interview', 'setup', 'track']
 
 let box: Sandbox
 let lines: string[]
@@ -55,12 +55,12 @@ test('init --dry-run --diff for claude and codex diffs twelve SKILL.md pointers'
   expect(await runInit({ ...base(), hosts: ['claude', 'codex'], dryRun: true, diff: true })).toBe(0)
   expect(snapshot(box.root)).toEqual(before)
   const pointers = lines.join('\n').split('\n').filter((line) => /^\+\+\+ .*\/SKILL\.md$/.test(line))
-  expect(pointers).toHaveLength(12)
+  expect(pointers).toHaveLength(14)
   for (const name of SKILLS) {
     expect(pointers).toContain(`+++ ${join(box.workspace, '.claude', 'skills', `jobduck-${name}`, 'SKILL.md')}`)
     expect(pointers).toContain(`+++ ${join(box.workspace, '.agents', 'skills', `jobduck-${name}`, 'SKILL.md')}`)
   }
-  expect(lines.some((line) => line.startsWith('- install 6 skills'))).toBe(true)
+  expect(lines.some((line) => line.startsWith('- install 7 skills'))).toBe(true)
 })
 
 test('init --dry-run without --diff prints one line per file and groups skill pointers', async () => {
@@ -70,9 +70,9 @@ test('init --dry-run without --diff prints one line per file and groups skill po
   expect(lines).toContain('- create .mcp.json')
   expect(lines).toContain('- create AGENTS.md')
   expect(lines).toContain('- update CLAUDE.md')
-  expect(lines).toContain('- create .claude/skills/jobduck-*/SKILL.md (6 skill pointers)')
+  expect(lines).toContain('- create .claude/skills/jobduck-*/SKILL.md (7 skill pointers)')
   expect(lines).toContain('- update ~/.codex/config.toml')
-  expect(lines).toContain('- create .agents/skills/jobduck-*/SKILL.md (6 skill pointers)')
+  expect(lines).toContain('- create .agents/skills/jobduck-*/SKILL.md (7 skill pointers)')
   expect(lines).toContain('Pass --diff to see every change in full.')
   expect(lines).toContain('- create inbox/, cv/, cover-letters/ for your documents')
   expect(lines.filter((line) => line.startsWith('- '))).toHaveLength(11)
@@ -96,7 +96,7 @@ test('init asks on a TTY and aborts on no', async () => {
 test('init --yes creates the home, migrates, and registers hosts; doctor then passes', async () => {
   fixtures()
   expect(await runInit({ ...base(), hosts: ['claude', 'codex', 'gemini'], yes: true })).toBe(0)
-  expect(lines).toContain('created .claude/skills/jobduck-*/SKILL.md (6 skill pointers)')
+  expect(lines).toContain('created .claude/skills/jobduck-*/SKILL.md (7 skill pointers)')
   expect(lines).toContain('updated ~/.codex/config.toml')
   expect(lines).toContain('Done. Open your agent in this workspace once the setup wizard is finished.')
   expect(lines.some((line) => line.startsWith('Finish setup in your browser: jobduck dashboard --background --view welcome'))).toBe(true)
@@ -117,12 +117,12 @@ test('init --yes creates the home, migrates, and registers hosts; doctor then pa
   lines = []
   expect(runDoctor({ ...doctorBase(), json: true })).toBe(0)
   const report = JSON.parse(lines.join('\n'))
-  expect(report.checks.find((c: { name: string }) => c.name === 'database').detail).toBe('migration version 2')
+  expect(report.checks.find((c: { name: string }) => c.name === 'database').detail).toBe('migration version 3')
   expect(report.checks.find((c: { name: string }) => c.name === 'runtime').detail).toBe(`jobduck ${PACKAGE_VERSION} on bun ${Bun.version}`)
   expect(report.checks.find((c: { name: string }) => c.name === 'path').detail).toBe(`jobduck found at ${join(box.root, 'bin', 'jobduck')}`)
   expect(report.checks.some((c: { name: string }) => c.name === 'node')).toBe(false)
   expect(report.hosts.every((h: { registered: boolean }) => h.registered)).toBe(true)
-  expect(report.checks.find((c: { name: string }) => c.name === 'skills').detail).toBe(`6 installed (version ${PACKAGE_VERSION})`)
+  expect(report.checks.find((c: { name: string }) => c.name === 'skills').detail).toBe(`7 installed (version ${PACKAGE_VERSION})`)
 
   rmSync(join(box.home, 'skills', 'apply.md'))
   lines = []
@@ -207,7 +207,7 @@ test('the cli refreshes stale skills before a command', () => {
   expect(readFileSync(join(box.home, 'skills', '.version'), 'utf8').trim()).toBe(PACKAGE_VERSION)
   expect(readFileSync(join(box.home, 'skills', 'find.md'), 'utf8')).not.toBe('stale\n')
   const report = JSON.parse(result.stdout)
-  expect(report.checks.find((c: { name: string }) => c.name === 'skills').detail).toBe(`6 installed (version ${PACKAGE_VERSION})`)
+  expect(report.checks.find((c: { name: string }) => c.name === 'skills').detail).toBe(`7 installed (version ${PACKAGE_VERSION})`)
 }, 20_000)
 
 test('the cli leaves a missing home alone', () => {

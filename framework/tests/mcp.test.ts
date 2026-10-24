@@ -9,7 +9,7 @@ import { listEvents } from '../src/db/applications'
 import { upsertPosting } from '../src/db/postings'
 import type { FetchLike } from '../src/freehire/client'
 import { createServer, type JobduckServer } from '../src/mcp/server'
-import { ISO_DATE_MESSAGE, TEXT_CAP, TOOL_NAMES, TRACK_DISABLED } from '../src/mcp/tools'
+import { CV_DISABLED, ISO_DATE_MESSAGE, MAX_FACTS_PER_SAVE, TEXT_CAP, TOOL_NAMES, TRACK_DISABLED } from '../src/mcp/tools'
 import { dbPath } from '../src/paths'
 
 const fixture = JSON.parse(readFileSync(join(import.meta.dir, 'fixtures', 'freehire-search.json'), 'utf8')) as {
@@ -62,6 +62,11 @@ async function data<T = Record<string, any>>(name: string, args: Record<string, 
 const enableTrack = () => {
   const path = join(box.home, 'permissions.toml')
   writeFileSync(path, readFileSync(path, 'utf8').replace('track = false', 'track = true'))
+}
+
+const enableCv = () => {
+  const path = join(box.home, 'permissions.toml')
+  writeFileSync(path, readFileSync(path, 'utf8').replace('cv = false', 'cv = true'))
 }
 
 const inspect = (fn: (db: Db) => void) => {
@@ -368,4 +373,80 @@ test('interview tools reject mismatched stages, bad values and non-stage events'
   const missing = await call('get_application', { id: 9999 })
   expect(missing.isError).toBe(true)
   expect(missing.content[0]?.text).toBe('application 9999 not found')
+})
+
+const fact = {
+  slug: 'pm-001', company: 'Acme', role: 'Data Engineer', project: 'Pipeline Migration', category: 'action',
+  action: 'Migrated 14 nightly batch jobs to a workflow orchestrator.', metrics: '14 jobs', skills: ['data_migration'],
+  tools: ['airflow'], basis: 'stated',
+}
+const inferredFact = {
+  slug: 'pm-002', company: 'Acme', role: 'Data Engineer', project: 'Pipeline Migration', category: 'methodology',
+  action: 'Ran migrated jobs alongside cron before cutting over.', basis: 'inferred', confidence: 'medium',
+  rationale: 'Parallel runs are the usual way to retire cron jobs safely.', sort_order: 20,
+}
+
+test('profile fact tools are registered, with list read-only and delete destructive', async () => {
+  const { tools } = await client.listTools()
+  const names = tools.map((tool) => tool.name)
+  for (const name of ['list_profile_facts', 'save_profile_facts', 'update_profile_fact', 'delete_profile_fact']) {
+    expect(names).toContain(name)
+  }
+  expect(tools.find((tool) => tool.name === 'list_profile_facts')?.annotations?.readOnlyHint).toBe(true)
+  expect(tools.find((tool) => tool.name === 'delete_profile_fact')?.annotations?.destructiveHint).toBe(true)
+})
+
+test('profile fact writers are refused while cv is off', async () => {
+  const writers: [string, Record<string, unknown>][] = [
+    ['save_profile_facts', { facts: [fact] }],
+    ['update_profile_fact', { id: 1, status: 'accepted' }],
+    ['delete_profile_fact', { id: 1 }],
+  ]
+  for (const [name, args] of writers) {
+    const refused = await call(name, args)
+    expect(refused.isError).toBe(true)
+    expect(refused.content[0]?.text).toBe(CV_DISABLED)
+  }
+  inspect((db) => expect(db.prepare('SELECT COUNT(*) AS n FROM profile_facts').get()).toEqual({ n: 0 }))
+})
+
+test('save_profile_facts, list_profile_facts, update_profile_fact and delete_profile_fact round-trip', async () => {
+  enableCv()
+  const saved = await data('save_profile_facts', { facts: [fact, inferredFact] })
+  expect(saved).toMatchObject({ inserted: 2, updated: 0 })
+  expect(saved.facts.map((f: any) => f.status)).toEqual(['proposed', 'proposed'])
+
+  const { facts } = await data('list_profile_facts', { company: 'acme' })
+  expect(facts).toHaveLength(2)
+  expect(facts[0]).toMatchObject({ ...fact, confidence: null, rationale: null, status: 'proposed' })
+  expect(facts[1]).toMatchObject({ ...inferredFact, status: 'proposed' })
+
+  const again = await data('save_profile_facts', { facts: [{ ...fact, outcome: 'Fewer failed runs.' }] })
+  expect(again).toMatchObject({ inserted: 0, updated: 1 })
+  expect(again.facts[0].id).toBe(facts[0].id)
+
+  const { fact: accepted } = await data('update_profile_fact', { id: facts[0].id, status: 'accepted' })
+  expect(accepted).toMatchObject({ status: 'accepted', outcome: 'Fewer failed runs.' })
+  expect((await data('list_profile_facts', { status: 'accepted' })).facts.map((f: any) => f.id)).toEqual([facts[0].id])
+  expect((await data('list_profile_facts', { status: ['proposed', 'archived'] })).facts).toHaveLength(1)
+
+  const { deleted } = await data('delete_profile_fact', { id: facts[1].id })
+  expect(deleted.slug).toBe('pm-002')
+  expect((await data('list_profile_facts')).facts).toHaveLength(1)
+})
+
+test('profile fact tools reject invalid facts and missing ids without writing', async () => {
+  enableCv()
+  const noConfidence = await call('save_profile_facts', { facts: [fact, { ...inferredFact, confidence: undefined }] })
+  expect(noConfidence.isError).toBe(true)
+  expect(noConfidence.content[0]?.text).toContain('facts[1]: confidence: inferred facts need a confidence')
+  const badTag = await call('save_profile_facts', { facts: [{ ...fact, tools: ['Air Flow'] }] })
+  expect(badTag.isError).toBe(true)
+  expect(badTag.content[0]?.text).toContain('lowercase snake_case')
+  const tooMany = await call('save_profile_facts', { facts: Array.from({ length: MAX_FACTS_PER_SAVE + 1 }, () => fact) })
+  expect(tooMany.isError).toBe(true)
+  expect((await data('list_profile_facts')).facts).toEqual([])
+  const missing = await call('update_profile_fact', { id: 9999, status: 'archived' })
+  expect(missing.isError).toBe(true)
+  expect(missing.content[0]?.text).toBe('fact 9999 not found')
 })

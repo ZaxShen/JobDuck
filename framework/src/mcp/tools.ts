@@ -14,6 +14,9 @@ import {
   STAGE_TYPES, updateStage,
 } from '../db/interviews'
 import { findPostingByUrl, type Posting, upsertPosting } from '../db/postings'
+import {
+  deleteFact, FACT_BASES, FACT_CATEGORIES, FACT_CONFIDENCES, FACT_STATUSES, listFacts, saveFacts, updateFact,
+} from '../db/profile-facts'
 import { type FetchLike, searchJobs } from '../freehire/client'
 import { toPostingInput } from '../freehire/map'
 import { permissionsPath, profilePath } from '../paths'
@@ -29,9 +32,12 @@ export const TOOL_NAMES = [
   'get_profile', 'update_profile', 'get_permissions', 'search_jobs', 'find_application',
   'record_application', 'update_status', 'list_applications', 'get_application', 'update_application',
   'record_interview', 'update_interview', 'delete_interview',
+  'list_profile_facts', 'save_profile_facts', 'update_profile_fact', 'delete_profile_fact',
 ] as const
 
 export const TRACK_DISABLED = 'track module is disabled in permissions.toml; run the setup skill'
+export const CV_DISABLED = 'cv module is disabled in permissions.toml; run the setup skill'
+export const MAX_FACTS_PER_SAVE = 100
 
 export const EXTRACTED_KEYS = [
   'title_clean', 'company', 'canonical_role', 'team_org', 'experience_level', 'min_experience_years',
@@ -129,6 +135,27 @@ const Contacts = z.array(Contact).max(MAX_CONTACTS)
 const Pay = z.number().int().nonnegative().nullable().optional()
 const OptionalText = z.string().nullable().optional()
 
+const FactStatus = z.enum(FACT_STATUSES)
+const Tags = z.array(z.string()).describe('lowercase snake_case tags, e.g. ["data_modeling"]')
+const factFields = {
+  slug: OptionalText.describe('stable id scoped to the project, e.g. abc-001; saving an existing slug updates that fact'),
+  company: OptionalText,
+  role: OptionalText,
+  project: z.string().describe('the project or initiative inside the role, never the job title'),
+  category: z.enum(FACT_CATEGORIES),
+  action: z.string().describe('one action, one sentence'),
+  outcome: OptionalText.describe('one sentence; omit when the action has no distinct outcome'),
+  metrics: OptionalText.describe('numbers exactly as the profile states them'),
+  skills: Tags.optional(),
+  tools: Tags.optional().describe('named libraries, platforms, services or databases; methods go in skills'),
+  basis: z.enum(FACT_BASES).describe('stated: the profile says it; inferred: logically required or typical'),
+  confidence: z.enum(FACT_CONFIDENCES).nullable().optional().describe('required for inferred facts, null for stated'),
+  rationale: OptionalText.describe('required for inferred facts: one sentence, at most 25 words; null for stated'),
+  sort_order: z.number().int().optional().describe('story order inside the project, from problem to impact'),
+}
+const factPatch = Object.fromEntries(Object.entries(factFields).map(([key, schema]) => [key, schema.optional()])) as
+  { [K in keyof typeof factFields]: z.ZodOptional<(typeof factFields)[K]> }
+
 const applicationPatch = {
   ...Object.fromEntries(PAY_FIELDS.map((key) => [key, Pay])) as Record<(typeof PAY_FIELDS)[number], typeof Pay>,
   currency: OptionalText.describe('3-letter currency code, e.g. USD'),
@@ -145,6 +172,9 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   const permissions = () => loadPermissions(permissionsPath(home))
   const requireTrack = () => {
     if (!permissions().modules.track) throw new Error(TRACK_DISABLED)
+  }
+  const requireCv = () => {
+    if (!permissions().modules.cv) throw new Error(CV_DISABLED)
   }
 
   server.registerTool('get_profile', {
@@ -374,5 +404,49 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   }, ({ event_id: eventId }) => run(() => {
     requireTrack()
     return { deleted: deleteStage(db, eventId) }
+  }))
+
+  server.registerTool('list_profile_facts', {
+    description: 'List profile facts (atomic experience facts from the augment skill), ordered by company, project '
+      + 'and story order. Filters: status (proposed, accepted, archived; one or an array), company, project '
+      + '(exact, case-insensitive).',
+    inputSchema: {
+      status: z.union([FactStatus, z.array(FactStatus)]).optional(),
+      company: z.string().optional(),
+      project: z.string().optional(),
+    },
+    annotations: { readOnlyHint: true },
+  }, (filter) => run(() => ({ facts: listFacts(db, filter) })))
+
+  server.registerTool('save_profile_facts', {
+    description: `Save up to ${MAX_FACTS_PER_SAVE} profile facts in one transaction as proposed (requires the cv module). `
+      + 'A fact whose slug already exists updates that fact and returns it to proposed. Inferred facts need confidence '
+      + 'and a rationale of at most 25 words; stated facts take neither. Nothing is saved when any fact is invalid.',
+    inputSchema: { facts: z.array(z.object(factFields)).min(1).max(MAX_FACTS_PER_SAVE) },
+  }, ({ facts }) => run(() => {
+    requireCv()
+    return { ...saveFacts(db, facts) }
+  }))
+
+  server.registerTool('update_profile_fact', {
+    description: 'Edit one profile fact by id (requires the cv module): any field, or status to accept or archive it. '
+      + 'Only the fields given change; null clears an optional one. Set status accepted only when the user says so.',
+    inputSchema: {
+      id: Id,
+      ...factPatch,
+      status: FactStatus.optional(),
+    },
+  }, ({ id, ...patch }) => run(() => {
+    requireCv()
+    return { fact: updateFact(db, id, patch) }
+  }))
+
+  server.registerTool('delete_profile_fact', {
+    description: 'Delete one profile fact by id (requires the cv module). Prefer status archived to keep it for review.',
+    inputSchema: { id: Id },
+    annotations: { destructiveHint: true },
+  }, ({ id }) => run(() => {
+    requireCv()
+    return { deleted: deleteFact(db, id) }
   }))
 }
