@@ -68,6 +68,10 @@ const permissionsSchema = z.object({ permissions: z.unknown(), revision: z.strin
 
 export const INBOX_PATH = '/api/inbox'
 export const INBOX_EXTENSIONS = ['.pdf', '.docx', '.doc', '.md', '.txt', '.zip', '.csv'] as const
+export const INBOX_MAX_FILE_BYTES = 15 * 1024 * 1024
+export const INBOX_MAX_NAME_BYTES = 255
+const INBOX_JSON_OVERHEAD_BYTES = 4096
+export const INBOX_MAX_BODY_BYTES = Math.ceil(INBOX_MAX_FILE_BYTES / 3) * 4 + INBOX_JSON_OVERHEAD_BYTES
 
 const inboxSchema = z.object({
   name: z.string().max(255),
@@ -77,6 +81,7 @@ const inboxSchema = z.object({
 function inboxName(raw: string): string {
   const name = basename(raw.replace(/\\/g, '/')).trim()
   if (name === '' || name.startsWith('.') || /[\x00-\x1f]/.test(name)) throw new ApiError(400, `invalid file name: ${raw}`)
+  if (Buffer.byteLength(name) > INBOX_MAX_NAME_BYTES) throw new ApiError(400, `file name is longer than ${INBOX_MAX_NAME_BYTES} bytes`)
   const extension = extname(name).toLowerCase()
   if (!(INBOX_EXTENSIONS as readonly string[]).includes(extension)) {
     throw new ApiError(400, `unsupported file type ${extension || '(none)'}; use ${INBOX_EXTENSIONS.join(', ')}`)
