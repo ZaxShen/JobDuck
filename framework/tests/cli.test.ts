@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { type Sandbox, sandbox, snapshot } from './helpers'
 import { runDoctor } from '../src/commands/doctor'
 import { runInit } from '../src/commands/init'
+import { DASHBOARD_VIEWS } from '../src/dashboard/server'
 import { PACKAGE_VERSION, installSkills } from '../src/paths'
 
 const SKILLS = ['apply', 'augment', 'cv', 'find', 'interview', 'setup', 'track']
@@ -218,4 +219,14 @@ test('the cli leaves a missing home alone', () => {
   })
   expect(result.stdout.trim()).toBe(PACKAGE_VERSION)
   expect(existsSync(box.home)).toBe(false)
+}, 20_000)
+
+test('dashboard --help lists every view', () => {
+  const result = spawnSync('bun', [join(import.meta.dir, '..', 'src', 'cli.ts'), 'dashboard', '--help'], {
+    cwd: box.workspace,
+    env: { ...process.env, JOBDUCK_HOME: box.home, HOME: box.userHome },
+    encoding: 'utf8',
+  })
+  expect(result.stdout).toContain('facts')
+  expect(result.stdout.replace(/\s+/g, ' ')).toContain(`open on a tab: ${DASHBOARD_VIEWS.join(', ')}`)
 }, 20_000)

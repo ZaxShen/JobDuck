@@ -9,7 +9,7 @@ import {
 } from '../hosts'
 import {
   HOME_DIR, PACKAGE_VERSION, PERMISSIONS_FILE, PROFILE_FILE, dbPath, defaultHome, ensureHome, findHome, installSkills,
-  installedSkillsPath, isMarkedHome, jobduckHome, skillNames, skillsUpToDate,
+  installedSkillsPath, isMarkedHome, jobduckHome, resolveWorkspace, skillNames, skillsUpToDate,
 } from '../paths'
 import { launchDashboard } from './dashboard'
 
@@ -146,6 +146,9 @@ export function chooseHome(ctx: WorkspaceContext, flag?: string): string {
   return isDedicatedWorkspace(ctx) ? join(resolve(ctx.workspace), HOME_DIR) : fallback
 }
 
+export const workspaceLine = (given: string, workspace: string) =>
+  `Workspace: ${workspace}${workspace === given ? '' : ` (holds ${HOME_DIR}/)`}`
+
 export const CODEX_TRUST_NOTE = 'Codex reads .codex/config.toml only in trusted projects: trust this folder when Codex asks.'
 
 export const DEDICATED_TIP = [
@@ -156,8 +159,9 @@ export const DEDICATED_TIP = [
 
 export async function runInit(options: InitOptions = {}): Promise<number> {
   const out = options.out ?? ((line: string) => console.log(line))
-  const workspace = resolve(options.workspace ?? process.cwd())
-  const home = chooseHome({ workspace, userHome: options.userHome }, options.home)
+  const given = resolve(options.workspace ?? process.cwd())
+  const workspace = resolveWorkspace(given, userHomeOf({ userHome: options.userHome }))
+  const home = chooseHome({ workspace: given, userHome: options.userHome }, options.home)
   const ctx: HostContext = { workspace, home, userHome: options.userHome, pathEnv: options.pathEnv, dryRun: true }
   const local = isWorkspaceLocal(ctx)
   const show = (path: string) => shortPath(path, ctx)
@@ -168,7 +172,7 @@ export async function runInit(options: InitOptions = {}): Promise<number> {
   const changes = dedupe(hosts.flatMap((host) => host.register(ctx)))
 
   out(`Job Duck home: ${show(home)}`)
-  out(`Workspace: ${ctx.workspace}`)
+  out(workspaceLine(given, workspace))
   out(`Hosts: ${hosts.length > 0 ? hosts.map((host) => host.label).join(', ') : 'none detected (use --hosts)'}`)
   if (steps.length === 0 && changes.length === 0) {
     out('Nothing to do.')

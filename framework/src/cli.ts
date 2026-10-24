@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { Command, Option } from 'commander'
 import { runDashboard } from './commands/dashboard'
+import { DASHBOARD_VIEWS } from './dashboard/server'
 import { runDoctor } from './commands/doctor'
 import { runInit } from './commands/init'
 import { runMcp } from './commands/mcp'
@@ -59,7 +60,7 @@ program
   .option('--port <n>', 'port to listen on (default 4848, or a free port when 4848 is taken; 0 picks a free port)')
   .option('--no-open', 'do not open a browser')
   .option('--print-url', 'print only the URL')
-  .option('--view <name>', 'open on a tab: applications, profile, settings or welcome (the setup wizard)')
+  .option('--view <name>', `open on a tab: ${DASHBOARD_VIEWS.join(', ')} (welcome is the setup wizard)`)
   .option('--workspace <dir>', 'Job Duck workspace whose inbox/ receives uploaded files', process.cwd())
   .option('--background', 'reuse the running dashboard or start one in the background, open the browser, and exit')
   .action(async (opts: { port?: string; open: boolean; printUrl?: boolean; view?: string; workspace: string; background?: boolean }) => {

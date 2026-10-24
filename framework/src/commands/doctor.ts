@@ -4,10 +4,11 @@ import { loadPermissions } from '../config/permissions'
 import { loadProfile } from '../config/profile'
 import { openDb } from '../db/client'
 import { currentVersion, loadMigrations, migrate } from '../db/migrate'
-import { type HostContext, allHosts } from '../hosts'
+import { type HostContext, allHosts, userHomeOf } from '../hosts'
 import {
-  PACKAGE_VERSION, SKILLS_VERSION_FILE, dbPath, ensureHome, installedSkillsPath, jobduckHome, permissionsPath, profilePath, skillNames,
+  PACKAGE_VERSION, SKILLS_VERSION_FILE, dbPath, ensureHome, installedSkillsPath, jobduckHome, permissionsPath, profilePath, resolveWorkspace, skillNames,
 } from '../paths'
+import { workspaceLine } from './init'
 
 export interface Check {
   name: string
@@ -48,7 +49,8 @@ function attempt(name: string, fn: () => string): Check {
 
 export function runDoctor(options: DoctorOptions = {}): number {
   const out = options.out ?? ((line: string) => console.log(line))
-  const workspace = resolve(options.workspace ?? process.cwd())
+  const given = resolve(options.workspace ?? process.cwd())
+  const workspace = resolveWorkspace(given, userHomeOf({ userHome: options.userHome }))
   const home = jobduckHome(workspace, options.userHome)
   const checks: Check[] = []
 
@@ -128,6 +130,7 @@ export function runDoctor(options: DoctorOptions = {}): number {
   if (options.json) {
     out(JSON.stringify({ ok, home, checks, hosts }, null, 2))
   } else {
+    if (workspace !== given) out(workspaceLine(given, workspace))
     for (const check of checks) out(`${check.warn ? 'warn' : check.ok ? 'ok  ' : 'FAIL'} ${check.name}: ${check.detail}`)
     for (const host of hosts) {
       const state = host.registered ? 'registered' : host.detected ? 'detected, not registered' : 'not detected'

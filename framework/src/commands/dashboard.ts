@@ -1,10 +1,9 @@
 import { spawn } from 'node:child_process'
 import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import {
   DASHBOARD_HOST, DASHBOARD_VIEWS, DEFAULT_PORT, type Dashboard, type DashboardView, openBrowser, pageUrl, startDashboard,
 } from '../dashboard/server'
-import { dashboardStatePath, jobduckHome } from '../paths'
+import { dashboardStatePath, jobduckHome, resolveWorkspace } from '../paths'
 
 export interface DashboardRecord {
   pid: number
@@ -115,7 +114,7 @@ async function replaceDashboard(record: DashboardRecord, stop: Stopper, timeoutM
 }
 
 export async function launchDashboard(options: BackgroundOptions = {}): Promise<string> {
-  const workspace = resolve(options.workspace ?? process.cwd())
+  const workspace = resolveWorkspace(options.workspace ?? process.cwd())
   const home = options.home ?? jobduckHome(workspace)
   const timeoutMs = options.timeoutMs ?? START_MS
   const browse = options.openBrowser ?? ((url: string) => openBrowser(url))
@@ -175,7 +174,7 @@ export async function runDashboard(options: DashboardCommandOptions = {}): Promi
     return 1
   }
   const view = options.view as DashboardView | undefined
-  const workspace = resolve(options.workspace ?? process.cwd())
+  const workspace = resolveWorkspace(options.workspace ?? process.cwd())
   const home = options.home ?? jobduckHome(workspace)
 
   if (options.background) {

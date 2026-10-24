@@ -63,7 +63,7 @@ Your data (the database, `profile.md`, `permissions.toml`, the installed skills)
 5. `<workspace>/.jobduck/` in a dedicated folder, with a `.gitignore` of `*` so git never picks it up;
 6. `~/.jobduck/` otherwise.
 
-Every other command, and the MCP server, uses `JOBDUCK_HOME` when set, else the nearest `.jobduck/` with `jobduck.db` or `permissions.toml` from the current folder (or `--workspace`) upward, else `~/.jobduck/`. A command run from `cv/` therefore still finds `<workspace>/.jobduck/`. A workspace home is deleted with the workspace; move the `.jobduck/` folder along when you move it.
+Every other command, and the MCP server, uses `JOBDUCK_HOME` when set, else the nearest `.jobduck/` with `jobduck.db` or `permissions.toml` from the current folder (or `--workspace`) upward, else `~/.jobduck/`. A command run from `cv/` therefore still finds `<workspace>/.jobduck/`, and `init`, `doctor`, `dashboard` and `sync` then treat the folder that holds `.jobduck/` as the workspace (`init` and `doctor` print `Workspace: <dir> (holds .jobduck/)`), so host files and `inbox/` uploads land there rather than in `cv/`. A workspace home is deleted with the workspace; move the `.jobduck/` folder along when you move it.
 
 ## Upgrade
 

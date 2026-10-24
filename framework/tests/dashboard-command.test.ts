@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
-import { type Sandbox, sandbox } from './helpers'
+import { type Sandbox, migratedDb, sandbox } from './helpers'
 import { type DashboardRecord, launchDashboard, liveDashboard, runDashboard } from '../src/commands/dashboard'
 import { DEFAULT_PORT, startDashboard } from '../src/dashboard/server'
 import { dashboardStatePath, ensureHome } from '../src/paths'
@@ -192,3 +192,31 @@ test('the default port falls back to a free one when 4848 is taken by something 
     await new Promise<void>((resolve) => (bound ? squatter.close(() => resolve()) : resolve()))
   }
 })
+
+test('a dashboard started from a subfolder of a workspace home serves and records the folder that holds .jobduck/', async () => {
+  delete process.env.JOBDUCK_HOME
+  const home = join(box.workspace, '.jobduck')
+  migratedDb(home).close()
+  const cv = join(box.workspace, 'cv')
+  mkdirSync(cv)
+
+  const { stop, stopped } = stopper()
+  const running = runDashboard({ workspace: cv, port: 0, open: false, stop: stopped, out, err: quiet })
+  try {
+    const record = await waitForRecord(home)
+    expect(record.workspace).toBe(box.workspace)
+    let spawned = 0
+    const page = await launchDashboard({ workspace: cv, open: false, spawn: () => { spawned++; return {} } })
+    expect(page).toBe(record.url)
+    expect(spawned).toBe(0)
+  } finally {
+    stop()
+    expect(await running).toBe(0)
+  }
+
+  const spawns: string[][] = []
+  await expect(launchDashboard({
+    workspace: cv, open: false, timeoutMs: 300, spawn: (_command, args) => { spawns.push(args); return { pid: 123 } },
+  })).rejects.toThrow('did not start')
+  expect(spawns[0]!.slice(-2)).toEqual(['--workspace', box.workspace])
+}, 10_000)

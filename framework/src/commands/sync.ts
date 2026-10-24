@@ -7,7 +7,7 @@ import {
   type LiveApplication, applyOutcomeMatch, findOutcomeByMessageId, insertOutcome, listLiveApplicationsForMatching,
   markSynced, setNeedsMatch,
 } from '../db/outcomes'
-import { dbPath, jobduckHome, permissionsPath } from '../paths'
+import { dbPath, jobduckHome, permissionsPath, resolveWorkspace } from '../paths'
 import { type FetchLike, type SyncOutcome, createSyncClient } from '../sync/client'
 import { type MatchDecision, type MatchKind, type ScoredCandidate, markerId, matchOutcome as decideMatch } from '../sync/match'
 
@@ -155,7 +155,7 @@ function openForPlan(home: string): Db | null {
 export async function runSync(options: SyncOptions = {}): Promise<number> {
   const out = options.out ?? ((line: string) => console.log(line))
   const err = options.err ?? ((line: string) => console.error(line))
-  const home = options.home ?? jobduckHome(options.workspace)
+  const home = options.home ?? jobduckHome(resolveWorkspace(options.workspace ?? process.cwd()))
   const dryRun = options.dryRun ?? false
 
   const config = configured(home)

@@ -10,7 +10,7 @@ import { claudeCode, mergeAgentsMd } from '../src/hosts/claude-code'
 import { codex, mergeCodexConfig } from '../src/hosts/codex'
 import { gemini } from '../src/hosts/gemini'
 import { type HostContext, MCP_SERVER, homeLabel, isWorkspaceLocal, mcpServer } from '../src/hosts'
-import { defaultHome, findHome, jobduckHome } from '../src/paths'
+import { defaultHome, findHome, jobduckHome, resolveWorkspace } from '../src/paths'
 
 let box: Sandbox
 let lines: string[]
@@ -174,4 +174,47 @@ test('AGENTS.md and skill pointers name the home by its label', () => {
   const pointers = claudeCode.register(ctxFor(box.workspace, join(box.userHome, 'search', '.jobduck')))
     .filter((change) => change.path.endsWith(join('jobduck-cv', 'SKILL.md')))
   expect(pointers[0]!.after).toEndWith('Read and follow `~/search/.jobduck/skills/cv.md`.\n')
+})
+
+test('resolveWorkspace snaps a folder inside a workspace home to the folder that holds .jobduck/', () => {
+  const deep = join(box.workspace, 'cv', 'deep')
+  mkdirSync(deep, { recursive: true })
+  expect(resolveWorkspace(deep, box.userHome)).toBe(deep)
+
+  mark(join(box.userHome, '.jobduck'))
+  expect(resolveWorkspace(deep, box.userHome)).toBe(deep)
+  expect(resolveWorkspace(join(box.userHome, 'notes'), box.userHome)).toBe(join(box.userHome, 'notes'))
+
+  mark(join(box.workspace, '.jobduck'))
+  expect(resolveWorkspace(deep, box.userHome)).toBe(box.workspace)
+  expect(resolveWorkspace(box.workspace, box.userHome)).toBe(box.workspace)
+  expect(resolveWorkspace(box.root, box.userHome)).toBe(box.root)
+
+  process.env.JOBDUCK_HOME = join(box.workspace, '.jobduck')
+  const outside = join(box.root, 'outside')
+  expect(resolveWorkspace(outside, box.userHome)).toBe(outside)
+  expect(resolveWorkspace(deep, box.userHome)).toBe(box.workspace)
+})
+
+test('init and doctor from a subfolder of a workspace home use the folder that holds .jobduck/', async () => {
+  const home = join(box.workspace, '.jobduck')
+  mark(home)
+  const cv = join(box.workspace, 'cv')
+  mkdirSync(cv)
+  expect(await runInit({ workspace: cv, userHome: box.userHome, pathEnv: '', dryRun: true, out, hosts: ['codex', 'gemini'] })).toBe(0)
+  expect(lines).toContain(`Workspace: ${box.workspace} (holds .jobduck/)`)
+  expect(lines).toContain('- create .codex/config.toml')
+  expect(lines).toContain('- create .gemini/settings.json')
+  expect(lines.some((line) => line.includes('~/'))).toBe(false)
+  expect(lines.some((line) => line.includes('cv/'))).toBe(false)
+
+  lines = []
+  runDoctor({ workspace: cv, userHome: box.userHome, pathEnv: '', json: true, out })
+  const hosts = JSON.parse(lines.join('\n')).hosts as Array<{ id: string; config: string }>
+  expect(hosts.find((host) => host.id === 'codex')!.config).toBe(join(box.workspace, '.codex', 'config.toml'))
+  expect(hosts.find((host) => host.id === 'gemini')!.config).toBe(join(box.workspace, '.gemini', 'settings.json'))
+
+  lines = []
+  runDoctor({ workspace: cv, userHome: box.userHome, pathEnv: '', out })
+  expect(lines[0]).toBe(`Workspace: ${box.workspace} (holds .jobduck/)`)
 })
