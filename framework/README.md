@@ -186,7 +186,7 @@ A posting's fields (location, work mode, pay, seniority, skills, requirements an
 3. Job Duck's guarded fetch: the employer's ATS JSON API (Greenhouse, Lever, Ashby, Workday, SmartRecruiters) when the URL names one, else the posting page. It runs only while a core field (country, city, state for US and Canada, work mode, pay) is missing, makes at most 3 requests per resolve, reaches public addresses only (no loopback, private or link-local IPs, checked on every redirect and pinned to the checked IP), allows the default ports only, and reads at most 2 MiB. There is no setting to turn it off;
 4. your agent: when the page is blocked (`next: "agent_browser"`) it reads the posting with its own browser and passes the text to `resolve_posting`; when fields are still missing (`next: "agent_fill"`) it proposes them with a verbatim quote, and a quote not found in the posting text is rejected.
 
-Each field records where it came from in `postings.field_sources`. A later value replaces a stored one only when its source ranks at least as high: `user` (your dashboard edits) > `freehire` > `ats` > `page` > `text` > `agent`. A page that answers 404 or 410 is reported as `quality: "gone"`.
+Each field records where it came from in `postings.field_sources`. A later value replaces a stored one only when its source ranks at least as high: `user` (values you entered or edited, plus imported and manually added rows) > `freehire` > `ats` > `page` > `text` > `agent`. A page that answers 404 or 410 is reported as `quality: "gone"`.
 
 ## Dashboard
 
@@ -297,7 +297,7 @@ Nothing reaches `stable` without a release candidate people have run.
 2. Test it: `jobduck upgrade --channel rc`. Fixes go to `dev`, then `X.Y.Z-rc.2`, and so on.
 3. When an rc holds up, set `package.json` to `X.Y.Z` on `dev`, merge `dev` into `main`, and tag `main` `vX.Y.Z`.
 
-The release workflow (`.github/workflows/release.yml`) runs `scripts/release-gate.sh` first: an rc tag must be on `dev`; a stable tag must be on `main`, its `vX.Y.Z-rc.N` must already be published, and nothing but the `package.json` version may differ from the newest rc. Then it tests, checks the tag matches `package.json`, builds `jobduck-darwin-arm64`, `jobduck-darwin-x64`, `jobduck-linux-x64`, `jobduck-linux-arm64`, `jobduck-windows-x64.exe` and `SHA256SUMS`, and publishes the GitHub Release (stable notes start from the previous stable tag).
+The release workflow (`.github/workflows/release.yml`) runs `scripts/release-gate.ts` first: an rc tag must be on `dev`; a stable tag must be on `main`, its `vX.Y.Z-rc.N` must already be published, and nothing but the `package.json` version may differ from the newest rc. Then it tests, checks the tag matches `package.json`, builds `jobduck-darwin-arm64`, `jobduck-darwin-x64`, `jobduck-linux-x64`, `jobduck-linux-arm64`, `jobduck-windows-x64.exe` and `SHA256SUMS`, and publishes the GitHub Release (stable notes start from the previous stable tag).
 
 `.github/workflows/dev-channel.yml` runs daily, and does nothing unless `dev` moved since the last `dev-latest` build. It tests, stamps the version `X.Y.Z-dev.<run>+<sha>` (the next patch after a stable `package.json` version) and replaces the `dev-latest` prerelease. For a build right away, run `gh workflow run dev-channel.yml`. Scheduled and manual runs use the workflow file on `main`.
 
