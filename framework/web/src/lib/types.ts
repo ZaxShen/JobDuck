@@ -1,6 +1,7 @@
 export interface ApplicationRow {
   id: number
   status: string
+  pending_reason: string | null
   title: string
   company: string
   location: string | null

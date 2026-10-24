@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ExternalLinkIcon, Trash2Icon } from 'lucide-react'
+import { ExternalLinkIcon, HourglassIcon, Trash2Icon } from 'lucide-react'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle,
@@ -46,6 +46,7 @@ const FIELD_KEYS: FieldKey[] = [
 ]
 const PAY_KEYS = new Set<FieldKey>(PAY_FIELDS.map(([key]) => key))
 const PAY_ERROR = 'Enter a whole number, 0 or more.'
+const PENDING_REASON_MAX = 500
 
 const storedText = (app: ApplicationRow, key: FieldKey) => (app[key] === null ? '' : String(app[key]))
 const formOf = (app: ApplicationRow | null) =>
@@ -86,6 +87,7 @@ export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }:
   const [payErrors, setPayErrors] = useState<Partial<Record<PayKey, string>>>({})
   const [types, setTypes] = useState<StageTypes | null>(null)
   const [confirming, setConfirming] = useState(false)
+  const [reason, setReason] = useState<string | null>(null)
   const shown = useRef<number | null>(null)
   const version = useRef('')
   const latest = useRef('')
@@ -122,6 +124,7 @@ export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }:
     shown.current = id
     dirty.current.clear()
     setPayErrors({})
+    setReason(null)
     if (id === null) return
     void enqueue(() => load(id, 'reload')).catch((error: unknown) => {
       flash(errorMessage(error), true)
@@ -183,6 +186,19 @@ export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }:
     setForm((current) => ({ ...current, [key]: value }))
   }
 
+  const markPending = async () => {
+    const text = reason?.trim()
+    if (!text) return
+    const result = await patch({ status: 'pending', pending_reason: text }, 'Marked pending.')
+    if (result !== 'failed') setReason(null)
+  }
+
+  const chooseStatus = (status: string | null) => {
+    if (!app || !status || status === app.status) return
+    if (status === 'pending') setReason('')
+    else void patch({ status }, 'Status updated.')
+  }
+
   const remove = async () => {
     const result = await run(() => deleteJSON(`/api/applications/${id}`, expected()), 'Application deleted.', onClose)
     if (result !== 'failed') setConfirming(false)
@@ -213,13 +229,23 @@ export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }:
         </SheetHeader>
         {app && detail && (
           <div className="space-y-5 px-4 pb-6">
+            {app.status === 'pending' && app.pending_reason && (
+              <div role="status" className="space-y-1 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="flex items-center gap-1.5 font-medium text-amber-700 dark:text-amber-400">
+                    <HourglassIcon className="size-4" />
+                    Waiting on you
+                  </p>
+                  <Button type="button" variant="ghost" size="xs" onClick={() => setReason(app.pending_reason ?? '')}>
+                    Edit
+                  </Button>
+                </div>
+                <p className="whitespace-pre-wrap">{app.pending_reason}</p>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label htmlFor="f-status">Status</Label>
-              <Select
-                items={items}
-                value={app.status}
-                onValueChange={(status) => { if (status && status !== app.status) void patch({ status }, 'Status updated.') }}
-              >
+              <Select items={items} value={app.status} onValueChange={chooseStatus}>
                 <SelectTrigger id="f-status" className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {items.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
@@ -303,6 +329,33 @@ export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }:
           </div>
         )}
       </SheetContent>
+      <AlertDialog open={reason !== null} onOpenChange={(open) => { if (!open) setReason(null) }}>
+        <AlertDialogContent>
+          <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); void markPending() }}>
+            <AlertDialogHeader>
+              <AlertDialogTitle>What is it waiting on?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Pending means the application is stopped until someone acts. Say what has to happen next.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-1.5">
+              <Label htmlFor="f-pending-reason">Reason</Label>
+              <Textarea
+                id="f-pending-reason"
+                rows={3}
+                maxLength={PENDING_REASON_MAX}
+                placeholder="Solve the CAPTCHA on the form, then tell the agent to continue."
+                value={reason ?? ''}
+                onChange={(event) => setReason(event.target.value)}
+              />
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction type="submit" disabled={!reason?.trim()}>Mark pending</AlertDialogAction>
+            </AlertDialogFooter>
+          </form>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent>
           <AlertDialogHeader>

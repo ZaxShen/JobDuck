@@ -65,7 +65,7 @@ export interface StagePatch {
   contacts?: ContactInput[]
 }
 
-const RANK: Partial<Record<ApplicationStatus, number>> = { saved: 0, applied: 1, interviewing: 2, offered: 3 }
+const RANK: Partial<Record<ApplicationStatus, number>> = { pending: 0, applied: 1, interviewing: 2, offered: 3 }
 
 const isStageKind = (status: string): status is StageKind => (STAGE_KINDS as readonly string[]).includes(status)
 
@@ -168,10 +168,10 @@ export function addStage(db: Db, applicationId: number, input: AddStageInput): {
     const now = nowIso()
     const advance = !isTerminal(current.status) && (RANK[current.status] ?? Infinity) < RANK[input.kind]!
     const application = one<Application>(db.prepare(`UPDATE applications
-        SET status = ?, applied_at = COALESCE(applied_at, ?), updated_at = ?
+        SET status = ?, pending_reason = ?, applied_at = COALESCE(applied_at, ?), updated_at = ?
         WHERE id = ?
         RETURNING *`),
-      advance ? input.kind : current.status, now, now, applicationId)
+      advance ? input.kind : current.status, advance ? null : current.pending_reason, now, now, applicationId)
     if (!application) throw new Error(`application ${applicationId} not found`)
     const event = one<ApplicationEvent>(db.prepare(`INSERT INTO application_events
         (application_id, from_status, to_status, note, source, metadata, stage_type, scheduled_at, outcome, created_at)

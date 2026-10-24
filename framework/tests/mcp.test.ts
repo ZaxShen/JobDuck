@@ -269,7 +269,8 @@ test('list_applications joins postings and filters', async () => {
   enableTrack()
   const { application: a } = await data('record_application', application)
   const { application: b } = await data('record_application', {
-    url: 'https://jobs.ashbyhq.com/initech/3003', title: 'ML Engineer', company: 'Initech', location: 'Toronto', status: 'saved',
+    url: 'https://jobs.ashbyhq.com/initech/3003', title: 'ML Engineer', company: 'Initech', location: 'Toronto', status: 'pending',
+    pending_reason: 'Sign in to the Initech careers site, then tell me to continue.',
   })
   inspect((db) => db.prepare("UPDATE applications SET company_override = 'Acme Corp' WHERE id = ?").run(a.id))
 
@@ -277,11 +278,12 @@ test('list_applications joins postings and filters', async () => {
   expect(applications.map((row: any) => row.id).sort()).toEqual([a.id, b.id].sort())
   const acme = applications.find((row: any) => row.id === a.id)
   expect(acme).toEqual({
-    id: a.id, status: 'applied', title: 'Staff Engineer', company: 'Acme Corp', location: null,
+    id: a.id, status: 'applied', pending_reason: null, title: 'Staff Engineer', company: 'Acme Corp', location: null,
     url: application.url, applied_at: a.applied_at, closed_at: null, updated_at: a.updated_at, note: null,
   })
-  const saved = await data('list_applications', { status: 'saved' })
-  expect(saved.applications.map((row: any) => row.id)).toEqual([b.id])
+  const pending = await data('list_applications', { status: 'pending' })
+  expect(pending.applications.map((row: any) => row.id)).toEqual([b.id])
+  expect(pending.applications[0].pending_reason).toBe('Sign in to the Initech careers site, then tell me to continue.')
   expect((await data('list_applications', { limit: 1 })).applications).toHaveLength(1)
   expect((await data('list_applications', { since: '2999-01-01T00:00:00Z' })).applications).toEqual([])
   expect((await data('list_applications', { since: '2000-01-01' })).applications).toHaveLength(2)

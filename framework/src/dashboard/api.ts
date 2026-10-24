@@ -5,7 +5,8 @@ import { RevisionConflict } from '../config/files'
 import { readStoredPermissions, writePermissions } from '../config/permissions'
 import { TEMPLATE_SECTIONS, isPlaceholder, readStoredProfile, splitSections, updateProfile } from '../config/profile'
 import {
-  APPLICATION_STATUSES, type ApplicationFields, PAY_FIELDS, type PayField, TERMINAL_STATUSES, getApplication,
+  APPLICATION_STATUSES, type ApplicationFields, PAY_FIELDS, PENDING_REASON_ONLY_PENDING, PENDING_REASON_REQUIRED,
+  PendingReasonSchema, type PayField, TERMINAL_STATUSES, getApplication,
   getApplicationWithPosting, listApplicationsWithPostings, listEvents, setStatus, softDeleteApplication,
   updateApplicationFields,
 } from '../db/applications'
@@ -58,6 +59,7 @@ const deleteSchema = z.object(versioned).strict()
 const patchSchema = z.object({
   ...versioned,
   status: z.enum(APPLICATION_STATUSES).optional(),
+  pending_reason: PendingReasonSchema.optional(),
   note: text(20_000),
   title_override: text(500),
   company_override: text(500),
@@ -69,6 +71,10 @@ const patchSchema = z.object({
   country_override: code(/^[A-Z]{2}$/, 'must be 2 uppercase letters (ISO country code)'),
   ...Object.fromEntries(PAY_FIELDS.map((key) => [key, pay])) as Record<PayField, typeof pay>,
 }).strict()
+  .refine((input) => input.status !== 'pending' || input.pending_reason !== undefined,
+    { message: PENDING_REASON_REQUIRED, path: ['pending_reason'] })
+  .refine((input) => input.pending_reason === undefined || input.status === 'pending',
+    { message: PENDING_REASON_ONLY_PENDING, path: ['pending_reason'] })
 
 const stageFields = {
   scheduled_at: z.string().max(40).nullable().optional()
@@ -228,12 +234,15 @@ function patchApplication(db: Db, id: number, body: unknown) {
   const { expected_updated_at: expected, ...input } = parse(patchSchema, body ?? {})
   return transaction(db, () => {
     const current = currentApplication(db, id, expected)
-    const changing = input.status !== undefined && input.status !== current.status
+    const changing = input.status !== undefined
+      && (input.status !== current.status || (input.status === 'pending' && input.pending_reason !== current.pending_reason))
     const fields = Object.fromEntries(Object.entries(input)
-      .filter(([key, value]) => key !== 'status' && !(key === 'note' && changing) && value !== undefined)) as ApplicationFields
+      .filter(([key, value]) => key !== 'status' && key !== 'pending_reason' && !(key === 'note' && changing)
+        && value !== undefined)) as ApplicationFields
     if (Object.keys(fields).length > 0) saving(() => updateApplicationFields(db, id, fields))
     if (changing && input.status !== undefined) {
-      setStatus(db, id, input.status, { source: 'dashboard', note: input.note ?? undefined })
+      const { status, pending_reason: pendingReason } = input
+      saving(() => setStatus(db, id, status, { source: 'dashboard', pendingReason, note: input.note ?? undefined }))
     }
     return requireApplication(db, id)
   })

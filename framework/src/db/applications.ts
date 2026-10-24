@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { type Db, nowIso, one, transaction } from './client'
 
 export const APPLICATION_STATUSES = [
-  'saved', 'applied', 'interviewing', 'offered',
+  'pending', 'applied', 'interviewing', 'offered',
   'accepted', 'deny_by_employer', 'deny_by_candidate', 'no_response',
 ] as const
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number]
@@ -13,10 +13,30 @@ export type EventSource = (typeof EVENT_SOURCES)[number]
 
 export const isTerminal = (status: ApplicationStatus) => (TERMINAL_STATUSES as readonly string[]).includes(status)
 
+export const PENDING_REASON_MAX = 500
+export const PENDING_REASON_REQUIRED = 'pending_reason is required when status is pending'
+export const PENDING_REASON_ONLY_PENDING = 'pending_reason is only kept while status is pending'
+export const STATUS_REQUIRED = 'status is required unless a pending_reason is given'
+export const PendingReasonSchema = z.string().trim()
+  .min(1, PENDING_REASON_REQUIRED)
+  .max(PENDING_REASON_MAX, `pending_reason must be at most ${PENDING_REASON_MAX} characters`)
+
+export function checkPendingReason(status: ApplicationStatus, reason: string | null | undefined): string | null {
+  if (status !== 'pending') {
+    if (reason !== undefined && reason !== null) throw new Error(PENDING_REASON_ONLY_PENDING)
+    return null
+  }
+  if (reason === undefined || reason === null) throw new Error(PENDING_REASON_REQUIRED)
+  const parsed = PendingReasonSchema.safeParse(reason)
+  if (!parsed.success) throw new Error(formatIssues(parsed.error))
+  return parsed.data
+}
+
 export interface Application {
   id: number
   posting_id: number
   status: ApplicationStatus
+  pending_reason: string | null
   applied_at: string | null
   closed_at: string | null
   closed_by: string | null
@@ -59,6 +79,7 @@ export interface ApplicationEvent {
 export interface CreateApplicationInput {
   postingId: number
   status?: ApplicationStatus
+  pendingReason?: string
   source?: EventSource
   appliedAt?: string
   note?: string
@@ -67,6 +88,7 @@ export interface CreateApplicationInput {
 }
 
 export interface SetStatusOptions {
+  pendingReason?: string
   source?: EventSource
   note?: string
   closedBy?: string
@@ -93,17 +115,19 @@ export function listEvents(db: Db, applicationId: number): ApplicationEvent[] {
 }
 
 export function createApplication(db: Db, input: CreateApplicationInput): Application {
-  const status = input.status ?? 'saved'
+  const status = input.status ?? (input.pendingReason === undefined ? undefined : 'pending')
+  if (status === undefined) throw new Error(STATUS_REQUIRED)
+  const pendingReason = checkPendingReason(status, input.pendingReason)
   const source = input.source ?? 'agent'
   const now = nowIso()
-  const appliedAt = input.appliedAt ?? (status === 'saved' ? null : now)
+  const appliedAt = status === 'pending' ? null : (input.appliedAt ?? now)
   const terminal = isTerminal(status)
   return transaction(db, () => {
     const row = one<Application>(db.prepare(`INSERT INTO applications
-        (posting_id, status, applied_at, closed_at, closed_by, note, extracted, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (posting_id, status, pending_reason, applied_at, closed_at, closed_by, note, extracted, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING *`),
-      input.postingId, status, appliedAt, terminal ? now : null, terminal ? (input.closedBy ?? source) : null,
+      input.postingId, status, pendingReason, appliedAt, terminal ? now : null, terminal ? (input.closedBy ?? source) : null,
       input.note ?? null, toJson(input.extracted), now, now)
     if (!row) throw new Error('createApplication returned no row')
     insertEvent(db, row.id, null, status, source, input.note ?? null, undefined, now)
@@ -113,19 +137,20 @@ export function createApplication(db: Db, input: CreateApplicationInput): Applic
 
 export function setStatus(db: Db, id: number, status: ApplicationStatus, options: SetStatusOptions = {}): Application {
   const source = options.source ?? 'agent'
+  const pendingReason = checkPendingReason(status, options.pendingReason)
   return transaction(db, () => {
     const current = getApplication(db, id)
     if (!current) throw new Error(`application ${id} not found`)
     const now = nowIso()
     const terminal = isTerminal(status)
-    const appliedAt = current.applied_at ?? (status === 'saved' ? null : now)
+    const appliedAt = current.applied_at ?? (status === 'pending' ? null : now)
     const note = options.note ?? null
     const row = one<Application>(db.prepare(`UPDATE applications
-        SET status = ?, applied_at = ?, closed_at = ?, closed_by = ?, updated_at = ?,
+        SET status = ?, pending_reason = ?, applied_at = ?, closed_at = ?, closed_by = ?, updated_at = ?,
           note = CASE WHEN ? IS NULL THEN note WHEN note IS NULL THEN ? ELSE note || char(10) || ? END
         WHERE id = ?
         RETURNING *`),
-      status, appliedAt, terminal ? now : null, terminal ? (options.closedBy ?? source) : null, now,
+      status, pendingReason, appliedAt, terminal ? now : null, terminal ? (options.closedBy ?? source) : null, now,
       note, note, note, id)
     if (!row) throw new Error(`application ${id} not found`)
     insertEvent(db, id, current.status, status, source, note, options.metadata, now)
@@ -242,10 +267,10 @@ export interface ApplicationWithPosting extends Application {
 }
 
 export type ApplicationSummary = Pick<ApplicationWithPosting,
-  'id' | 'status' | 'title' | 'company' | 'location' | 'url' | 'applied_at' | 'closed_at' | 'updated_at' | 'note'>
+  'id' | 'status' | 'pending_reason' | 'title' | 'company' | 'location' | 'url' | 'applied_at' | 'closed_at' | 'updated_at' | 'note'>
 
 export const summarizeApplication = (row: ApplicationWithPosting): ApplicationSummary => ({
-  id: row.id, status: row.status, title: row.title, company: row.company, location: row.location, url: row.url,
+  id: row.id, status: row.status, pending_reason: row.pending_reason, title: row.title, company: row.company, location: row.location, url: row.url,
   applied_at: row.applied_at, closed_at: row.closed_at, updated_at: row.updated_at, note: row.note,
 })
 

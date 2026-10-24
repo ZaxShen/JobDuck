@@ -20,13 +20,14 @@ let ids: { acme: number; beta: number; gamma: number }
 beforeEach(async () => {
   box = sandbox()
   db = migratedDb(box.home)
-  const make = (n: number, company: string, title: string, location: string, status: 'applied' | 'saved' | 'interviewing') => {
+  const make = (n: number, company: string, title: string, location: string, status: 'applied' | 'pending' | 'interviewing') => {
     const posting = upsertPosting(db, { source: 'manual', url: `https://jobs.example.com/${n}`, title, company, location })
-    return createApplication(db, { postingId: posting.id, status }).id
+    const pendingReason = status === 'pending' ? 'Enter the emailed code on the form.' : undefined
+    return createApplication(db, { postingId: posting.id, status, pendingReason }).id
   }
   ids = {
     acme: make(1, 'Acme', 'AI Engineer', 'Remote', 'applied'),
-    beta: make(2, 'Beta Labs', 'ML Engineer', 'New York', 'saved'),
+    beta: make(2, 'Beta Labs', 'ML Engineer', 'New York', 'pending'),
     gamma: make(3, 'Gamma', 'Data Scientist', 'Remote', 'interviewing'),
   }
   dash = await startDashboard({ home: box.home, port: 0, open: false, out: () => undefined })
@@ -89,7 +90,8 @@ test('requests with a foreign Host header are refused', async () => {
 
 test('summary and statuses describe the board', async () => {
   const { body: summary } = await get('/api/summary')
-  expect(summary.counts).toMatchObject({ applied: 1, saved: 1, interviewing: 1, offered: 0 })
+  expect(summary.counts).toMatchObject({ pending: 1, applied: 1, interviewing: 1, offered: 0 })
+  expect(summary.counts).not.toHaveProperty('saved')
   expect(summary.needs_match).toBe(0)
   const { body: statuses } = await get('/api/statuses')
   expect(statuses.statuses).toContain('deny_by_employer')
@@ -130,6 +132,31 @@ test('PATCH status writes a dashboard event and returns the joined row', async (
   const detail = (await get(`/api/applications/${ids.acme}`)).body
   expect(detail.application.status).toBe('interviewing')
   expect(detail.events).toHaveLength(2)
+})
+
+test('PATCH to pending needs a pending_reason, stores it, and any later status clears it', async () => {
+  const path = `/api/applications/${ids.acme}`
+  const missing = await mutate('PATCH', path, { status: 'pending' })
+  expect(missing.res.status).toBe(400)
+  expect(missing.body.error).toContain('pending_reason')
+  expect((await mutate('PATCH', path, { status: 'pending', pending_reason: '   ' })).res.status).toBe(400)
+  expect((await mutate('PATCH', path, { status: 'pending', pending_reason: 'x'.repeat(501) })).res.status).toBe(400)
+  expect((await mutate('PATCH', path, { status: 'offered', pending_reason: 'Call back' })).res.status).toBe(400)
+  expect((await mutate('PATCH', path, { pending_reason: 'Call back' })).res.status).toBe(400)
+  expect(listEvents(db, ids.acme)).toHaveLength(1)
+
+  const applied = getApplication(db, ids.acme)!
+  const pending = await mutate('PATCH', path, {
+    status: 'pending', pending_reason: ' Answer the visa question. ', expected_updated_at: applied.updated_at,
+  })
+  expect(pending.res.status).toBe(200)
+  expect(pending.body).toMatchObject({ status: 'pending', pending_reason: 'Answer the visa question.', applied_at: applied.applied_at })
+  const reworded = await mutate('PATCH', path, { status: 'pending', pending_reason: 'Answer the visa question by Friday.' })
+  expect(reworded.body.pending_reason).toBe('Answer the visa question by Friday.')
+  const back = await mutate('PATCH', path, { status: 'applied' })
+  expect(back.body).toMatchObject({ status: 'applied', pending_reason: null })
+  expect(listEvents(db, ids.acme).map((event) => event.to_status)).toEqual(['applied', 'pending', 'pending', 'applied'])
+  expect((await get('/api/applications?status=pending')).body.map((row: any) => row.id)).toEqual([ids.beta])
 })
 
 test('note and override updates do not write events', async () => {

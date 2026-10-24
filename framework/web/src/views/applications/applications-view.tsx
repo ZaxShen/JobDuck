@@ -73,7 +73,7 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
     <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6 animate-in fade-in duration-500">
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Applications</h1>
-        <p className="text-sm text-muted-foreground">Everything your agent saved or applied to, newest first.</p>
+        <p className="text-sm text-muted-foreground">Everything your agent applied to or is waiting on you for, newest first.</p>
       </div>
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -140,7 +140,14 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
                 onKeyDown={(event) => { if (event.key === 'Enter') setSelected(row.id) }}
               >
                 <TableCell className="max-w-40 truncate font-medium">{row.company}</TableCell>
-                <TableCell className="max-w-56 truncate">{row.title}</TableCell>
+                <TableCell className="max-w-56">
+                  <div className="truncate">{row.title}</div>
+                  {row.pending_reason && (
+                    <div className="truncate text-xs text-amber-700 dark:text-amber-400" title={row.pending_reason}>
+                      {row.pending_reason}
+                    </div>
+                  )}
+                </TableCell>
                 <TableCell className="hidden max-w-48 truncate text-muted-foreground md:table-cell">{row.location ?? ''}</TableCell>
                 <TableCell><StatusBadge status={row.status} /></TableCell>
                 <TableCell className="hidden text-muted-foreground sm:table-cell">{day(row.applied_at)}</TableCell>
@@ -152,7 +159,7 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
         {loaded && rows.length === 0 && (
           <div className="flex flex-col items-center gap-2 px-6 py-12 text-center text-sm text-muted-foreground">
             <InboxIcon className="size-5" />
-            No applications yet. Ask your agent to save or apply to a posting.
+            No applications yet. Ask your agent to apply to a posting.
           </div>
         )}
       </div>

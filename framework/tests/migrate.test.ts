@@ -11,16 +11,16 @@ afterEach(() => box.cleanup())
 
 test('migrations apply once and are idempotent', () => {
   const db = migratedDb(box.home)
-  expect(currentVersion(db)).toBe(3)
+  expect(currentVersion(db)).toBe(4)
   expect(migrate(db)).toEqual([])
-  expect(currentVersion(db)).toBe(3)
+  expect(currentVersion(db)).toBe(4)
   const rows = db.prepare('SELECT version FROM schema_migrations').all()
-  expect(rows).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }])
+  expect(rows).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }])
   db.close()
 })
 
 test('migration files are numbered and ordered', () => {
-  expect(loadMigrations().map((m) => m.version)).toEqual([1, 2, 3])
+  expect(loadMigrations().map((m) => m.version)).toEqual([1, 2, 3, 4])
   const loaded = loadMigrations([
     { name: '010_ten.sql', sql: 'ten' }, { name: 'notes.txt', sql: 'x' }, { name: '002_two.sql', sql: 'two' },
   ])
@@ -57,9 +57,10 @@ const FACT_COLUMNS = ['id', 'slug', 'company', 'role', 'project', 'category', 'a
 const APPLICATION_COLUMNS = ['salary_min', 'salary_max', 'salary_offered', 'rsu', 'options', 'bonus', 'sign_on',
   'relocation_fee', 'currency', 'country_override', 'state_override', 'city_override']
 
-test('a fresh database reaches version 3 with the stage, pay and profile fact columns', () => {
+test('a fresh database reaches version 4 with the stage, pay, pending and profile fact columns', () => {
   const db = migratedDb(box.home)
-  expect(currentVersion(db)).toBe(3)
+  expect(currentVersion(db)).toBe(4)
+  expect(columns(db, 'applications')).toContain('pending_reason')
   for (const column of STAGE_COLUMNS) expect(columns(db, 'application_events')).toContain(column)
   for (const column of APPLICATION_COLUMNS) expect(columns(db, 'applications')).toContain(column)
   const indexes = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all() as { name: string }[])
@@ -136,7 +137,7 @@ test('a version 2 database with rows migrates to version 3 and keeps its rows', 
   const tables = ['postings', 'applications', 'application_events', 'outcomes', 'settings']
   const before = Object.fromEntries(tables.map((table) => [table, db.prepare(`SELECT * FROM ${table}`).all()]))
 
-  expect(migrate(db)).toEqual([3])
+  expect(migrate(db, loadMigrations().filter((m) => m.version <= 3))).toEqual([3])
   expect(currentVersion(db)).toBe(3)
   for (const table of tables) expect(db.prepare(`SELECT * FROM ${table}`).all()).toEqual(before[table]!)
   expect(db.prepare('SELECT COUNT(*) AS n FROM profile_facts').get()).toEqual({ n: 0 })

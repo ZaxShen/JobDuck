@@ -22,7 +22,9 @@ afterEach(() => {
 const application = (status: ApplicationStatus = 'applied') => {
   seq += 1
   const posting = upsertPosting(db, { source: 'manual', url: `https://acme.com/jobs/${seq}`, title: 'Engineer', company: 'Acme' })
-  return createApplication(db, { postingId: posting.id, status })
+  return createApplication(db, {
+    postingId: posting.id, status, pendingReason: status === 'pending' ? 'Answer the visa question on the form.' : undefined,
+  })
 }
 
 test('addStage records an interview round with stage_type, scheduled_at and a pending outcome', () => {
@@ -42,17 +44,19 @@ test('addStage records an interview round with stage_type, scheduled_at and a pe
   expect(listEvents(db, app.id)).toHaveLength(2)
 })
 
-test('addStage advances saved and applied forward and never regresses', () => {
-  const saved = application('saved')
-  expect(saved.applied_at).toBeNull()
-  const first = addStage(db, saved.id, { kind: 'interviewing', stageType: 'information' }).application
+test('addStage advances pending and applied forward and never regresses', () => {
+  const pending = application('pending')
+  expect(pending.applied_at).toBeNull()
+  expect(pending.pending_reason).not.toBeNull()
+  const first = addStage(db, pending.id, { kind: 'interviewing', stageType: 'information' }).application
   expect(first.status).toBe('interviewing')
   expect(first.applied_at).not.toBeNull()
-  const offered = addStage(db, saved.id, { kind: 'offered', stageType: 'verbal' })
+  expect(first.pending_reason).toBeNull()
+  const offered = addStage(db, pending.id, { kind: 'offered', stageType: 'verbal' })
   expect(offered.application.status).toBe('offered')
   expect(offered.stage.outcome).toBeNull()
   expect(offered.stage.from_status).toBe('interviewing')
-  const late = addStage(db, saved.id, { kind: 'interviewing', stageType: 'onsite', scheduledAt: '2026-10-01' })
+  const late = addStage(db, pending.id, { kind: 'interviewing', stageType: 'onsite', scheduledAt: '2026-10-01' })
   expect(late.application.status).toBe('offered')
   expect(late.stage.from_status).toBe('offered')
   expect(late.stage.scheduled_at).toBe('2026-10-01')

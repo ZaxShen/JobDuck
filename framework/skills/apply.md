@@ -26,6 +26,12 @@ End to end: shortlist, dedupe, pick the CV, fill the form in the browser, pass t
 
 Call `get_permissions`. If `modules.apply` or `modules.track` is false, stop: "Apply needs the apply and track modules. Run the setup skill (`setup --module apply`)." Do nothing else.
 
+Then, before any new work, call `list_applications` with `status: "pending"` and list them (`ID | Company | Title | pending_reason`). Resume each one the user has since cleared (code entered, question answered, approval given) from the step it stopped at; the rest stay pending.
+
+### Stops
+
+Whenever you stop on an application you cannot finish alone (a CAPTCHA, an emailed or SMS code, a question the profile and manifest cannot answer, a login or account wall, a near-duplicate awaiting the user's call, approval not given yet), record it as `pending` instead of only telling the user: `update_status` with `status: "pending"` if it is already recorded, else `record_application` with step 7's `url`, `title`, `company`, `location`, `source: "agent"` and `status: "pending"`. Either way pass a one-sentence `pending_reason` naming what the user must do, e.g. `Enter the code Acme emailed you, then tell me to continue.` Then move on.
+
 ### 1. Discover
 
 Given URLs: use them. Otherwise run the find skill and take its shortlist. Prefer the employer's own ATS posting URL over an aggregator URL; it is the URL you apply on and record. When no employer ATS URL can be found, record the aggregator URL and say so in the note. Stop the run after `max_per_run` submissions.
@@ -37,7 +43,7 @@ Fetch each posting's full text. Apply the find skill's hard filters and rubric. 
 ### 3. Dedupe
 
 For every candidate, before opening the form:
-1. `find_application` with `url`: `found: true` → skip as an exact duplicate.
+1. `find_application` with `url`: `found: true` → skip as an exact duplicate, unless its status is `pending`: that is a stopped application, so resume it.
 2. `find_application` with `company` and `title`: `found: true` → skip as an exact duplicate.
 3. Call `list_applications` once per run and compare company plus a near-identical title (same role, different wording or location): show near matches to the user and wait.
 Repeat step 1 immediately before submitting.
@@ -59,10 +65,10 @@ Use the host's browser tool in a new tab. Read each field label before filling i
 - Salary per `salary_mode`: `posting_range_upper` → the upper part of the posted range, never below `salary_floor`, and when no range is posted use `salary_fixed_total` if set, else ask; `fixed` → `salary_fixed_total` or `salary_fixed_base` as the field asks; `leave_blank` → blank when optional, ask when required.
 - Free text per `free_text`: `never` → stop and ask; `draft_for_approval` → draft from the profile body and show it at the gate; `auto_from_profile` → write it, grounded only in the profile, within the character limit.
 - Consents: tick a box only when its `[apply.consents]` key is true; otherwise ask. Unknown kinds of agreement: ask.
-- Accounts per `ats_accounts`: `never` → stop on a login wall, report it, move on; `reuse` → the user signs in; `create` → create with the profile email and let the user set the password. Never type or store a password.
-- CAPTCHA, email or SMS verification code: always stop and ask the user to complete it. Never solve or fetch it.
+- Accounts per `ats_accounts`: `never` → stop on a login wall, record it as `pending` (Stops), move on; `reuse` → the user signs in; `create` → create with the profile email and let the user set the password. Never type or store a password.
+- CAPTCHA, email or SMS verification code: always stop, record it as `pending` (Stops) and ask the user to complete it. Never solve or fetch it.
 - A question nothing above covers: ask the user once, then save the answer to `[apply.answers]` under a short snake_case key with your file tools so the next run never asks again. Never guess.
-- Marker: when `marker = true` and the form has an optional free-text field, call `record_application` with `status: "saved"` and the full step 7 `note` before submitting (same arguments as step 7), paste the returned `marker` line into that field, and in step 7 call `update_status` to `applied` with the `Approval:` note instead of recording again (notes accumulate on the application).
+- Marker: when `marker = true` and the form has an optional free-text field, call `record_application` with `status: "pending"`, `pending_reason: "Submitting; waiting for the confirmation page."` and the full step 7 `note` before submitting (same arguments as step 7), paste the returned `marker` line into that field, and in step 7 call `update_status` to `applied` with the `Approval:` note instead of recording again (notes accumulate on the application).
 
 ### 6. Approval gate
 
@@ -75,7 +81,7 @@ A correction is applied, re-presented, and counted as `Approval: corrected`. An 
 
 ### 7. Record
 
-Only after the employer's confirmation page or email: call `record_application` (or `update_status` to `applied` if step 5 reserved it) with:
+Only after the employer's confirmation page or email: call `record_application` (or `update_status` to `applied` if it is already recorded as `pending`) with:
 - `url` (the posting URL you applied on), `title`, `company`, `location`, `applied_at` (ISO timestamp with timezone), `source: "agent"`;
 - `note`: `Applied via <ATS>. CV: <file or tailored>. Approval: <as filled | corrected | auto>.` plus anything the user should double-check;
 - `extracted`: from the posting text (`find_application` with `url` and `with_text: true`, then `posting.text`); fill only what the text states, `raw`/enrichment data may seed `job_type` and `experience_level` only. Every key below, `null` where the posting is silent, quotes copied exactly: `title_clean`, `company`, `canonical_role`, `team_org`, `experience_level`, `min_experience_years`, `education_requirement`, `job_type`, `work_mode`, `locations` (objects with `raw`, `country`, `state`, `city`, `work_mode`), `pay_period`, `pay_min`, `pay_max`, `currency`, `pay_quote`, `bonus_eligible`, `bonus_pct_min`, `bonus_pct_max`, `bonus_amount_min`, `bonus_amount_max`, `equity_eligible`, `equity_amount_min`, `equity_amount_max`, `equity_period`, `equity_vesting_years`, `equity_pct_min`, `equity_pct_max`, `stated_total_comp_min`, `stated_total_comp_max`, `comp_quote`.
@@ -83,7 +89,7 @@ If `marker = true`, no marker was pasted before submitting, and the submitted ap
 
 ### 8. Report
 
-A table: `Company | Title | Location / mode | CV | Submitted | Recorded`. Then: skips (one line each with the reason), borderline roles, roles stopped for an account, CAPTCHA or code, and every answer newly saved to `[apply.answers]`.
+A table: `Company | Title | Location / mode | CV | Submitted | Recorded`. Then: skips (one line each with the reason), borderline roles, every application left `pending` with its `pending_reason`, and every answer newly saved to `[apply.answers]`.
 
 ## Never
 

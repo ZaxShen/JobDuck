@@ -45,7 +45,7 @@ for (const launcher of launchers) {
     expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
     const res = await fetch(`${url}/api/summary`)
     expect(res.status).toBe(200)
-    expect(await res.json()).toMatchObject({ counts: { saved: 0 }, needs_match: 0 })
+    expect(await res.json()).toMatchObject({ counts: { pending: 0 }, needs_match: 0 })
     const page = await fetch(`${url}/`)
     expect(page.headers.get('content-security-policy')).toBe("default-src 'self'")
     expect(await page.text()).toContain('<html')
