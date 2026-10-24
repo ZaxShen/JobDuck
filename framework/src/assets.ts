@@ -2,6 +2,7 @@ import migration001 from './db/migrations/001_init.sql' with { type: 'text' }
 import migration002 from './db/migrations/002_interview_stages.sql' with { type: 'text' }
 import migration003 from './db/migrations/003_profile_facts.sql' with { type: 'text' }
 import migration004 from './db/migrations/004_pending_status.sql' with { type: 'text' }
+import migration005 from './db/migrations/005_posting_fields.sql' with { type: 'text' }
 import dashboardApp from './dashboard/public/app.js' with { type: 'text' }
 import dashboardIndex from './dashboard/public/index.html' with { type: 'text' }
 import dashboardStyle from './dashboard/public/style.css' with { type: 'text' }
@@ -42,6 +43,7 @@ export const MIGRATIONS: { name: string; sql: string }[] = [
   { name: '002_interview_stages.sql', sql: migration002 },
   { name: '003_profile_facts.sql', sql: migration003 },
   { name: '004_pending_status.sql', sql: migration004 },
+  { name: '005_posting_fields.sql', sql: migration005 },
 ]
 
 export const DASHBOARD: Record<string, string> = {

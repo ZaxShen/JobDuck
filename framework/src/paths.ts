@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import pkg from '../package.json'
 import { SKILLS, TEMPLATES } from './assets'
 
@@ -42,7 +42,7 @@ export function resolveWorkspace(start: string, userHome = homedir()): string {
   const holder = dirname(home)
   if (basename(home) !== HOME_DIR || holder === resolve(userHome)) return folder
   const rel = relative(holder, folder)
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel)) ? holder : folder
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)) ? holder : folder
 }
 
 export const dbPath = (home = jobduckHome()) => join(home, DB_FILE)

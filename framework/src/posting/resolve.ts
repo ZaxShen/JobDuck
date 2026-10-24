@@ -3,7 +3,7 @@ import { atsEndpoint } from './ats'
 import { type AgentProposal, acceptAgentFields, type RejectedProposal } from './evidence'
 import { FetchRefused, JSON_ACCEPT, PAGE_ACCEPT, type SafeFetchDeps, type SafeResponse, safeFetch } from './fetch'
 import {
-  type CoreField, type FieldSource, fillFields, missingCore, type PostingField, type PostingFields,
+  type CoreField, type FieldSource, type FieldSources, fillFields, missingCore, type PostingFields,
 } from './fields'
 import { freehireFields } from './freehire'
 import { type PageRead, pageRead } from './html'
@@ -11,21 +11,27 @@ import { MIN_TEXT, textFields } from './text'
 
 export const MAX_FETCHES = 3
 
+export interface KnownFields {
+  fields: PostingFields
+  sources: FieldSources
+}
+
 export interface ResolveInput {
   url: string
   freehire?: FreehireJob
+  known?: KnownFields
   html?: string
   text?: string
   agent?: AgentProposal[]
 }
 
 export type ResolveDeps = SafeFetchDeps
-export type Quality = 'ok' | 'thin' | 'blocked'
+export type Quality = 'ok' | 'thin' | 'blocked' | 'gone'
 export type NextStep = 'done' | 'agent_fill' | 'agent_browser'
 
 export interface Resolution {
   fields: PostingFields
-  sources: Partial<Record<PostingField, FieldSource>>
+  sources: FieldSources
   missing: CoreField[]
   pay_stated: boolean | null
   quality: Quality
@@ -39,6 +45,7 @@ const WALL_MARKUP = /g-recaptcha|h-captcha|cf-turnstile|challenge-platform|cf-ch
 const WALL_TEXT_LIMIT = 2000
 
 export const isBlockedStatus = (status: number) => status === 401 || status === 403 || status === 429 || status >= 500
+export const isGoneStatus = (status: number) => status === 404 || status === 410
 
 export function isWall(html: string, page: Pick<PageRead, 'text' | 'visible' | 'structured'>): boolean {
   if (page.text.length < MIN_TEXT) return true
@@ -47,17 +54,18 @@ export function isWall(html: string, page: Pick<PageRead, 'text' | 'visible' | '
 
 export async function resolvePosting(input: ResolveInput, deps: ResolveDeps = {}): Promise<Resolution> {
   const fields: PostingFields = {}
-  const sources: Partial<Record<PostingField, FieldSource>> = {}
+  const sources: FieldSources = {}
   const texts: string[] = []
   const fetched: string[] = []
   let searched = false
   let blocked = false
+  let gone = false
 
   const apply = (layer: PostingFields, source: FieldSource) => {
     for (const field of fillFields(fields, layer)) sources[field] = source
   }
   const parseText = (text: string | undefined, trusted = true) => {
-    if (!text) return
+    if (!text || texts.includes(text)) return
     texts.push(text)
     apply(textFields(text, { title: fields.title, country: fields.country }), 'text')
     if (trusted && text.length >= MIN_TEXT) searched = true
@@ -86,6 +94,12 @@ export async function resolvePosting(input: ResolveInput, deps: ResolveDeps = {}
     parseText(record.description)
   }
 
+  if (input.known) {
+    const { fields: stored, sources: storedSources } = input.known
+    for (const field of fillFields(fields, stored)) sources[field] = storedSources[field] ?? 'agent'
+    parseText(stored.description)
+  }
+
   if (input.html !== undefined || input.text !== undefined) {
     if (input.html) readPage(input.html)
     if (input.text) {
@@ -108,7 +122,8 @@ export async function resolvePosting(input: ResolveInput, deps: ResolveDeps = {}
     }
     if (!atsRead && missingCore(fields).length > 0) {
       const response = await attempt(input.url, PAGE_ACCEPT)
-      if (!response || isBlockedStatus(response.status)) blocked = true
+      if (response && isGoneStatus(response.status)) gone = true
+      else if (!response || isBlockedStatus(response.status)) blocked = true
       else if (response.contentType.includes('html')) readPage(response.body)
       else if (response.contentType === 'text/plain') readPage(`<pre>${escapeHtml(response.body)}</pre>`)
       else blocked = true
@@ -128,7 +143,7 @@ export async function resolvePosting(input: ResolveInput, deps: ResolveDeps = {}
   const missing = missingCore(fields)
   const payKnown = fields.pay_min !== undefined || fields.pay_max !== undefined
   const longest = texts.reduce((max, text) => Math.max(max, text.length), 0)
-  const quality: Quality = blocked ? 'blocked' : longest < MIN_TEXT ? 'thin' : 'ok'
+  const quality: Quality = gone ? 'gone' : blocked ? 'blocked' : longest < MIN_TEXT ? 'thin' : 'ok'
   return {
     fields,
     sources,
@@ -136,7 +151,7 @@ export async function resolvePosting(input: ResolveInput, deps: ResolveDeps = {}
     pay_stated: payKnown ? true : searched ? false : null,
     quality,
     fetched,
-    next: blocked ? 'agent_browser' : missing.length > 0 ? 'agent_fill' : 'done',
+    next: gone ? 'done' : blocked ? 'agent_browser' : missing.length > 0 ? 'agent_fill' : 'done',
     rejected,
   }
 }

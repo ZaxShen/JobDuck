@@ -21,7 +21,7 @@ Read the local application store and change statuses when the user says so. Job 
 
 ## Steps
 
-1. **Show.** Call `list_applications` (filter by `status` or `since` when asked). Present `ID | Company | Title | Status | Applied | Updated`, grouped as open (`pending` first, as "waiting on you" with each `pending_reason`, then `saved` as "not submitted yet", then `applied`, `interviewing`, `offered`) and closed. Point out applications quiet for 14+ days.
+1. **Show.** Call `list_applications` (filter by `status` or `since` when asked). Present `ID | Company | Title | Status | Applied | Updated`, grouped as open (`pending` first, as "waiting on you" with each `pending_reason`, then `saved` as "not submitted yet", then `applied`, `interviewing`, `offered`) and closed. Point out applications quiet for 14+ days. For one application, `get_application` also returns what the posting states: `posting_country`, `posting_state`, `posting_city` and pay (`posting_pay_min`, `posting_pay_max`, `posting_pay_period`, `posting_currency`; `posting_pay_stated: 0` means it states none). Show those when the application has no location override or offer pay of its own.
 2. **Identify.** For an update, find the application: `find_application` by `url` if given, else by `company` and `title`, else match the user's words against the list. Several matches → list them and ask which. None → offer to record it with the apply skill's step 3 fields and `status: "applied"` if the user did apply.
 3. **Map the news to a status** and confirm it in one line before writing:
    - interview invitation or stage scheduled → `interviewing`;

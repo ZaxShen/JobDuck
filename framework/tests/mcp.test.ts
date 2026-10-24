@@ -7,7 +7,7 @@ import { type Sandbox, sandbox } from './helpers'
 import { type Db, openDb } from '../src/db/client'
 import { listEvents } from '../src/db/applications'
 import { upsertPosting } from '../src/db/postings'
-import type { FetchLike } from '../src/freehire/client'
+import { type FetchLike, FREEHIRE_JOB_URL, FREEHIRE_SEARCH_URL } from '../src/freehire/client'
 import { createServer, type JobduckServer } from '../src/mcp/server'
 import { CV_DISABLED, ISO_DATE_MESSAGE, MAX_FACTS_PER_SAVE, TEXT_CAP, TOOL_NAMES, TRACK_DISABLED } from '../src/mcp/tools'
 import { dbPath } from '../src/paths'
@@ -20,24 +20,43 @@ let box: Sandbox
 let jobduck: JobduckServer
 let client: Client
 let requests: string[]
+let unexpected: string[]
+
+const fixtureJobs = fixture.pages.flatMap((page) => (page.body as { data: Record<string, unknown>[] }).data)
 
 const fixtureFetch: FetchLike = async (input) => {
-  requests.push(input)
-  const offset = Number(new URL(input).searchParams.get('offset'))
-  const page = fixture.pages[offset === 0 ? 0 : 1]!
-  return new Response(JSON.stringify(page.body), { status: 200, headers: page.headers })
+  if (input.startsWith(`${FREEHIRE_SEARCH_URL}?`)) {
+    requests.push(input)
+    const offset = Number(new URL(input).searchParams.get('offset'))
+    const page = fixture.pages[offset === 0 ? 0 : 1]!
+    return new Response(JSON.stringify(page.body), { status: 200, headers: page.headers })
+  }
+  if (input.startsWith(`${FREEHIRE_JOB_URL}/`)) {
+    requests.push(input)
+    const slug = decodeURIComponent(input.slice(FREEHIRE_JOB_URL.length + 1))
+    const job = fixtureJobs.find((candidate) => candidate.public_slug === slug)
+    return job ? Response.json({ data: job }) : new Response('not found', { status: 404 })
+  }
+  unexpected.push(input)
+  throw new Error(`unexpected fetch ${input}`)
+}
+
+const refusingLookup = async (hostname: string): Promise<never> => {
+  throw new Error(`unexpected lookup ${hostname}`)
 }
 
 beforeEach(async () => {
   box = sandbox()
   requests = []
-  jobduck = createServer({ home: box.home, fetch: fixtureFetch, sleep: async () => {} })
+  unexpected = []
+  jobduck = createServer({ home: box.home, fetch: fixtureFetch, lookup: refusingLookup, sleep: async () => {} })
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
   client = new Client({ name: 'jobduck-test', version: '0.0.0' })
   await Promise.all([jobduck.server.connect(serverTransport), client.connect(clientTransport)])
 })
 
 afterEach(async () => {
+  expect(unexpected).toEqual([])
   await client.close()
   await jobduck.close()
   box.cleanup()
@@ -189,7 +208,7 @@ test('search_jobs upserts postings and reports known and application_status', as
     title: 'Staff Engineer', company: 'Acme', url: 'https://job-boards.greenhouse.io/acme/jobs/1001',
     source_ats: 'greenhouse', seniority: 'staff', employment_type: 'full_time',
     skills: ['typescript', 'postgres'], reality_class: 'fresh', application_status: null,
-    location: 'San Francisco, US', work_mode: 'hybrid', pay_min: 200000, pay_max: 250000, currency: 'USD',
+    location: 'San Francisco, United States', work_mode: 'hybrid', pay_min: 200000, pay_max: 250000, currency: 'USD',
   })
   expect(first.jobs[1]).toMatchObject({ location: 'US', work_mode: null, pay_min: null, pay_max: null, currency: null })
   expect(JSON.stringify(first)).not.toContain('Build things')
@@ -252,7 +271,7 @@ test('find_application returns a compact posting by default and plain text with 
   expect((await data('find_application', { company: 'Acme' })).posting).not.toHaveProperty('description')
 })
 
-test('find_application with_text strips HTML, decodes entities and caps the text', async () => {
+test('find_application with_text strips HTML, decodes entities, keeps paragraph breaks and caps the text', async () => {
   const html = '<div>\n  <p>Fish &amp; chips&nbsp;&#8212;&#x2019;s</p><script>alert(1)</script><ul><li>A</li><li>B</li></ul></div>'
   const long = `<p>${'word '.repeat(4000)}</p>`
   inspect((db) => {
@@ -260,7 +279,7 @@ test('find_application with_text strips HTML, decodes entities and caps the text
     upsertPosting(db, { source: 'manual', url: 'https://example.com/jobs/long', title: 'T', company: 'C', description: long })
   })
   const short = await data('find_application', { url: 'https://example.com/jobs/html', with_text: true })
-  expect(short.posting).toMatchObject({ text: 'Fish & chips \u2014\u2019s A B', truncated: false })
+  expect(short.posting).toMatchObject({ text: 'Fish & chips \u2014\u2019s\n\n\u2022 A\n\u2022 B', truncated: false })
   const capped = await data('find_application', { url: 'https://example.com/jobs/long', with_text: true })
   expect(capped.posting.text).toHaveLength(TEXT_CAP)
   expect(capped.posting.truncated).toBe(true)

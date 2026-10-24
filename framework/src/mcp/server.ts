@@ -3,11 +3,13 @@ import { type Db, openDb } from '../db/client'
 import { migrate } from '../db/migrate'
 import { type FetchLike, PACKAGE_VERSION } from '../freehire/client'
 import { dbPath, ensureHome, jobduckHome } from '../paths'
+import type { LookupLike } from '../posting/fetch'
 import { registerTools } from './tools'
 
 export interface CreateServerOptions {
   home?: string
   fetch?: FetchLike
+  lookup?: LookupLike
   db?: Db
   sleep?: (ms: number) => Promise<void>
 }
@@ -28,7 +30,7 @@ export function createServer(options: CreateServerOptions = {}): JobduckServer {
   const db = options.db ?? openDb(dbPath(home))
   migrate(db)
   const server = new McpServer({ name: 'jobduck', version: PACKAGE_VERSION })
-  registerTools(server, { db, home, fetch: options.fetch, sleep: options.sleep })
+  registerTools(server, { db, home, fetch: options.fetch, lookup: options.lookup, sleep: options.sleep })
   let closed = false
   return {
     server,

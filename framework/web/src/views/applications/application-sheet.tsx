@@ -14,7 +14,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useFlash } from '@/hooks/use-flash'
 import { POLL_MS, isVisible } from '@/hooks/use-visible-poll'
 import { type SaveResult, deleteJSON, errorMessage, fetchJSON, isConflict, patchJSON, postJSON } from '@/lib/api'
-import { safeUrl, stamp, statusLabel } from '@/lib/format'
+import { postingPay, safeUrl, stamp, statusLabel } from '@/lib/format'
 import { kindLabel, outcomeLabel, stageTypeLabel } from '@/lib/stages'
 import type { ApplicationEvent, ApplicationRow, Stage, StageKind, StageTypes } from '@/lib/types'
 import { AddStageForm } from '@/views/applications/add-stage-form'
@@ -274,7 +274,7 @@ export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }:
                       id={`f-${key}`}
                       value={form[key]}
                       maxLength={key === 'country_override' ? 2 : undefined}
-                      placeholder={OVERRIDE_HINTS[key] ?? app[`posting_${field as 'title' | 'company' | 'location'}`] ?? ''}
+                      placeholder={app[`posting_${field}`] ?? OVERRIDE_HINTS[key] ?? ''}
                       onChange={(event) => setField(key, key === 'country_override' ? event.target.value.toUpperCase() : event.target.value)}
                       onBlur={() => commit(key)}
                     />
@@ -308,7 +308,14 @@ export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }:
               )}
             </section>
             <Separator />
-            <PaySection values={form} errors={payErrors} onChange={setField} onCommit={commit} />
+            <PaySection
+              values={form}
+              errors={payErrors}
+              onChange={setField}
+              onCommit={commit}
+              postingPay={postingPay(app)}
+              postingCurrency={app.posting_currency}
+            />
             <Separator />
             <div className="space-y-3">
               <h3 className="text-sm font-medium">Timeline</h3>

@@ -92,6 +92,7 @@ export function acceptAgentFields(text: string, proposals: AgentProposal[], exis
   for (const proposal of ordered) {
     const { field, value, quote } = proposal
     if (!isField(field)) { reject(proposal, `unknown field ${field}`); continue }
+    if (accepted.some((item) => item.field === field)) { reject(proposal, `duplicate proposal for ${field}`); continue }
     if (context[field] !== undefined || ((field === 'pay_min' || field === 'pay_max') && priorPay)) {
       reject(proposal, `${field} is already set by an earlier layer`)
       continue

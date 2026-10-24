@@ -50,6 +50,11 @@ For every candidate, before opening the form:
    - `url` (the posting URL you apply on), `title`, `company`, `location`, `source: "agent"`;
    - `extracted`: from the posting text (`find_application` with `url` and `with_text: true`, then `posting.text`); fill only what the text states, `raw`/enrichment data may seed `job_type` and `experience_level` only. Every key below, `null` where the posting is silent, quotes copied exactly: `title_clean`, `company`, `canonical_role`, `team_org`, `experience_level`, `min_experience_years`, `education_requirement`, `job_type`, `work_mode`, `locations` (objects with `raw`, `country`, `state`, `city`, `work_mode`), `pay_period`, `pay_min`, `pay_max`, `currency`, `pay_quote`, `bonus_eligible`, `bonus_pct_min`, `bonus_pct_max`, `bonus_amount_min`, `bonus_amount_max`, `equity_eligible`, `equity_amount_min`, `equity_amount_max`, `equity_period`, `equity_vesting_years`, `equity_pct_min`, `equity_pct_max`, `stated_total_comp_min`, `stated_total_comp_max`, `comp_quote`.
    Keep the returned `id` and `marker`; `duplicate: true` means dedupe failed: report it.
+5. Act on the returned `resolution.next` (Job Duck has filled what freehire and the posting page state):
+   - `agent_browser` (Job Duck could not read the page): open the posting with the host's browser and call `resolve_posting` with the `id` as `application_id` and the page `text`;
+   - `agent_fill`: call `resolve_posting` with `fields` for the core fields in `resolution.missing` that the posting text states (`pay` means `pay_min`, `pay_max`, `pay_period`, `currency`), each `{ field, value, quote }` with the quote copied verbatim;
+   - `done`: continue. With `quality: "gone"` (the page answered 404 or 410) tell the user the posting looks closed before going on.
+   A field the posting does not state stays empty. A rejected proposal is reported, never retried with an invented quote.
 Immediately before submitting, repeat step 1: when its status is no longer `saved` or `pending`, skip it.
 
 ### 4. CV and documents
@@ -69,7 +74,7 @@ Use the host's browser tool in a new tab. Read each field label before filling i
 - Salary per `salary_mode`: `posting_range_upper` → the upper part of the posted range, never below `salary_floor`, and when no range is posted use `salary_fixed_total` if set, else ask; `fixed` → `salary_fixed_total` or `salary_fixed_base` as the field asks; `leave_blank` → blank when optional, ask when required.
 - Free text per `free_text`: `never` → stop and ask; `draft_for_approval` → draft from the profile body and show it at the gate; `auto_from_profile` → write it, grounded only in the profile, within the character limit.
 - Consents: tick a box only when its `[apply.consents]` key is true; otherwise ask. Unknown kinds of agreement: ask.
-- Accounts per `ats_accounts`: `never` → stop on a login wall, record it as `pending` (Stops), move on; `reuse` → the user signs in; `create` → create with the profile email and let the user set the password. Never type or store a password.
+- Accounts per `ats_accounts`: `never` → stop on a login wall, record it as `pending` (Stops); `reuse` → the user signs in; `create` → create with the profile email and let the user set the password. Never type or store a password.
 - CAPTCHA, email or SMS verification code: always stop, record it as `pending` (Stops) and ask the user to complete it. Never solve or fetch it.
 - A question nothing above covers: ask the user once, then save the answer to `[apply.answers]` under a short snake_case key with your file tools so the next run never asks again. Never guess.
 - Marker: when `marker = true` and the form has an optional free-text field, paste step 3's `marker` line into that field.
@@ -82,6 +87,7 @@ Present, per application: company, title, URL, location / mode, posted pay, CV (
 - `confirm_batch`: fill up to five forms in separate tabs, present them together, submit only those the user approves by name.
 - `auto_after_approvals`: count applications whose note contains `Approval: as filled` (`list_applications`). Below `approvals_before_auto`, or with any `Approval: corrected` among the latest `approvals_before_auto`, behave as `confirm_each`. Otherwise submit, still stopping for CAPTCHAs, codes, unasked questions and false consents.
 A correction is applied, re-presented, and counted as `Approval: corrected`. An earlier approval never covers a later form.
+When the user declines a form, leave it unsubmitted and call `update_status` with `status: "deny_by_candidate"` and the reason as `note`, so the next run does not resume it as `saved`.
 
 ### 7. Record
 

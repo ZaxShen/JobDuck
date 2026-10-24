@@ -28,6 +28,14 @@ export interface ApplicationRow {
   posting_title: string
   posting_company: string
   posting_location: string | null
+  posting_country: string | null
+  posting_state: string | null
+  posting_city: string | null
+  posting_pay_min: number | null
+  posting_pay_max: number | null
+  posting_pay_period: string | null
+  posting_currency: string | null
+  posting_pay_stated: number | null
 }
 
 export interface ApplicationEvent {

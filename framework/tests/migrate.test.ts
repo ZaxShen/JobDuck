@@ -11,16 +11,16 @@ afterEach(() => box.cleanup())
 
 test('migrations apply once and are idempotent', () => {
   const db = migratedDb(box.home)
-  expect(currentVersion(db)).toBe(4)
+  expect(currentVersion(db)).toBe(5)
   expect(migrate(db)).toEqual([])
-  expect(currentVersion(db)).toBe(4)
+  expect(currentVersion(db)).toBe(5)
   const rows = db.prepare('SELECT version FROM schema_migrations').all()
-  expect(rows).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }])
+  expect(rows).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }])
   db.close()
 })
 
 test('migration files are numbered and ordered', () => {
-  expect(loadMigrations().map((m) => m.version)).toEqual([1, 2, 3, 4])
+  expect(loadMigrations().map((m) => m.version)).toEqual([1, 2, 3, 4, 5])
   const loaded = loadMigrations([
     { name: '010_ten.sql', sql: 'ten' }, { name: 'notes.txt', sql: 'x' }, { name: '002_two.sql', sql: 'two' },
   ])
@@ -54,15 +54,18 @@ const columns = (db: ReturnType<typeof migratedDb>, table: string) =>
 const STAGE_COLUMNS = ['stage_type', 'scheduled_at', 'outcome']
 const FACT_COLUMNS = ['id', 'slug', 'company', 'role', 'project', 'category', 'action', 'outcome', 'metrics', 'skills',
   'tools', 'basis', 'confidence', 'rationale', 'status', 'sort_order', 'created_at', 'updated_at']
+const POSTING_COLUMNS = ['seniority', 'education_level', 'min_experience_years', 'closed_at', 'summary', 'skills',
+  'requirements', 'requires_clearance', 'pay_stated', 'field_sources', 'resolved_at']
 const APPLICATION_COLUMNS = ['salary_min', 'salary_max', 'salary_offered', 'rsu', 'options', 'bonus', 'sign_on',
   'relocation_fee', 'currency', 'country_override', 'state_override', 'city_override']
 
-test('a fresh database reaches version 4 with the stage, pay, pending and profile fact columns', () => {
+test('a fresh database reaches version 5 with the stage, pay, pending, profile fact and posting field columns', () => {
   const db = migratedDb(box.home)
-  expect(currentVersion(db)).toBe(4)
+  expect(currentVersion(db)).toBe(5)
   expect(columns(db, 'applications')).toContain('pending_reason')
   for (const column of STAGE_COLUMNS) expect(columns(db, 'application_events')).toContain(column)
   for (const column of APPLICATION_COLUMNS) expect(columns(db, 'applications')).toContain(column)
+  for (const column of POSTING_COLUMNS) expect(columns(db, 'postings')).toContain(column)
   const indexes = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all() as { name: string }[])
     .map((row) => row.name)
   expect(indexes).toContain('application_events_scheduled')

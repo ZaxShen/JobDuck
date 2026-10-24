@@ -99,29 +99,35 @@ test('maps a job to a posting and strips utm_source only', () => {
     url: 'https://job-boards.greenhouse.io/acme/jobs/1001',
     title: 'Staff Engineer',
     company: 'Acme',
+    location: 'San Francisco, United States',
     country: 'US',
+    city: 'San Francisco',
+    work_mode: 'hybrid',
     job_type: 'full_time',
-    posted_at: '2026-10-16T10:00:00Z',
-    description: '<p>Build things.</p>',
+    seniority: 'staff',
+    skills: ['typescript', 'postgres'],
+    pay_min: 200000,
+    pay_max: 250000,
+    pay_period: 'year',
+    currency: 'USD',
+    pay_stated: true,
+    posted_at: '2026-10-16T10:00:00.000Z',
+    description: 'Build things.',
   })
   expect(JSON.parse(toPostingInput(first!).raw ?? '{}').public_slug).toBe('staff-engineer-acme-1')
   expect(toPostingInput(second!).url)
     .toBe('https://www.whatjobs.com/pub_api__cpl__2002?geoID=1&utm_campaign=publisher&utm_medium=api')
   expect(toPostingInput(third).country).toBe('CA')
-  expect(toPostingInput(first!)).toMatchObject({
-    work_mode: 'hybrid', city: 'San Francisco', country: 'US', location: 'San Francisco, US',
-    pay_min: 200000, pay_max: 250000, currency: 'USD', pay_period: 'year',
-  })
   expect(toPostingInput(first!).state).toBeUndefined()
-  expect(toPostingInput(second!)).toMatchObject({
-    work_mode: null, city: null, location: 'US', pay_min: null, pay_max: null, currency: null, pay_period: null,
-  })
+  expect(toPostingInput(second!)).toMatchObject({ location: 'US', country: 'US' })
+  for (const field of ['work_mode', 'city', 'pay_min', 'pay_max', 'currency', 'pay_period', 'pay_stated'] as const) {
+    expect(toPostingInput(second!)[field]).toBeUndefined()
+  }
   expect(toPostingInput(third)).toMatchObject({
-    work_mode: 'remote', city: 'Toronto', location: 'Toronto, CA', pay_min: 150000, pay_max: 180000,
-    currency: 'CAD', pay_period: null,
+    work_mode: 'remote', city: 'Toronto', country: 'CA', location: 'Toronto, Canada', pay_min: 150000, pay_max: 180000,
+    currency: 'CAD',
   })
   expect(toPostingInput({ ...second!, location: 'Remote - United States' }).location).toBe('Remote - United States')
-  expect(toPostingInput({ ...first!, cities: ['Seattle', 'Bellevue'] }).location).toBe('Seattle, Bellevue, US')
   expect(stripUtmSource('https://x.io/a?utm_source=freehire.me#top')).toBe('https://x.io/a#top')
   expect(stripUtmSource('https://x.io/a')).toBe('https://x.io/a')
 })

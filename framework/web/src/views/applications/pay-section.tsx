@@ -19,12 +19,15 @@ interface PaySectionProps {
   errors: Partial<Record<PayKey, string>>
   onChange: (key: PayKey | 'currency', value: string) => void
   onCommit: (key: PayKey | 'currency') => void
+  postingPay: string | null
+  postingCurrency: string | null
 }
 
-export function PaySection({ values, errors, onChange, onCommit }: PaySectionProps) {
+export function PaySection({ values, errors, onChange, onCommit, postingPay, postingCurrency }: PaySectionProps) {
   return (
     <fieldset className="space-y-3">
       <legend className="mb-2 text-sm font-medium">Offer &amp; pay</legend>
+      {postingPay && <p className="text-xs text-muted-foreground">{postingPay}</p>}
       <div className="grid grid-cols-2 gap-3">
         {PAY_FIELDS.map(([key, label]) => (
           <div key={key} className="space-y-1.5">
@@ -46,7 +49,7 @@ export function PaySection({ values, errors, onChange, onCommit }: PaySectionPro
           <Input
             id="f-currency"
             maxLength={3}
-            placeholder="USD"
+            placeholder={postingCurrency ?? 'USD'}
             value={values.currency}
             onChange={(event) => onChange('currency', event.target.value.toUpperCase())}
             onBlur={() => onCommit('currency')}

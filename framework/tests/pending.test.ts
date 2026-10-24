@@ -47,7 +47,7 @@ test('004 keeps saved rows and their events and outcomes unchanged', () => {
   const events = db.prepare('SELECT * FROM application_events ORDER BY id').all()
   const outcomeLinks = db.prepare('SELECT id, application_id FROM outcomes ORDER BY id').all()
 
-  expect(migrate(db)).toEqual([4])
+  expect(migrate(db, loadMigrations().filter((m) => m.version <= 4))).toEqual([4])
   expect(currentVersion(db)).toBe(4)
   expect(getApplication(db, 1)).toMatchObject({
     status: 'saved', pending_reason: null, applied_at: null, note: 'draft', salary_offered: 120000, currency: 'USD',
@@ -134,7 +134,12 @@ test('the data layer requires a reason to enter pending and clears it on the way
 interface ToolResult { isError?: boolean; content: { type: string; text: string }[] }
 
 test('record_application starts as saved, stores pending_reason, and both tools refuse pending without one', async () => {
-  const jobduck: JobduckServer = createServer({ home: box.home })
+  const unexpected: string[] = []
+  const jobduck: JobduckServer = createServer({
+    home: box.home,
+    fetch: async (input) => { unexpected.push(input); throw new Error(`unexpected fetch ${input}`) },
+    lookup: async (hostname) => { throw new Error(`lookup refused for ${hostname}`) },
+  })
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
   const client = new Client({ name: 'jobduck-test', version: '0.0.0' })
   await Promise.all([jobduck.server.connect(serverTransport), client.connect(clientTransport)])
@@ -188,6 +193,7 @@ test('record_application starts as saved, stores pending_reason, and both tools 
     expect(reopened.application.pending_reason).toBe('Upload the transcript.')
     const interviewing = await data('record_interview', { application_id: application.id, stage_type: 'phone_screen' })
     expect(interviewing.application).toMatchObject({ status: 'interviewing', pending_reason: null })
+    expect(unexpected).toEqual([])
   } finally {
     await client.close()
     await jobduck.close()

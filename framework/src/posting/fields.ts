@@ -43,7 +43,12 @@ export interface PostingFields {
 }
 
 export type PostingField = keyof PostingFields
-export type FieldSource = 'freehire' | 'ats' | 'page' | 'text' | 'agent'
+export const FIELD_SOURCES = ['user', 'freehire', 'ats', 'page', 'text', 'agent'] as const
+export type FieldSource = (typeof FIELD_SOURCES)[number]
+export type FieldSources = Partial<Record<PostingField, FieldSource>>
+
+export const ranksAtLeast = (source: FieldSource, stored: FieldSource) =>
+  FIELD_SOURCES.indexOf(source) <= FIELD_SOURCES.indexOf(stored)
 export type CoreField = 'country' | 'state' | 'city' | 'work_mode' | 'pay'
 
 export const POSTING_FIELDS = [

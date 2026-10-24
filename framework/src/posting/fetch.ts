@@ -1,5 +1,9 @@
 import { lookup as dnsLookup } from 'node:dns/promises'
-import { isIP } from 'node:net'
+import { request as httpRequest } from 'node:http'
+import { request as httpsRequest } from 'node:https'
+import { isIP, type LookupFunction } from 'node:net'
+import { pipeline, Readable, type Transform } from 'node:stream'
+import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib'
 import { type FetchLike, USER_AGENT } from '../freehire/client'
 
 export const MAX_REDIRECTS = 5
@@ -10,8 +14,21 @@ export const JSON_ACCEPT = 'application/json'
 
 export type LookupLike = (hostname: string) => Promise<{ address: string; family: number }[]>
 
+export interface PinnedAddress {
+  address: string
+  family: number
+}
+
+export interface PinnedRequest {
+  headers: Record<string, string>
+  signal: AbortSignal
+}
+
+export type PinnedFetch = (url: URL, target: PinnedAddress, init: PinnedRequest) => Promise<Response>
+
 export interface SafeFetchDeps {
   fetch?: FetchLike
+  pinned?: PinnedFetch
   lookup?: LookupLike
   timeoutMs?: number
   maxBytes?: number
@@ -96,7 +113,12 @@ export function isPublicAddress(address: string): boolean {
   return false
 }
 
-async function checkUrl(raw: string, lookup: LookupLike): Promise<URL> {
+interface CheckedUrl {
+  url: URL
+  target: PinnedAddress
+}
+
+async function checkUrl(raw: string, lookup: LookupLike): Promise<CheckedUrl> {
   let url: URL
   try {
     url = new URL(raw)
@@ -110,9 +132,9 @@ async function checkUrl(raw: string, lookup: LookupLike): Promise<URL> {
   if (host === 'localhost' || host.endsWith('.localhost')) throw new FetchRefused('private_address', `refused host ${host}`)
   if (isIP(host) !== 0) {
     if (!isPublicAddress(host)) throw new FetchRefused('private_address', `refused address ${host}`)
-    return url
+    return { url, target: { address: host, family: isIP(host) } }
   }
-  let addresses: { address: string }[]
+  let addresses: { address: string; family: number }[]
   try {
     addresses = await lookup(host)
   } catch (error) {
@@ -121,8 +143,53 @@ async function checkUrl(raw: string, lookup: LookupLike): Promise<URL> {
   if (addresses.length === 0) throw new FetchRefused('dns', `no addresses for ${host}`)
   const blocked = addresses.find((entry) => !isPublicAddress(entry.address))
   if (blocked) throw new FetchRefused('private_address', `${host} resolves to non-public ${blocked.address}`)
-  return url
+  const first = addresses[0]!
+  return { url, target: { address: first.address, family: first.family === 6 || isIP(first.address) === 6 ? 6 : 4 } }
 }
+
+export const pinnedLookup = (target: PinnedAddress): LookupFunction => (_hostname, options, callback) => {
+  if (options.all) callback(null, [target])
+  else callback(null, target.address, target.family)
+}
+
+const DECODERS: Record<string, () => Transform> = {
+  gzip: createGunzip, 'x-gzip': createGunzip, deflate: createInflate, br: createBrotliDecompress,
+}
+const NULL_BODY_STATUSES = new Set([204, 205, 304])
+
+export const pinnedFetch: PinnedFetch = (url, target, init) => new Promise((resolve, reject) => {
+  const request = url.protocol === 'https:' ? httpsRequest : httpRequest
+  const headers = { ...init.headers, 'Accept-Encoding': 'gzip, deflate, br' }
+  const req = request(url, { method: 'GET', headers, lookup: pinnedLookup(target), signal: init.signal }, (res) => {
+    try {
+      const responseHeaders = new Headers()
+      for (const [name, value] of Object.entries(res.headers)) {
+        for (const item of [value ?? []].flat()) responseHeaders.append(name, item)
+      }
+      const status = res.statusCode ?? 0
+      if (NULL_BODY_STATUSES.has(status)) {
+        res.resume()
+        resolve(new Response(null, { status, headers: responseHeaders }))
+        return
+      }
+      const decoder = DECODERS[(responseHeaders.get('content-encoding') ?? '').trim().toLowerCase()]
+      if (decoder) {
+        responseHeaders.delete('content-encoding')
+        responseHeaders.delete('content-length')
+      }
+      const stream = decoder ? pipeline(res, decoder(), () => {}) : res
+      resolve(new Response(Readable.toWeb(stream) as ReadableStream<Uint8Array>, { status, headers: responseHeaders }))
+    } catch (error) {
+      res.destroy()
+      reject(error)
+    }
+  })
+  req.on('error', reject)
+  req.end()
+})
+
+const viaFetch = (fetchImpl: FetchLike): PinnedFetch => (url, _target, init) =>
+  fetchImpl(url.href, { method: 'GET', headers: init.headers, redirect: 'manual', signal: init.signal })
 
 const ALLOWED_TYPES = /^(?:text\/html|application\/xhtml\+xml|application\/(?:[\w.-]+\+)?json|text\/plain|text\/json)$/i
 
@@ -156,15 +223,15 @@ async function readBody(response: Response, maxBytes: number, contentType: strin
 }
 
 async function fetchChain(start: string, deps: SafeFetchDeps, accept: string, signal: AbortSignal): Promise<SafeResponse> {
-  const fetchImpl = deps.fetch ?? globalThis.fetch
+  const transport = deps.pinned ?? (deps.fetch ? viaFetch(deps.fetch) : pinnedFetch)
   const lookup = deps.lookup ?? defaultLookup
   const headers = { 'User-Agent': deps.userAgent ?? USER_AGENT, Accept: accept }
   let current = start
   for (let redirects = 0; ; redirects++) {
-    const url = await checkUrl(current, lookup)
+    const { url, target } = await checkUrl(current, lookup)
     let response: Response
     try {
-      response = await fetchImpl(url.href, { method: 'GET', headers, redirect: 'manual', signal })
+      response = await transport(url, target, { headers, signal })
     } catch (error) {
       if (error instanceof FetchRefused) throw error
       throw new FetchRefused(signal.aborted ? 'timeout' : 'network', `fetch failed for ${url.href}: ${(error as Error).message}`)
@@ -184,7 +251,13 @@ async function fetchChain(start: string, deps: SafeFetchDeps, accept: string, si
       if (!response.ok) return { url: url.href, status: response.status, contentType, body: '' }
       throw new FetchRefused('content_type', `refused content type ${mediaType || '(none)'}`)
     }
-    const body = await readBody(response, deps.maxBytes ?? MAX_BODY_BYTES, contentType)
+    let body: string
+    try {
+      body = await readBody(response, deps.maxBytes ?? MAX_BODY_BYTES, contentType)
+    } catch (error) {
+      if (error instanceof FetchRefused) throw error
+      throw new FetchRefused(signal.aborted ? 'timeout' : 'network', `reading ${url.href} failed: ${(error as Error).message}`)
+    }
     return { url: url.href, status: response.status, contentType: mediaType.toLowerCase(), body }
   }
 }

@@ -1,0 +1,11 @@
+ALTER TABLE postings ADD COLUMN seniority TEXT;
+ALTER TABLE postings ADD COLUMN education_level TEXT;
+ALTER TABLE postings ADD COLUMN min_experience_years REAL CHECK (min_experience_years IS NULL OR min_experience_years >= 0);
+ALTER TABLE postings ADD COLUMN closed_at TEXT;
+ALTER TABLE postings ADD COLUMN summary TEXT;
+ALTER TABLE postings ADD COLUMN skills TEXT CHECK (skills IS NULL OR (json_valid(skills) AND json_type(skills) = 'array'));
+ALTER TABLE postings ADD COLUMN requirements TEXT CHECK (requirements IS NULL OR (json_valid(requirements) AND json_type(requirements) = 'array'));
+ALTER TABLE postings ADD COLUMN requires_clearance INTEGER CHECK (requires_clearance IS NULL OR requires_clearance IN (0, 1));
+ALTER TABLE postings ADD COLUMN pay_stated INTEGER CHECK (pay_stated IS NULL OR pay_stated IN (0, 1));
+ALTER TABLE postings ADD COLUMN field_sources TEXT CHECK (field_sources IS NULL OR (json_valid(field_sources) AND json_type(field_sources) = 'object'));
+ALTER TABLE postings ADD COLUMN resolved_at TEXT;

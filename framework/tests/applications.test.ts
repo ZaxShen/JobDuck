@@ -19,12 +19,14 @@ const posting = () => upsertPosting(db, {
   source: 'manual', url: 'https://www.acme.com/jobs/1/', title: 'AI Engineer', company: 'Acme', location: 'Remote',
 })
 
-test('upsertPosting dedupes on url_key and keeps known fields', () => {
+test('upsertPosting dedupes on url_key, keeps known fields and replaces them only from an equal or higher source', () => {
   const first = posting()
   const second = upsertPosting(db, { source: 'agent', url: 'http://acme.com/jobs/1', title: 'AI Engineer II', company: 'Acme' })
   expect(second.id).toBe(first.id)
-  expect(second.title).toBe('AI Engineer II')
+  expect(second.title).toBe('AI Engineer')
   expect(second.location).toBe('Remote')
+  expect(upsertPosting(db, { source: 'manual', url: 'https://acme.com/jobs/1', title: 'AI Engineer II', company: 'Acme' }).title)
+    .toBe('AI Engineer II')
   expect(findPostingByUrl(db, 'acme.com/jobs/1?utm=x')?.id).toBe(first.id)
   expect(findPostingByUrl(db, 'https://acme.com/jobs/2')).toBeUndefined()
 })

@@ -271,6 +271,14 @@ export interface ApplicationWithPosting extends Application {
   posting_title: string
   posting_company: string
   posting_location: string | null
+  posting_country: string | null
+  posting_state: string | null
+  posting_city: string | null
+  posting_pay_min: number | null
+  posting_pay_max: number | null
+  posting_pay_period: string | null
+  posting_currency: string | null
+  posting_pay_stated: number | null
 }
 
 export type ApplicationSummary = Pick<ApplicationWithPosting,
@@ -291,7 +299,10 @@ const JOINED_SELECT = `SELECT a.*,
     COALESCE(a.company_override, p.company) AS company,
     COALESCE(a.location_override, p.location) AS location,
     p.url AS url, p.work_mode AS work_mode,
-    p.title AS posting_title, p.company AS posting_company, p.location AS posting_location
+    p.title AS posting_title, p.company AS posting_company, p.location AS posting_location,
+    p.country AS posting_country, p.state AS posting_state, p.city AS posting_city,
+    p.pay_min AS posting_pay_min, p.pay_max AS posting_pay_max, p.pay_period AS posting_pay_period,
+    p.currency AS posting_currency, p.pay_stated AS posting_pay_stated
   FROM applications a JOIN postings p ON p.id = a.posting_id`
 
 const likePattern = (q: string) => `%${q.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`
