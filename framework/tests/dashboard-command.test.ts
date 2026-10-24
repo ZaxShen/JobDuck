@@ -3,7 +3,7 @@ import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
 import { type Sandbox, sandbox } from './helpers'
-import { type DashboardRecord, liveDashboard, runDashboard } from '../src/commands/dashboard'
+import { type DashboardRecord, launchDashboard, liveDashboard, runDashboard } from '../src/commands/dashboard'
 import { DEFAULT_PORT, startDashboard } from '../src/dashboard/server'
 import { dashboardStatePath, ensureHome } from '../src/paths'
 
@@ -64,6 +64,70 @@ test('--background reuses a live recorded dashboard without spawning', async () 
     expect(lines).toEqual([`Dashboard: ${dash.url}/#welcome`])
   } finally {
     await dash.close()
+  }
+})
+
+test('--background --no-open reuses the dashboard without opening a browser', async () => {
+  const dash = await startDashboard({ home: box.home, port: 0, open: false, out: quiet })
+  try {
+    writeFileSync(dashboardStatePath(box.home), JSON.stringify({ pid: 1, port: dash.port, url: dash.url, workspace: box.workspace }))
+    const opened: string[] = []
+    const code = await runDashboard({
+      home: box.home, workspace: box.workspace, background: true, open: false, view: 'welcome',
+      openBrowser: (url) => { opened.push(url) }, spawn: () => ({}), out, err: quiet,
+    })
+    expect(code).toBe(0)
+    expect(opened).toEqual([])
+    expect(lines).toEqual([`Dashboard: ${dash.url}/#welcome`])
+  } finally {
+    await dash.close()
+  }
+})
+
+test('--background restarts a live dashboard that serves another workspace', async () => {
+  const other = join(box.root, 'other-workspace')
+  const old = await startDashboard({ home: box.home, workspace: other, port: 0, open: false, out: quiet })
+  const stale: DashboardRecord = { pid: 1, port: old.port, url: old.url, workspace: other }
+  writeFileSync(dashboardStatePath(box.home), JSON.stringify(stale))
+  const { stop, stopped } = stopper()
+  const stoppedRecords: DashboardRecord[] = []
+  const errors: string[] = []
+  let child: Promise<number> | undefined
+  const code = await runDashboard({
+    home: box.home, workspace: box.workspace, background: true, openBrowser: quiet,
+    stopDashboard: async (record) => { stoppedRecords.push(record); await old.close() },
+    spawn: (_command, args) => {
+      expect(args.slice(-2)).toEqual(['--workspace', box.workspace])
+      child = runDashboard({ home: box.home, workspace: box.workspace, port: 0, open: false, stop: stopped, out: quiet, err: quiet })
+      return { pid: process.pid }
+    },
+    out, err: (line) => { errors.push(line) },
+  })
+  try {
+    expect(code).toBe(0)
+    expect(stoppedRecords).toEqual([stale])
+    expect(errors).toEqual([`Restarting the dashboard for ${box.workspace} (it was serving ${other}).`])
+    expect(child).toBeDefined()
+    expect((await liveDashboard(box.home))?.workspace).toBe(box.workspace)
+  } finally {
+    stop()
+    await child
+  }
+}, 10_000)
+
+test('a dashboard for another workspace that will not stop fails the launch instead of spawning a second one', async () => {
+  const other = join(box.root, 'other-workspace')
+  const old = await startDashboard({ home: box.home, workspace: other, port: 0, open: false, out: quiet })
+  try {
+    writeFileSync(dashboardStatePath(box.home), JSON.stringify({ pid: 1, port: old.port, url: old.url, workspace: other }))
+    let spawned = 0
+    await expect(launchDashboard({
+      home: box.home, workspace: box.workspace, openBrowser: quiet, timeoutMs: 300,
+      stopDashboard: () => undefined, spawn: () => { spawned++; return {} },
+    })).rejects.toThrow(`serves ${other} and did not stop`)
+    expect(spawned).toBe(0)
+  } finally {
+    await old.close()
   }
 })
 

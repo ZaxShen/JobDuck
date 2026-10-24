@@ -5,12 +5,11 @@ import { DASHBOARD, DASHBOARD_FONTS } from '../assets'
 import { openDb } from '../db/client'
 import { migrate } from '../db/migrate'
 import { dbPath, ensureHome, jobduckHome } from '../paths'
-import { ApiError, INBOX_PATH, handleApi } from './api'
+import { ApiError, INBOX_MAX_BODY_BYTES, INBOX_PATH, handleApi } from './api'
 
 export const DASHBOARD_HOST = '127.0.0.1'
 export const DASHBOARD_HEADER = 'x-jobduck-dashboard'
 export const MAX_BODY_BYTES = 1024 * 1024
-export const INBOX_MAX_BODY_BYTES = 20 * 1024 * 1024
 export const DEFAULT_PORT = 4848
 
 export interface DashboardOptions {
