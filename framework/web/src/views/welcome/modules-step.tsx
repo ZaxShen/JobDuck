@@ -1,5 +1,5 @@
 import { ModuleSwitches } from '@/components/module-switches'
-import { withModule } from '@/lib/forms'
+import { MODULES, withModule } from '@/lib/forms'
 import { cn } from '@/lib/utils'
 import { StepActions, StepIntro, stepMotion } from '@/views/welcome/step-parts'
 
@@ -16,7 +16,14 @@ export function ModulesStep({ modules, onChange, onSkip, onContinue }: ModulesSt
       <StepIntro title="What should Job Duck do?">
         Nothing runs until its module is on. Change this any time in Settings.
       </StepIntro>
-      <ModuleSwitches value={modules} onChange={(key, on) => onChange(withModule(modules, key, on))} />
+      <div className="space-y-3">
+        <ModuleSwitches value={modules} onChange={(key, on) => onChange(withModule(modules, key, on))} />
+        {!MODULES.some(([key]) => modules[key]) && (
+          <p role="status" className="text-center text-sm text-muted-foreground">
+            Nothing is on, so Job Duck won't do anything yet.
+          </p>
+        )}
+      </div>
       <StepActions onSkip={onSkip} onContinue={onContinue} />
     </div>
   )

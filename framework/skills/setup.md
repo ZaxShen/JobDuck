@@ -30,7 +30,7 @@ Get the profile and settings filled in with as little typing in chat as possible
 
 ### Step 1: Setup wizard in the browser
 
-1. Run `jobduck dashboard --background --view welcome --workspace <workspace>`. It reuses the running dashboard or starts one in the background, opens the browser on the setup wizard and prints its URL. Tell the user to finish the wizard there, in one message: drop a resume or LinkedIn PDF (it lands in `inbox/`), answer the five Career DNA questions, set target titles, locations, seniority and minimum pay, and pick modules. Wait until they say they are done.
+1. Run `jobduck dashboard --background --view welcome --workspace <workspace>`. It reuses the running dashboard or starts one in the background, opens the browser on the setup wizard and prints its URL. Tell the user to finish the wizard there, in one message: drop a resume (it lands in `inbox/`; or skip it and say "import my LinkedIn" afterwards), answer the five Career DNA questions, set target titles, locations, seniority and minimum pay, and pick modules. Wait until they say they are done.
 2. Call `get_profile` and `get_permissions` to see what the wizard saved. If `interview` is on without `track`, say that recording outcomes needs `track` and let the user choose.
 3. Go on with Step 2 to import the files now in `inbox/`.
 
@@ -50,13 +50,13 @@ Only when the user cannot use a browser (no display, a remote shell, or the comm
 Skip what `get_profile` already holds. If the wizard put files in `inbox/`, import them now without asking again. Otherwise offer the three ways in one message and let the user pick:
 
 1. **Resume**: save it into `inbox/` and say "import my resume".
-2. **LinkedIn**, any of:
-   - on their own profile page, **More → Save to PDF**, saved into `inbox/` (best: it has roles, dates, education and skills);
-   - the data export (**Settings → Data privacy → Get a copy of your data**), the ZIP or its `Profile.csv`, `Positions.csv`, `Education.csv`, `Skills.csv` into `inbox/`;
-   - if the host has a browser tool and the user is already signed in to LinkedIn there, you may read their own profile page. Never sign in for them, never open anyone else's profile, read only.
+2. **LinkedIn** ("import my LinkedIn"):
+   - first, if the host has a browser tool and the user is already signed in to LinkedIn there, read their own profile page. Never sign in for them, never open anyone else's profile, read only;
+   - otherwise, on their own profile page, **More → Save to PDF**, saved into `inbox/` (it has roles, dates, education and skills);
+   - or the data export (**Settings → Data privacy → Get a copy of your data**), the ZIP or its `Profile.csv`, `Positions.csv`, `Education.csv`, `Skills.csv` into `inbox/`.
 3. **Form**: `jobduck dashboard --view profile` opens the Profile tab, where every field and section is a form with hints.
 
-To import, for each file in `inbox/` the user pointed at (or all of them):
+To import, for each file in `inbox/` the user pointed at (or all of them), and for a LinkedIn page you read:
 
 1. Read it with your file tools; unzip a LinkedIn export first. Extract the front matter keys (`name`, `email`, `phone`, `location`, `[links]`, `work_authorization`, `years_experience`, `education_level`, `target_titles` when the user states a goal) and the body sections `Summary`, `Experience`, `Projects`, `Education`.
 2. Copy facts exactly: titles, employers, dates, numbers and degree names as written. Never round, upgrade or merge them. When two sources disagree (dates, titles, degree names), list each conflict and ask which is right before writing.

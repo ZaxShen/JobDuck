@@ -29,7 +29,7 @@ export function TargetsStep({ targets, onChange, onSkip, onContinue }: TargetsSt
   return (
     <div className={cn('flex flex-col gap-10', stepMotion)}>
       <StepIntro title="What are you looking for?">
-        The find and apply skills filter postings with these. Press Enter after each item.
+        Job Duck only suggests postings that match these. Press Enter after each one.
       </StepIntro>
 
       <div className="space-y-5">
@@ -51,10 +51,10 @@ export function TargetsStep({ targets, onChange, onSkip, onContinue }: TargetsSt
             id="wizard-pay_floor"
             value={targets.pay_floor}
             step={1000}
-            placeholder="0 means no floor"
+            placeholder="0"
             onChange={(pay_floor) => onChange({ ...targets, pay_floor })}
           />
-          <p className="text-xs text-muted-foreground">Postings below this are skipped.</p>
+          <p className="text-xs text-muted-foreground">Postings that pay less are skipped. Leave 0 for no minimum.</p>
         </div>
       </div>
 
