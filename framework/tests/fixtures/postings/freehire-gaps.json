@@ -1,0 +1,15 @@
+{
+  "public_slug": "backend-engineer-acme-7002",
+  "source": "greenhouse",
+  "external_id": "acme:7002",
+  "url": "https://job-boards.greenhouse.io/acme/jobs/7002",
+  "title": "Senior Backend Engineer",
+  "company": "Acme",
+  "location": "Austin, Texas, United States",
+  "countries": ["us"],
+  "cities": ["Austin"],
+  "skills": ["go"],
+  "posted_at": "2026-10-15T09:00:00Z",
+  "description": "<p>Acme is hiring a backend engineer to build the services behind example.com. You will own APIs, data pipelines and the reliability of the systems our customers depend on every day.</p><p>You have shipped production Go services and enjoy working closely with product and design.</p>",
+  "enrichment": { "employment_type": "full_time", "seniority": "senior" }
+}

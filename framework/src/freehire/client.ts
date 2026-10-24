@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { PACKAGE_VERSION } from '../paths'
 
 export const FREEHIRE_SEARCH_URL = 'https://freehire.me/api/v1/jobs/search'
+export const FREEHIRE_JOB_URL = 'https://freehire.me/api/v1/jobs'
 export const PAGE_LIMIT = 50
 export const MAX_WINDOW = 10_000
 export const MAX_RATE_LIMIT_SLEEP_MS = 5_000
@@ -122,4 +123,24 @@ export async function searchJobs(params: SearchParams, options: SearchOptions = 
     if (response.headers.get('x-ratelimit-remaining') === '0') await sleep(rateLimitWaitMs(response.headers))
   }
   return { total, jobs }
+}
+
+export async function getJob(slug: string, options: SearchOptions = {}): Promise<FreehireJob | null> {
+  const fetchImpl = options.fetch ?? globalThis.fetch
+  const sleep = options.sleep ?? defaultSleep
+  const headers = { 'User-Agent': options.userAgent ?? USER_AGENT, Accept: 'application/json' }
+  const url = `${FREEHIRE_JOB_URL}/${encodeURIComponent(slug)}`
+  let response = await fetchImpl(url, { headers })
+  if (response.status === 429) {
+    await sleep(rateLimitWaitMs(response.headers))
+    response = await fetchImpl(url, { headers })
+  }
+  if (response.status === 404) return null
+  if (!response.ok) {
+    const body = (await response.text()).slice(0, 200)
+    throw new Error(`freehire job ${slug} failed: HTTP ${response.status}: ${body}`)
+  }
+  const body: unknown = await response.json()
+  const record = body !== null && typeof body === 'object' && 'data' in body && !Array.isArray(body.data) ? body.data : body
+  return FreehireJob.parse(record)
 }
