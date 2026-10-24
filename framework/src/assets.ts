@@ -1,4 +1,5 @@
 import migration001 from './db/migrations/001_init.sql' with { type: 'text' }
+import migration002 from './db/migrations/002_interview_stages.sql' with { type: 'text' }
 import dashboardApp from './dashboard/public/app.js' with { type: 'text' }
 import dashboardIndex from './dashboard/public/index.html' with { type: 'text' }
 import dashboardStyle from './dashboard/public/style.css' with { type: 'text' }
@@ -34,6 +35,7 @@ export const TEMPLATES: Record<string, string> = {
 
 export const MIGRATIONS: { name: string; sql: string }[] = [
   { name: '001_init.sql', sql: migration001 },
+  { name: '002_interview_stages.sql', sql: migration002 },
 ]
 
 export const DASHBOARD: Record<string, string> = {

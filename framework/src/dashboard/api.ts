@@ -5,7 +5,7 @@ import { RevisionConflict } from '../config/files'
 import { readStoredPermissions, writePermissions } from '../config/permissions'
 import { TEMPLATE_SECTIONS, isPlaceholder, readStoredProfile, splitSections, updateProfile } from '../config/profile'
 import {
-  APPLICATION_STATUSES, type ApplicationFields, EDITABLE_FIELDS, TERMINAL_STATUSES, getApplication,
+  APPLICATION_STATUSES, type ApplicationFields, TERMINAL_STATUSES, getApplication,
   getApplicationWithPosting, listApplicationsWithPostings, listEvents, setStatus, softDeleteApplication,
   updateApplicationFields,
 } from '../db/applications'
@@ -155,11 +155,8 @@ function patchApplication(db: Db, id: number, body: unknown) {
   const current = getApplication(db, id)
   if (!current) throw new ApiError(404, `application ${id} not found`)
   const changing = input.status !== undefined && input.status !== current.status
-  const fields: ApplicationFields = {}
-  for (const key of EDITABLE_FIELDS) {
-    if (key === 'note' && changing) continue
-    if (input[key] !== undefined) fields[key] = input[key]
-  }
+  const fields = Object.fromEntries(Object.entries(input)
+    .filter(([key, value]) => key !== 'status' && !(key === 'note' && changing) && value !== undefined)) as ApplicationFields
   if (Object.keys(fields).length > 0) updateApplicationFields(db, id, fields)
   if (changing && input.status !== undefined) {
     setStatus(db, id, input.status, { source: 'dashboard', note: input.note ?? undefined })

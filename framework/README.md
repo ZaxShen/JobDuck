@@ -130,13 +130,13 @@ Skills are plain markdown workflows any agent can follow. `init` copies them to 
 | `apply` | "apply to jobs" / "apply to <url>" | Dedupes, picks your CV, fills the form with your browser tool, stops at the approval gate set by `[apply] autonomy`, submits, and records the application. CAPTCHAs and verification codes always stop for you. |
 | `track` | "show my applications" | Lists applications, updates statuses when you report news, and runs `jobduck sync` for rejection emails. No mail access. |
 | `cv` | "tailor my CV for <role>" | Writes `cv/<slug>.md` in the workspace strictly from `profile.md`, within `[cv] page_limit`, with a fact-check list. |
-| `interview` | "prep me for my interview at <company>" | Prep pack from the posting and your profile, mock interview, outcome via `update_status`. |
+| `interview` | "prep me for my interview at <company>" | Prep pack from the posting and your profile, mock interview, each round and offer via `record_interview` / `update_interview`, offer pay via `update_application`, the final result via `update_status`. |
 
 Skills are owned by the package; your answers live in `profile.md` and `permissions.toml`, so upgrading never loses them. Questions the `apply` skill meets on a form and cannot answer from your profile are asked once and saved under `[apply.answers]`.
 
 ## Tools
 
-Every tool returns compact JSON. Application writes (`record_application`, `update_status`) are refused until `track = true` in `permissions.toml`; `update_profile` always works.
+Every tool returns compact JSON. Application writes (`record_application`, `update_status`, `update_application`, `record_interview`, `update_interview`, `delete_interview`) are refused until `track = true` in `permissions.toml`; `update_profile` always works.
 
 | Tool | Arguments | Returns |
 |---|---|---|
@@ -148,6 +148,11 @@ Every tool returns compact JSON. Application writes (`record_application`, `upda
 | `record_application` | `url`, `title`, `company`, `location?`, `status?` (default `applied`), `applied_at?`, `note?`, `extracted?`, `source?` | `{ application, posting, marker }`, or `{ duplicate: true, application }` when the posting already has one |
 | `update_status` | `id`, `status`, `note?`, `source?` | `{ application }`; every change is logged in `application_events`, and `note` is also appended to the application's note |
 | `list_applications` | `status?` (one status or an array), `since?` (ISO date `YYYY-MM-DD` or timestamp), `limit?` (default 50, max 200) | `{ applications[] }` with title, company, location and URL from the posting |
+| `get_application` | `id` | `{ application, stages[] }`: the application with title, company, location and URL from the posting, offer pay and overrides, and its interview and offer stages ordered by date, each with `contacts` |
+| `update_application` | `id`, `salary_min?`, `salary_max?`, `salary_offered?`, `rsu?`, `options?`, `bonus?`, `sign_on?`, `relocation_fee?` (whole amounts, 0 or more), `currency?` (3 letters), `title_override?`, `company_override?`, `location_override?`, `country_override?` (2 uppercase letters), `state_override?`, `city_override?` | `{ application }`; only the fields given change and `null` clears one; never touches the note or status |
+| `record_interview` | `application_id`, `kind?` (`interviewing`, default, or `offered`), `stage_type` (`information`, `phone_screen`, `online_assessment`, `hiring_manager`, `technical`, `behavioral`, `system_design`, `onsite`, `take_home`, `other`; or `verbal` / `written` for an offer), `scheduled_at?` (ISO date or timestamp), `outcome?` (`pending`, `advanced`, `rejected`, `ghosted`, `cancelled`; default `pending` for a round), `note?`, `contacts?` (up to 20 of `{ name, title?, email?, phone?, linkedin? }`), `source?` | `{ application, stage }`; the status moves forward to `kind` when it is behind (`saved` / `applied` → `interviewing` → `offered`), never back, and a closed application keeps its status |
+| `update_interview` | `event_id`, `stage_type?`, `scheduled_at?`, `outcome?`, `note?`, `contacts?` | `{ stage }`; edits interview and offer stages only, the status does not change |
+| `delete_interview` | `event_id` | `{ deleted }`; deletes an interview or offer stage only, the status does not change |
 
 `search_jobs` uses the public [freehire.me](https://freehire.me) API (no key; 50 results per page, at most 10 000 deep). It, [`jobduck sync`](#sync) (your own Apps Script URL) and [`jobduck upgrade`](#upgrade) (GitHub Releases) are the only network calls Job Duck makes.
 

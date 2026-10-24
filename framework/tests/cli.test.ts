@@ -117,7 +117,7 @@ test('init --yes creates the home, migrates, and registers hosts; doctor then pa
   lines = []
   expect(runDoctor({ ...doctorBase(), json: true })).toBe(0)
   const report = JSON.parse(lines.join('\n'))
-  expect(report.checks.find((c: { name: string }) => c.name === 'database').detail).toBe('migration version 1')
+  expect(report.checks.find((c: { name: string }) => c.name === 'database').detail).toBe('migration version 2')
   expect(report.checks.find((c: { name: string }) => c.name === 'runtime').detail).toBe(`jobduck ${PACKAGE_VERSION} on bun ${Bun.version}`)
   expect(report.checks.find((c: { name: string }) => c.name === 'path').detail).toBe(`jobduck found at ${join(box.root, 'bin', 'jobduck')}`)
   expect(report.checks.some((c: { name: string }) => c.name === 'node')).toBe(false)

@@ -4,10 +4,15 @@ import { z } from 'zod'
 import { loadPermissions, MODULES } from '../config/permissions'
 import { readStoredProfile, updateProfile } from '../config/profile'
 import {
-  APPLICATION_STATUSES, createApplication, EVENT_SOURCES, findApplicationsByCompanyTitle,
-  getLiveApplicationForPosting, listApplicationsWithPostings, setStatus, summarizeApplication,
+  APPLICATION_STATUSES, createApplication, EVENT_SOURCES, findApplicationsByCompanyTitle, getApplicationWithPosting,
+  getLiveApplicationForPosting, listApplicationsWithPostings, PAY_FIELDS, setStatus, summarizeApplication,
+  updateApplicationFields,
 } from '../db/applications'
 import { type Db, one } from '../db/client'
+import {
+  addStage, deleteStage, listStages, MAX_CONTACTS, SCHEDULED_AT, SCHEDULED_AT_MESSAGE, STAGE_KINDS, STAGE_OUTCOMES,
+  STAGE_TYPES, updateStage,
+} from '../db/interviews'
 import { findPostingByUrl, type Posting, upsertPosting } from '../db/postings'
 import { type FetchLike, searchJobs } from '../freehire/client'
 import { toPostingInput } from '../freehire/map'
@@ -22,7 +27,8 @@ export interface ToolDeps {
 
 export const TOOL_NAMES = [
   'get_profile', 'update_profile', 'get_permissions', 'search_jobs', 'find_application',
-  'record_application', 'update_status', 'list_applications',
+  'record_application', 'update_status', 'list_applications', 'get_application', 'update_application',
+  'record_interview', 'update_interview', 'delete_interview',
 ] as const
 
 export const TRACK_DISABLED = 'track module is disabled in permissions.toml; run the setup skill'
@@ -104,6 +110,35 @@ function postingView(posting: Posting | undefined, withText: boolean): Record<st
 
 const Status = z.enum(APPLICATION_STATUSES)
 const Source = z.enum(EVENT_SOURCES)
+const Id = z.number().int().positive()
+const StageType = z.enum(STAGE_TYPES)
+  .describe('interviewing: information, phone_screen, online_assessment, hiring_manager, technical, behavioral, '
+    + 'system_design, onsite, take_home, other; offered: verbal, written')
+const Outcome = z.enum(STAGE_OUTCOMES)
+const ScheduledAt = z.string().regex(SCHEDULED_AT, SCHEDULED_AT_MESSAGE)
+  .describe('ISO date (YYYY-MM-DD) or timestamp of the round')
+const Contact = z.object({
+  name: z.string(),
+  title: z.string().optional(),
+  email: z.string().optional(),
+  phone: z.string().optional(),
+  linkedin: z.string().optional(),
+})
+const Contacts = z.array(Contact).max(MAX_CONTACTS)
+  .describe('interviewers as the user gave them; replaces the stage\'s contacts')
+const Pay = z.number().int().nonnegative().nullable().optional()
+const OptionalText = z.string().nullable().optional()
+
+const applicationPatch = {
+  ...Object.fromEntries(PAY_FIELDS.map((key) => [key, Pay])) as Record<(typeof PAY_FIELDS)[number], typeof Pay>,
+  currency: OptionalText.describe('3-letter currency code, e.g. USD'),
+  title_override: OptionalText,
+  company_override: OptionalText,
+  location_override: OptionalText,
+  country_override: OptionalText.describe('2 uppercase letters, e.g. US'),
+  state_override: OptionalText,
+  city_override: OptionalText,
+}
 
 export function registerTools(server: McpServer, deps: ToolDeps): void {
   const { db, home } = deps
@@ -265,4 +300,79 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   }, ({ status, since, limit }) => run(() => ({
     applications: listApplicationsWithPostings(db, { status, since, limit }).map(summarizeApplication),
   })))
+
+  server.registerTool('get_application', {
+    description: 'Read one live application with its posting title, company, location and URL, offer pay fields, '
+      + 'overrides and its interview/offer stages (ordered by date) with their contacts.',
+    inputSchema: { id: Id },
+    annotations: { readOnlyHint: true },
+  }, ({ id }) => run(() => {
+    const application = getApplicationWithPosting(db, id)
+    if (!application) throw new Error(`application ${id} not found`)
+    return { application, stages: listStages(db, id) }
+  }))
+
+  server.registerTool('update_application', {
+    description: 'Set offer pay (whole amounts, 0 or more), currency and location/title/company overrides on an '
+      + 'application (requires the track module). Only the fields given change; null clears one. Never the note.',
+    inputSchema: { id: Id, ...applicationPatch },
+  }, ({ id, ...fields }) => run(() => {
+    requireTrack()
+    return { application: updateApplicationFields(db, id, fields) }
+  }))
+
+  server.registerTool('record_interview', {
+    description: 'Record an interview round (kind interviewing) or an offer (kind offered) as a stage event '
+      + '(requires the track module). Moves the status forward to the kind when it is behind '
+      + '(saved/applied -> interviewing -> offered); never moves it back or reopens a closed application. '
+      + 'outcome defaults to pending for interviewing.',
+    inputSchema: {
+      application_id: Id,
+      kind: z.enum(STAGE_KINDS).default('interviewing'),
+      stage_type: StageType,
+      scheduled_at: ScheduledAt.optional(),
+      outcome: Outcome.optional(),
+      note: z.string().optional(),
+      contacts: Contacts.optional(),
+      source: Source.default('agent'),
+    },
+  }, (args) => run(() => {
+    requireTrack()
+    return addStage(db, args.application_id, {
+      kind: args.kind, stageType: args.stage_type, scheduledAt: args.scheduled_at, outcome: args.outcome,
+      note: args.note, contacts: args.contacts, source: args.source,
+    })
+  }))
+
+  server.registerTool('update_interview', {
+    description: 'Edit an interview or offer stage by event_id (requires the track module): stage_type, scheduled_at, '
+      + 'outcome, note, contacts. Only the fields given change; null clears scheduled_at, outcome or note. '
+      + 'The application status does not change.',
+    inputSchema: {
+      event_id: Id,
+      stage_type: StageType.optional(),
+      scheduled_at: ScheduledAt.nullable().optional(),
+      outcome: Outcome.nullable().optional(),
+      note: z.string().nullable().optional(),
+      contacts: Contacts.optional(),
+    },
+  }, (args) => run(() => {
+    requireTrack()
+    return {
+      stage: updateStage(db, args.event_id, {
+        stageType: args.stage_type, scheduledAt: args.scheduled_at, outcome: args.outcome,
+        note: args.note, contacts: args.contacts,
+      }),
+    }
+  }))
+
+  server.registerTool('delete_interview', {
+    description: 'Delete an interview or offer stage by event_id (requires the track module). Refuses other events; '
+      + 'the application status does not change.',
+    inputSchema: { event_id: Id },
+    annotations: { destructiveHint: true },
+  }, ({ event_id: eventId }) => run(() => {
+    requireTrack()
+    return { deleted: deleteStage(db, eventId) }
+  }))
 }

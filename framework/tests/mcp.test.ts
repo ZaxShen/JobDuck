@@ -71,7 +71,7 @@ const inspect = (fn: (db: Db) => void) => {
 
 const application = { url: 'https://jobs.lever.co/acme/abc-123/apply', title: 'Staff Engineer', company: 'Acme' }
 
-test('tools/list returns the eight tools', async () => {
+test('tools/list returns every tool', async () => {
   const { tools } = await client.listTools()
   expect(tools.map((tool) => tool.name).sort()).toEqual([...TOOL_NAMES].sort())
 })
@@ -285,4 +285,87 @@ test('list_applications joins postings and filters', async () => {
     expect(bad.isError).toBe(true)
     expect(bad.content[0]?.text).toContain(ISO_DATE_MESSAGE)
   }
+})
+
+test('interview and application writers are gated on track', async () => {
+  const writers: [string, Record<string, unknown>][] = [
+    ['record_interview', { application_id: 1, stage_type: 'technical' }],
+    ['update_interview', { event_id: 1, outcome: 'advanced' }],
+    ['delete_interview', { event_id: 1 }],
+    ['update_application', { id: 1, salary_offered: 1000 }],
+  ]
+  for (const [name, args] of writers) {
+    const refused = await call(name, args)
+    expect(refused.isError).toBe(true)
+    expect(refused.content[0]?.text).toBe(TRACK_DISABLED)
+  }
+  const { tools } = await client.listTools()
+  expect(tools.find((tool) => tool.name === 'delete_interview')?.annotations?.destructiveHint).toBe(true)
+  expect(tools.find((tool) => tool.name === 'get_application')?.annotations?.readOnlyHint).toBe(true)
+})
+
+test('record_interview, update_interview and delete_interview manage stages; get_application reads them', async () => {
+  enableTrack()
+  const { application: created } = await data('record_application', application)
+  const recorded = await data('record_interview', {
+    application_id: created.id, stage_type: 'phone_screen', scheduled_at: '2000-11-03',
+    contacts: [{ name: 'Alex Doe', title: 'Recruiter' }],
+  })
+  expect(recorded.application.status).toBe('interviewing')
+  expect(recorded.stage).toMatchObject({
+    to_status: 'interviewing', stage_type: 'phone_screen', scheduled_at: '2000-11-03', outcome: 'pending', source: 'agent',
+    contacts: [{ name: 'Alex Doe', title: 'Recruiter' }],
+  })
+
+  const { stage: updated } = await data('update_interview', { event_id: recorded.stage.id, outcome: 'advanced' })
+  expect(updated.outcome).toBe('advanced')
+
+  const offer = await data('record_interview', { application_id: created.id, kind: 'offered', stage_type: 'written' })
+  expect(offer.application.status).toBe('offered')
+  expect(offer.stage.outcome).toBeNull()
+
+  const { application: paid } = await data('update_application', {
+    id: created.id, salary_offered: 200000, bonus: 20000, currency: 'USD', country_override: 'US', city_override: 'Austin',
+  })
+  expect(paid).toMatchObject({ salary_offered: 200000, bonus: 20000, currency: 'USD', country_override: 'US', city_override: 'Austin' })
+
+  const read = await data('get_application', { id: created.id })
+  expect(read.application).toMatchObject({
+    id: created.id, title: 'Staff Engineer', company: 'Acme', url: application.url, salary_offered: 200000, currency: 'USD',
+  })
+  expect(read.stages.map((stage: any) => [stage.stage_type, stage.outcome])).toEqual([['phone_screen', 'advanced'], ['written', null]])
+  expect(read.stages[0].contacts).toEqual([{ name: 'Alex Doe', title: 'Recruiter' }])
+
+  const { deleted } = await data('delete_interview', { event_id: offer.stage.id })
+  expect(deleted.id).toBe(offer.stage.id)
+  expect((await data('get_application', { id: created.id })).stages).toHaveLength(1)
+  expect((await data('get_application', { id: created.id })).application.status).toBe('offered')
+})
+
+test('interview tools reject mismatched stages, bad values and non-stage events', async () => {
+  enableTrack()
+  const { application: created } = await data('record_application', application)
+  const mismatched = await call('record_interview', { application_id: created.id, kind: 'offered', stage_type: 'technical' })
+  expect(mismatched.isError).toBe(true)
+  expect(mismatched.content[0]?.text).toContain('stage_type technical is not valid for offered')
+  const badDate = await call('record_interview', { application_id: created.id, stage_type: 'technical', scheduled_at: 'soon' })
+  expect(badDate.isError).toBe(true)
+  const badContact = await call('record_interview', { application_id: created.id, stage_type: 'technical', contacts: [{ name: '' }] })
+  expect(badContact.isError).toBe(true)
+  const badPay = await call('update_application', { id: created.id, salary_min: -5 })
+  expect(badPay.isError).toBe(true)
+  const badCurrency = await call('update_application', { id: created.id, currency: 'dollars' })
+  expect(badCurrency.isError).toBe(true)
+  expect(badCurrency.content[0]?.text).toContain('currency: must be a 3-letter currency code')
+  const { application: noNote } = await data('update_application', { id: created.id, note: 'x', rsu: 0 })
+  expect(noNote).toMatchObject({ note: null, rsu: 0 })
+
+  let firstEvent = 0
+  inspect((db) => { firstEvent = listEvents(db, created.id)[0]!.id })
+  const refused = await call('delete_interview', { event_id: firstEvent })
+  expect(refused.isError).toBe(true)
+  expect(refused.content[0]?.text).toBe(`event ${firstEvent} is not an interview or offer stage`)
+  const missing = await call('get_application', { id: 9999 })
+  expect(missing.isError).toBe(true)
+  expect(missing.content[0]?.text).toBe('application 9999 not found')
 })
