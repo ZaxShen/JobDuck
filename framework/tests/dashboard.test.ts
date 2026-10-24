@@ -349,3 +349,86 @@ test('POST /api/inbox writes the decoded file with mode 0600 and never overwrite
     await withInbox.close()
   }
 })
+
+test('stages: POST advances applied to interviewing, PATCH outcome, DELETE, and GET detail includes stages', async () => {
+  const types = (await get('/api/stage-types')).body
+  expect(types.interviewing).toContain('phone_screen')
+  expect(types.offered).toEqual(['verbal', 'written'])
+  expect(types.outcomes).toContain('pending')
+
+  const contacts = [{ name: 'Dana Lee', title: 'Recruiter', email: 'dana@acme.example' }]
+  const added = await mutate('POST', `/api/applications/${ids.acme}/stages`, {
+    kind: 'interviewing', stage_type: 'phone_screen', scheduled_at: '2026-11-03', note: 'intro call', contacts,
+  })
+  expect(added.res.status).toBe(200)
+  expect(added.body.application.status).toBe('interviewing')
+  expect(added.body.stage).toMatchObject({
+    to_status: 'interviewing', stage_type: 'phone_screen', scheduled_at: '2026-11-03', outcome: 'pending',
+    note: 'intro call', source: 'dashboard', contacts,
+  })
+  const stageId = added.body.stage.id
+
+  const detail = (await get(`/api/applications/${ids.acme}`)).body
+  expect(detail.application.status).toBe('interviewing')
+  expect(detail.stages).toHaveLength(1)
+  expect(detail.stages[0]).toMatchObject({ id: stageId, stage_type: 'phone_screen', contacts })
+
+  const patched = await mutate('PATCH', `/api/stages/${stageId}`, { outcome: 'advanced', note: '' })
+  expect(patched.res.status).toBe(200)
+  expect(patched.body).toMatchObject({ id: stageId, outcome: 'advanced', note: null, contacts })
+
+  const removed = await mutate('DELETE', `/api/stages/${stageId}`)
+  expect(removed.res.status).toBe(200)
+  expect((await get(`/api/applications/${ids.acme}`)).body.stages).toEqual([])
+})
+
+test('stages: mismatched kind and stage_type get 400, unknown ids 404, and mutations need the dashboard header', async () => {
+  const mismatched = await mutate('POST', `/api/applications/${ids.acme}/stages`, { kind: 'interviewing', stage_type: 'verbal' })
+  expect(mismatched.res.status).toBe(400)
+  expect(mismatched.body.error).toContain('verbal')
+  const badContact = await mutate('POST', `/api/applications/${ids.acme}/stages`, {
+    kind: 'interviewing', stage_type: 'technical', contacts: [{ name: '' }],
+  })
+  expect(badContact.res.status).toBe(400)
+  expect((await mutate('POST', '/api/applications/999/stages', { kind: 'offered', stage_type: 'verbal' })).res.status).toBe(404)
+  expect((await mutate('PATCH', '/api/stages/999', { outcome: 'advanced' })).res.status).toBe(404)
+  expect((await mutate('DELETE', '/api/stages/999')).res.status).toBe(404)
+  const created = listEvents(db, ids.acme)[0]!
+  expect((await mutate('PATCH', `/api/stages/${created.id}`, { outcome: 'advanced' })).res.status).toBe(404)
+
+  const offer = await mutate('POST', `/api/applications/${ids.acme}/stages`, { kind: 'offered', stage_type: 'written' })
+  expect(offer.body.application.status).toBe('offered')
+  expect((await mutate('PATCH', `/api/stages/${offer.body.stage.id}`, { stage_type: 'onsite' })).res.status).toBe(400)
+
+  const bare = await fetch(`${dash.url}/api/applications/${ids.beta}/stages`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'interviewing', stage_type: 'onsite' }),
+  })
+  expect(bare.status).toBe(403)
+  const bareDelete = await fetch(`${dash.url}/api/stages/${offer.body.stage.id}`, { method: 'DELETE' })
+  expect(bareDelete.status).toBe(403)
+  expect((await get(`/api/applications/${ids.beta}`)).body.stages).toEqual([])
+  expect((await get(`/api/applications/${ids.acme}`)).body.stages).toHaveLength(1)
+})
+
+test('PATCH pay fields and location overrides round-trips, invalid values get 400', async () => {
+  const pay = {
+    salary_min: 150000, salary_max: 190000, salary_offered: 180000, rsu: 40000, options: 0, bonus: 15000,
+    sign_on: 10000, relocation_fee: 5000, currency: 'usd', country_override: 'US', state_override: 'NY', city_override: 'New York',
+  }
+  const { res, body } = await mutate('PATCH', `/api/applications/${ids.beta}`, pay)
+  expect(res.status).toBe(200)
+  expect(body).toMatchObject({ ...pay, currency: 'USD' })
+  expect((await get(`/api/applications/${ids.beta}`)).body.application).toMatchObject({ ...pay, currency: 'USD' })
+
+  const cleared = await mutate('PATCH', `/api/applications/${ids.beta}`, { bonus: null, city_override: '', currency: '' })
+  expect(cleared.body).toMatchObject({ bonus: null, city_override: null, currency: null, salary_min: 150000 })
+
+  for (const bad of [{ salary_min: -1 }, { rsu: 1.5 }, { currency: 'US' }, { country_override: 'us' }, { salary_max: '100' }]) {
+    expect((await mutate('PATCH', `/api/applications/${ids.beta}`, bad)).res.status).toBe(400)
+  }
+  expect((await get(`/api/applications/${ids.beta}`)).body.application.salary_min).toBe(150000)
+  const bare = await fetch(`${dash.url}/api/applications/${ids.beta}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ salary_min: 1 }),
+  })
+  expect(bare.status).toBe(403)
+})

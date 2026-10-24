@@ -5,11 +5,15 @@ import { RevisionConflict } from '../config/files'
 import { readStoredPermissions, writePermissions } from '../config/permissions'
 import { TEMPLATE_SECTIONS, isPlaceholder, readStoredProfile, splitSections, updateProfile } from '../config/profile'
 import {
-  APPLICATION_STATUSES, type ApplicationFields, TERMINAL_STATUSES, getApplication,
+  APPLICATION_STATUSES, type ApplicationFields, PAY_FIELDS, type PayField, TERMINAL_STATUSES, getApplication,
   getApplicationWithPosting, listApplicationsWithPostings, listEvents, setStatus, softDeleteApplication,
   updateApplicationFields,
 } from '../db/applications'
 import type { Db } from '../db/client'
+import {
+  ContactsSchema, INTERVIEW_STAGES, OFFER_STAGES, STAGE_KINDS, STAGE_OUTCOMES, STAGE_TYPES, addStage, deleteStage,
+  getStage, listStages, updateStage,
+} from '../db/interviews'
 import { OUTCOME_STATUSES, type Outcome, dismissOutcome, getOutcome, listOutcomes, matchOutcome } from '../db/outcomes'
 import { permissionsPath, profilePath } from '../paths'
 
@@ -40,13 +44,38 @@ export interface ApiResponse {
 const text = (max: number) => z.string().max(max).nullable().optional()
   .transform((value) => (typeof value === 'string' && value.trim() === '' ? null : value))
 
+const code = (pattern: RegExp, message: string) => text(3).refine((value) => value == null || pattern.test(value), message)
+const pay = z.number().int('must be a whole number').nonnegative('must be 0 or more').nullable().optional()
+
 const patchSchema = z.object({
   status: z.enum(APPLICATION_STATUSES).optional(),
   note: text(20_000),
   title_override: text(500),
   company_override: text(500),
   location_override: text(500),
+  state_override: text(200),
+  city_override: text(200),
+  currency: code(/^[A-Za-z]{3}$/, 'must be a 3-letter currency code')
+    .transform((value) => (typeof value === 'string' ? value.toUpperCase() : value)),
+  country_override: code(/^[A-Z]{2}$/, 'must be 2 uppercase letters (ISO country code)'),
+  ...Object.fromEntries(PAY_FIELDS.map((key) => [key, pay])) as Record<PayField, typeof pay>,
 }).strict()
+
+const stageFields = {
+  scheduled_at: z.string().max(40).nullable().optional()
+    .transform((value) => (typeof value === 'string' && value.trim() === '' ? null : value)),
+  outcome: z.enum(STAGE_OUTCOMES).nullable().optional(),
+  note: text(20_000),
+  contacts: ContactsSchema.optional(),
+}
+
+const addStageSchema = z.object({
+  kind: z.enum(STAGE_KINDS),
+  stage_type: z.enum(STAGE_TYPES),
+  ...stageFields,
+}).strict()
+
+const stagePatchSchema = z.object({ stage_type: z.enum(STAGE_TYPES).optional(), ...stageFields }).strict()
 
 const matchSchema = z.object({ application_id: z.number().int().positive() }).strict()
 
@@ -157,11 +186,38 @@ function patchApplication(db: Db, id: number, body: unknown) {
   const changing = input.status !== undefined && input.status !== current.status
   const fields = Object.fromEntries(Object.entries(input)
     .filter(([key, value]) => key !== 'status' && !(key === 'note' && changing) && value !== undefined)) as ApplicationFields
-  if (Object.keys(fields).length > 0) updateApplicationFields(db, id, fields)
+  if (Object.keys(fields).length > 0) saving(() => updateApplicationFields(db, id, fields))
   if (changing && input.status !== undefined) {
     setStatus(db, id, input.status, { source: 'dashboard', note: input.note ?? undefined })
   }
   return requireApplication(db, id)
+}
+
+function requireStage(db: Db, id: number) {
+  try {
+    return getStage(db, id)
+  } catch (error) {
+    if (error instanceof Error && 'code' in error) throw error
+    throw new ApiError(404, `stage ${id} not found`)
+  }
+}
+
+function postStage(db: Db, id: number, body: unknown) {
+  const input = parse(addStageSchema, body ?? {})
+  requireApplication(db, id)
+  return saving(() => addStage(db, id, {
+    kind: input.kind, stageType: input.stage_type, scheduledAt: input.scheduled_at, outcome: input.outcome,
+    note: input.note, contacts: input.contacts, source: 'dashboard',
+  }))
+}
+
+function patchStage(db: Db, id: number, body: unknown) {
+  const input = parse(stagePatchSchema, body ?? {})
+  requireStage(db, id)
+  return saving(() => updateStage(db, id, {
+    stageType: input.stage_type, scheduledAt: input.scheduled_at, outcome: input.outcome, note: input.note,
+    contacts: input.contacts,
+  }))
 }
 
 function profileView(home: string) {
@@ -229,12 +285,27 @@ const routes: { method: string; pattern: RegExp; handler: Handler }[] = [
     handler: () => ({ statuses: APPLICATION_STATUSES, terminal: TERMINAL_STATUSES }),
   },
   {
+    method: 'GET', pattern: /^\/api\/stage-types$/,
+    handler: () => ({ interviewing: INTERVIEW_STAGES, offered: OFFER_STAGES, outcomes: STAGE_OUTCOMES }),
+  },
+  {
     method: 'GET', pattern: /^\/api\/applications$/,
     handler: ({ db }, req) => listApplicationsWithPostings(db, { limit: 500, ...parse(listQuerySchema, queryObject(req.query)) }),
   },
   {
     method: 'GET', pattern: /^\/api\/applications\/(\d+)$/,
-    handler: ({ db }, _req, id) => ({ application: requireApplication(db, id), events: listEvents(db, id) }),
+    handler: ({ db }, _req, id) => ({
+      application: requireApplication(db, id), events: listEvents(db, id), stages: listStages(db, id),
+    }),
+  },
+  { method: 'POST', pattern: /^\/api\/applications\/(\d+)\/stages$/, handler: ({ db }, req, id) => postStage(db, id, req.body) },
+  { method: 'PATCH', pattern: /^\/api\/stages\/(\d+)$/, handler: ({ db }, req, id) => patchStage(db, id, req.body) },
+  {
+    method: 'DELETE', pattern: /^\/api\/stages\/(\d+)$/,
+    handler: ({ db }, _req, id) => {
+      requireStage(db, id)
+      return deleteStage(db, id)
+    },
   },
   { method: 'PATCH', pattern: /^\/api\/applications\/(\d+)$/, handler: ({ db }, req, id) => patchApplication(db, id, req.body) },
   {

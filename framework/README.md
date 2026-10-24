@@ -174,7 +174,7 @@ A local page with four tabs:
 
 Saving writes the file with mode 0600, keeps keys the form does not know, and refuses with "this file changed since you opened it" when your agent or an editor changed it in the meantime. Edits by hand still work; the page reloads them when you come back to it.
 
-The Applications tab shows the applications board with status filters and search, a detail drawer (timeline, status, notes, title/company/location overrides, delete) and a "Needs a match" queue for rejection emails that could not be matched automatically. Status changes made here are recorded with source `dashboard`; matching a rejection closes the application as `deny_by_employer`.
+The Applications tab shows the applications board with status filters and search, a detail drawer (status, notes, title/company/location/country/state/city overrides, interview and offer rounds with date, outcome, notes and contacts, offer pay, timeline, delete) and a "Needs a match" queue for rejection emails that could not be matched automatically. Adding an interview round moves a saved or applied application to `interviewing`, and adding an offer moves it to `offered`; neither reopens a closed application. Status changes made here are recorded with source `dashboard`; matching a rejection closes the application as `deny_by_employer`.
 
 - `--view <name>`: open on `applications`, `profile`, `settings` or `welcome` (the setup wizard).
 - `--port <n>`: port to listen on (default 4848, or a free one when something else holds 4848; `0` picks a free one).
