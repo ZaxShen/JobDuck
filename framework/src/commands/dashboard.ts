@@ -115,8 +115,8 @@ async function replaceDashboard(record: DashboardRecord, stop: Stopper, timeoutM
 }
 
 export async function launchDashboard(options: BackgroundOptions = {}): Promise<string> {
-  const home = options.home ?? jobduckHome()
   const workspace = resolve(options.workspace ?? process.cwd())
+  const home = options.home ?? jobduckHome(workspace)
   const timeoutMs = options.timeoutMs ?? START_MS
   const browse = options.openBrowser ?? ((url: string) => openBrowser(url))
   const show = (record: DashboardRecord) => {
@@ -175,8 +175,8 @@ export async function runDashboard(options: DashboardCommandOptions = {}): Promi
     return 1
   }
   const view = options.view as DashboardView | undefined
-  const home = options.home ?? jobduckHome()
   const workspace = resolve(options.workspace ?? process.cwd())
+  const home = options.home ?? jobduckHome(workspace)
 
   if (options.background) {
     try {

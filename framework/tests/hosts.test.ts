@@ -15,7 +15,7 @@ let box: Sandbox
 let ctx: HostContext
 beforeEach(() => {
   box = sandbox()
-  ctx = { workspace: box.workspace, userHome: box.userHome, pathEnv: '', dryRun: true }
+  ctx = { workspace: box.workspace, home: join(box.userHome, '.jobduck'), userHome: box.userHome, pathEnv: '', dryRun: true }
 })
 afterEach(() => box.cleanup())
 

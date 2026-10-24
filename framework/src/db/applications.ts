@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { type Db, nowIso, one, transaction } from './client'
 
 export const APPLICATION_STATUSES = [
@@ -24,6 +25,18 @@ export interface Application {
   title_override: string | null
   company_override: string | null
   location_override: string | null
+  salary_min: number | null
+  salary_max: number | null
+  salary_offered: number | null
+  rsu: number | null
+  options: number | null
+  bonus: number | null
+  sign_on: number | null
+  relocation_fee: number | null
+  currency: string | null
+  country_override: string | null
+  state_override: string | null
+  city_override: string | null
   created_at: string
   updated_at: string
   deleted_at: string | null
@@ -37,6 +50,9 @@ export interface ApplicationEvent {
   note: string | null
   source: EventSource
   metadata: string | null
+  stage_type: string | null
+  scheduled_at: string | null
+  outcome: string | null
   created_at: string
 }
 
@@ -140,17 +156,44 @@ export function listApplications(db: Db, filter: ListApplicationsFilter = {}): A
     .all(...params) as Application[]
 }
 
-export const EDITABLE_FIELDS = ['note', 'title_override', 'company_override', 'location_override'] as const
+export const PAY_FIELDS = [
+  'salary_min', 'salary_max', 'salary_offered', 'rsu', 'options', 'bonus', 'sign_on', 'relocation_fee',
+] as const
+export type PayField = (typeof PAY_FIELDS)[number]
+export const TEXT_FIELDS = [
+  'note', 'title_override', 'company_override', 'location_override',
+  'currency', 'country_override', 'state_override', 'city_override',
+] as const
+export type TextField = (typeof TEXT_FIELDS)[number]
+export const EDITABLE_FIELDS = [...TEXT_FIELDS, ...PAY_FIELDS] as const
 export type EditableField = (typeof EDITABLE_FIELDS)[number]
-export type ApplicationFields = Partial<Record<EditableField, string | null>>
+export type ApplicationFields = Partial<Record<TextField, string | null> & Record<PayField, number | null>>
+
+const pay = z.number().int('must be a whole number').nonnegative('must be 0 or more').nullable().optional()
+const textField = z.string().nullable().optional()
+
+export const ApplicationFieldsSchema = z.object({
+  ...Object.fromEntries(TEXT_FIELDS.map((key) => [key, textField])) as Record<TextField, typeof textField>,
+  ...Object.fromEntries(PAY_FIELDS.map((key) => [key, pay])) as Record<PayField, typeof pay>,
+  currency: z.string().length(3, 'must be a 3-letter currency code').nullable().optional(),
+  country_override: z.string().regex(/^[A-Z]{2}$/, 'must be 2 uppercase letters (ISO country code)').nullable().optional(),
+}).strict()
+
+export function formatIssues(error: z.ZodError): string {
+  return error.issues.map((issue) => (issue.path.length > 0 ? `${issue.path.join('.')}: ${issue.message}` : issue.message))
+    .join('; ')
+}
 
 export function updateApplicationFields(db: Db, id: number, fields: ApplicationFields): Application {
-  const keys = EDITABLE_FIELDS.filter((key) => fields[key] !== undefined)
+  const parsed = ApplicationFieldsSchema.safeParse(fields)
+  if (!parsed.success) throw new Error(formatIssues(parsed.error))
+  const valid = parsed.data as ApplicationFields
+  const keys = EDITABLE_FIELDS.filter((key) => valid[key] !== undefined)
   const assignments = [...keys.map((key) => `${key} = ?`), 'updated_at = ?']
   const row = one<Application>(db.prepare(`UPDATE applications SET ${assignments.join(', ')}
       WHERE id = ? AND deleted_at IS NULL
       RETURNING *`),
-    ...keys.map((key) => fields[key]), nowIso(), id)
+    ...keys.map((key) => valid[key]), nowIso(), id)
   if (!row) throw new Error(`application ${id} not found`)
   return row
 }
@@ -247,4 +290,10 @@ export function listApplicationsWithPostings(db: Db, filter: ListApplicationsWit
 
 export function getApplicationWithPosting(db: Db, id: number): ApplicationWithPosting | undefined {
   return one<ApplicationWithPosting>(db.prepare(`${JOINED_SELECT} WHERE a.id = ? AND a.deleted_at IS NULL`), id)
+}
+
+export function getPostingDescription(db: Db, applicationId: number): string | null {
+  const row = one<{ description: string | null }>(db.prepare(`SELECT p.description FROM applications a
+      JOIN postings p ON p.id = a.posting_id WHERE a.id = ? AND a.deleted_at IS NULL`), applicationId)
+  return row?.description ?? null
 }

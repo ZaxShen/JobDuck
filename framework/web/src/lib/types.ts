@@ -12,6 +12,18 @@ export interface ApplicationRow {
   title_override: string | null
   company_override: string | null
   location_override: string | null
+  salary_min: number | null
+  salary_max: number | null
+  salary_offered: number | null
+  rsu: number | null
+  options: number | null
+  bonus: number | null
+  sign_on: number | null
+  relocation_fee: number | null
+  currency: string | null
+  country_override: string | null
+  state_override: string | null
+  city_override: string | null
   posting_title: string
   posting_company: string
   posting_location: string | null
@@ -23,7 +35,32 @@ export interface ApplicationEvent {
   to_status: string
   note: string | null
   source: string
+  stage_type: string | null
+  scheduled_at: string | null
+  outcome: string | null
   created_at: string
+}
+
+export interface Contact {
+  name: string
+  title?: string
+  email?: string
+  phone?: string
+  linkedin?: string
+}
+
+export type StageKind = 'interviewing' | 'offered'
+
+export interface Stage extends ApplicationEvent {
+  to_status: StageKind
+  stage_type: string
+  contacts: Contact[]
+}
+
+export interface StageTypes {
+  interviewing: string[]
+  offered: string[]
+  outcomes: string[]
 }
 
 export interface Outcome {
@@ -73,4 +110,27 @@ export interface PermissionsView {
 export interface InboxUpload {
   path: string
   name: string
+}
+
+export type FactStatus = 'proposed' | 'accepted' | 'archived'
+
+export interface ProfileFact {
+  id: number
+  slug: string | null
+  company: string | null
+  role: string | null
+  project: string
+  category: string
+  action: string
+  outcome: string | null
+  metrics: string | null
+  skills: string[]
+  tools: string[]
+  basis: 'stated' | 'inferred'
+  confidence: 'low' | 'medium' | 'high' | null
+  rationale: string | null
+  status: FactStatus
+  sort_order: number
+  created_at: string
+  updated_at: string
 }

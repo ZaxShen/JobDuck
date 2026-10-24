@@ -37,6 +37,7 @@ check() {
 show() { sed 's/^/     | /' "$1" >&2; return 1; }
 contains() { grep -qF -- "$1" "$2" || show "$2"; }
 lacks() { ! grep -qE -- "$1" "$2" || show "$2"; }
+matches() { grep -qE -- "$1" "$2" || show "$2"; }
 count() { [[ "$(grep -cE -- "$1" "$2")" == "$3" ]] || show "$2"; }
 
 run() {
@@ -52,7 +53,7 @@ check "--help lists every command" bash -c "\"$binary\" --help | grep -q init &&
 run "$root/dry.log" "$binary" init --dry-run --workspace "$workspace"
 check "init --dry-run exits 0" true
 check "dry run detects all hosts" contains 'Hosts: Claude Code, Codex CLI, Gemini CLI' "$root/dry.log"
-check "dry run groups skill pointers" contains 'create .claude/skills/jobduck-*/SKILL.md (6 skill pointers)' "$root/dry.log"
+check "dry run groups skill pointers" contains 'create .claude/skills/jobduck-*/SKILL.md (7 skill pointers)' "$root/dry.log"
 check "dry run shows codex config under ~" contains 'update ~/.codex/config.toml' "$root/dry.log"
 check "dry run prints no unified diff" lacks '^[-+@]{2,3} ' "$root/dry.log"
 check "dry run stays short" eval '[[ "$(wc -l < "$root/dry.log")" -le 20 ]]'
@@ -68,13 +69,13 @@ check "init points at profile intake" contains 'jobduck dashboard --view profile
 check "init creates document folders" eval '[[ -d "$workspace/inbox" && -d "$workspace/cv" && -d "$workspace/cover-letters" ]]'
 check "AGENTS.md carries the managed block" contains '<!-- jobduck:end -->' "$workspace/AGENTS.md"
 check "home has profile, permissions and db" eval '[[ -f "$JOBDUCK_HOME/profile.md" && -f "$JOBDUCK_HOME/permissions.toml" && -f "$JOBDUCK_HOME/jobduck.db" ]]'
-check "six skills installed" eval '[[ "$(ls "$JOBDUCK_HOME/skills"/*.md | wc -l)" -eq 6 && -f "$JOBDUCK_HOME/skills/.version" ]]'
+check "seven skills installed" eval '[[ "$(ls "$JOBDUCK_HOME/skills"/*.md | wc -l)" -eq 7 && -f "$JOBDUCK_HOME/skills/.version" ]]'
 check "claude: .mcp.json registers jobduck" contains '"jobduck"' "$workspace/.mcp.json"
 check "claude: AGENTS.md and CLAUDE.md pointer" bash -c "[[ -f '$workspace/AGENTS.md' ]] && grep -q '@AGENTS.md' '$workspace/CLAUDE.md'"
-check "claude: six skill pointers" eval '[[ "$(ls "$workspace"/.claude/skills/jobduck-*/SKILL.md | wc -l)" -eq 6 ]]'
+check "claude: seven skill pointers" eval '[[ "$(ls "$workspace"/.claude/skills/jobduck-*/SKILL.md | wc -l)" -eq 7 ]]'
 check "codex: config.toml registers jobduck" contains '[mcp_servers.jobduck]' "$HOME/.codex/config.toml"
 check "codex: existing config preserved" contains 'model = "o4-mini"' "$HOME/.codex/config.toml"
-check "codex: six skill pointers" eval '[[ "$(ls "$workspace"/.agents/skills/jobduck-*/SKILL.md | wc -l)" -eq 6 ]]'
+check "codex: seven skill pointers" eval '[[ "$(ls "$workspace"/.agents/skills/jobduck-*/SKILL.md | wc -l)" -eq 7 ]]'
 check "gemini: settings.json registers jobduck" contains '"jobduck"' "$HOME/.gemini/settings.json"
 check "gemini: existing settings preserved" contains '"theme"' "$HOME/.gemini/settings.json"
 check "gemini: GEMINI.md pointer" contains 'See AGENTS.md' "$workspace/GEMINI.md"
@@ -120,6 +121,19 @@ if [[ -n "$url" ]]; then
 fi
 kill "$dashboard_pid" 2>/dev/null || true
 wait "$dashboard_pid" 2>/dev/null || true
+
+local_ws="$root/local-workspace"
+mkdir -p "$local_ws"
+run "$root/local.log" env -u JOBDUCK_HOME "$binary" init --yes --no-dashboard --workspace "$local_ws"
+check "local: init keeps the home in the workspace" eval '[[ -f "$local_ws/.jobduck/jobduck.db" && -f "$local_ws/.jobduck/.gitignore" ]]'
+check "local: codex registers in the workspace" contains 'JOBDUCK_HOME' "$local_ws/.codex/config.toml"
+check "local: gemini registers in the workspace" contains 'JOBDUCK_HOME' "$local_ws/.gemini/settings.json"
+check "local: claude entry carries the home" contains 'JOBDUCK_HOME' "$local_ws/.mcp.json"
+check "local: init names the codex trust step" contains 'trusted projects' "$root/local.log"
+check "local: global configs untouched" eval '! grep -q local-workspace "$HOME/.codex/config.toml" "$HOME/.gemini/settings.json"'
+mkdir -p "$local_ws/cv/deep"
+(cd "$local_ws/cv/deep" && env -u JOBDUCK_HOME "$binary" doctor --json > "$root/local-doctor.json" 2>&1) || true
+check "local: doctor finds the home from a subfolder" matches '"home": ".*local-workspace.{1,2}\.jobduck"' "$root/local-doctor.json"
 
 if (( failures > 0 )); then
   echo "smoke: $failures check(s) failed" >&2
