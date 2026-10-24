@@ -1,0 +1,61 @@
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+
+export const PAY_FIELDS = [
+  ['salary_min', 'Salary min'],
+  ['salary_max', 'Salary max'],
+  ['salary_offered', 'Salary offered'],
+  ['bonus', 'Bonus'],
+  ['rsu', 'RSU'],
+  ['options', 'Options'],
+  ['sign_on', 'Sign-on'],
+  ['relocation_fee', 'Relocation'],
+] as const
+
+export type PayKey = (typeof PAY_FIELDS)[number][0]
+
+interface PaySectionProps {
+  values: Record<PayKey | 'currency', string>
+  errors: Partial<Record<PayKey, string>>
+  onChange: (key: PayKey | 'currency', value: string) => void
+  onCommit: (key: PayKey | 'currency') => void
+  postingPay: string | null
+  postingCurrency: string | null
+}
+
+export function PaySection({ values, errors, onChange, onCommit, postingPay, postingCurrency }: PaySectionProps) {
+  return (
+    <fieldset className="space-y-3">
+      <legend className="mb-2 text-sm font-medium">Offer &amp; pay</legend>
+      {postingPay && <p className="text-xs text-muted-foreground">{postingPay}</p>}
+      <div className="grid grid-cols-2 gap-3">
+        {PAY_FIELDS.map(([key, label]) => (
+          <div key={key} className="space-y-1.5">
+            <Label htmlFor={`f-${key}`} className="text-muted-foreground">{label}</Label>
+            <Input
+              id={`f-${key}`}
+              inputMode="numeric"
+              value={values[key]}
+              aria-invalid={errors[key] ? true : undefined}
+              aria-describedby={errors[key] ? `f-${key}-error` : undefined}
+              onChange={(event) => onChange(key, event.target.value)}
+              onBlur={() => onCommit(key)}
+            />
+            {errors[key] && <p id={`f-${key}-error`} className="text-xs text-destructive">{errors[key]}</p>}
+          </div>
+        ))}
+        <div className="space-y-1.5">
+          <Label htmlFor="f-currency" className="text-muted-foreground">Currency</Label>
+          <Input
+            id="f-currency"
+            maxLength={3}
+            placeholder={postingCurrency ?? 'USD'}
+            value={values.currency}
+            onChange={(event) => onChange('currency', event.target.value.toUpperCase())}
+            onBlur={() => onCommit('currency')}
+          />
+        </div>
+      </div>
+    </fieldset>
+  )
+}

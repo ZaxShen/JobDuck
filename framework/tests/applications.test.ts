@@ -19,24 +19,44 @@ const posting = () => upsertPosting(db, {
   source: 'manual', url: 'https://www.acme.com/jobs/1/', title: 'AI Engineer', company: 'Acme', location: 'Remote',
 })
 
-test('upsertPosting dedupes on url_key and keeps known fields', () => {
+test('upsertPosting dedupes on url_key, keeps known fields and replaces them only from an equal or higher source', () => {
   const first = posting()
   const second = upsertPosting(db, { source: 'agent', url: 'http://acme.com/jobs/1', title: 'AI Engineer II', company: 'Acme' })
   expect(second.id).toBe(first.id)
-  expect(second.title).toBe('AI Engineer II')
+  expect(second.title).toBe('AI Engineer')
   expect(second.location).toBe('Remote')
+  expect(upsertPosting(db, { source: 'manual', url: 'https://acme.com/jobs/1', title: 'AI Engineer II', company: 'Acme' }).title)
+    .toBe('AI Engineer II')
   expect(findPostingByUrl(db, 'acme.com/jobs/1?utm=x')?.id).toBe(first.id)
   expect(findPostingByUrl(db, 'https://acme.com/jobs/2')).toBeUndefined()
 })
 
-test('createApplication writes the first event', () => {
+test('createApplication starts as saved and moves to the requested status with a second event', () => {
   const app = createApplication(db, { postingId: posting().id, status: 'applied', note: 'via agent' })
   expect(app.status).toBe('applied')
+  expect(app.note).toBe('via agent')
   expect(app.applied_at).not.toBeNull()
   expect(app.closed_at).toBeNull()
-  const events = listEvents(db, app.id)
-  expect(events).toHaveLength(1)
-  expect(events[0]).toMatchObject({ from_status: null, to_status: 'applied', source: 'agent', note: 'via agent' })
+  expect(listEvents(db, app.id).map(({ from_status, to_status, source, note }) => ({ from_status, to_status, source, note })))
+    .toEqual([
+      { from_status: null, to_status: 'saved', source: 'agent', note: null },
+      { from_status: 'saved', to_status: 'applied', source: 'agent', note: 'via agent' },
+    ])
+
+  const saved = createApplication(db, {
+    postingId: upsertPosting(db, { source: 'manual', url: 'https://acme.com/jobs/2', title: 'PM', company: 'Acme' }).id,
+    note: 'shortlisted', appliedAt: '2026-01-02T03:04:05.000Z',
+  })
+  expect(saved).toMatchObject({ status: 'saved', applied_at: null, pending_reason: null, note: 'shortlisted' })
+  expect(listEvents(db, saved.id).map((event) => [event.from_status, event.to_status, event.note]))
+    .toEqual([[null, 'saved', 'shortlisted']])
+
+  const closed = createApplication(db, {
+    postingId: upsertPosting(db, { source: 'manual', url: 'https://acme.com/jobs/3', title: 'QA', company: 'Acme' }).id,
+    status: 'no_response', source: 'user',
+  })
+  expect(closed).toMatchObject({ status: 'no_response', closed_by: 'user' })
+  expect(closed.closed_at).not.toBeNull()
 })
 
 test('a posting has at most one live application', () => {

@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { type FetchLike, type FreehireJob, searchJobs, USER_AGENT } from '../src/freehire/client'
+import { type FetchLike, type FreehireJob, getJob, searchJobs, USER_AGENT } from '../src/freehire/client'
 import { stripUtmSource, toPostingInput } from '../src/freehire/map'
 
 interface FixturePage { headers: Record<string, string>; body: { data: FreehireJob[]; meta: Record<string, number> } }
@@ -99,29 +99,70 @@ test('maps a job to a posting and strips utm_source only', () => {
     url: 'https://job-boards.greenhouse.io/acme/jobs/1001',
     title: 'Staff Engineer',
     company: 'Acme',
+    location: 'San Francisco, United States',
     country: 'US',
+    city: 'San Francisco',
+    work_mode: 'hybrid',
     job_type: 'full_time',
-    posted_at: '2026-10-16T10:00:00Z',
-    description: '<p>Build things.</p>',
+    seniority: 'staff',
+    skills: ['typescript', 'postgres'],
+    pay_min: 200000,
+    pay_max: 250000,
+    pay_period: 'year',
+    currency: 'USD',
+    pay_stated: true,
+    posted_at: '2026-10-16T10:00:00.000Z',
+    description: 'Build things.',
   })
   expect(JSON.parse(toPostingInput(first!).raw ?? '{}').public_slug).toBe('staff-engineer-acme-1')
   expect(toPostingInput(second!).url)
     .toBe('https://www.whatjobs.com/pub_api__cpl__2002?geoID=1&utm_campaign=publisher&utm_medium=api')
   expect(toPostingInput(third).country).toBe('CA')
-  expect(toPostingInput(first!)).toMatchObject({
-    work_mode: 'hybrid', city: 'San Francisco', country: 'US', location: 'San Francisco, US',
-    pay_min: 200000, pay_max: 250000, currency: 'USD', pay_period: 'year',
-  })
   expect(toPostingInput(first!).state).toBeUndefined()
-  expect(toPostingInput(second!)).toMatchObject({
-    work_mode: null, city: null, location: 'US', pay_min: null, pay_max: null, currency: null, pay_period: null,
-  })
+  expect(toPostingInput(second!)).toMatchObject({ location: 'US', country: 'US' })
+  for (const field of ['work_mode', 'city', 'pay_min', 'pay_max', 'currency', 'pay_period', 'pay_stated'] as const) {
+    expect(toPostingInput(second!)[field]).toBeUndefined()
+  }
   expect(toPostingInput(third)).toMatchObject({
-    work_mode: 'remote', city: 'Toronto', location: 'Toronto, CA', pay_min: 150000, pay_max: 180000,
-    currency: 'CAD', pay_period: null,
+    work_mode: 'remote', city: 'Toronto', country: 'CA', location: 'Toronto, Canada', pay_min: 150000, pay_max: 180000,
+    currency: 'CAD',
   })
   expect(toPostingInput({ ...second!, location: 'Remote - United States' }).location).toBe('Remote - United States')
-  expect(toPostingInput({ ...first!, cities: ['Seattle', 'Bellevue'] }).location).toBe('Seattle, Bellevue, US')
   expect(stripUtmSource('https://x.io/a?utm_source=freehire.me#top')).toBe('https://x.io/a#top')
   expect(stripUtmSource('https://x.io/a')).toBe('https://x.io/a')
+})
+
+test('getJob reads one job by public slug through the injected fetch', async () => {
+  const template = fixture.pages[0]!.body.data[0]!
+  const { fetch, calls } = fixtureFetch([
+    () => new Response(JSON.stringify({ data: template }), { status: 200 }),
+    () => new Response(JSON.stringify(template), { status: 200 }),
+    () => new Response('{"error":"not found"}', { status: 404 }),
+    () => new Response('boom', { status: 500 }),
+  ])
+  const sleep = async () => {}
+  expect((await getJob('staff-engineer-acme-1', { fetch, sleep }))?.external_id).toBe(template.external_id)
+  expect((await getJob('a b/c', { fetch, sleep }))?.public_slug).toBe(template.public_slug)
+  expect(await getJob('gone', { fetch, sleep })).toBeNull()
+  await expect(getJob('broken', { fetch, sleep })).rejects.toThrow('freehire job broken failed: HTTP 500: boom')
+  expect(calls.map((call) => call.url.href)).toEqual([
+    'https://freehire.me/api/v1/jobs/staff-engineer-acme-1',
+    'https://freehire.me/api/v1/jobs/a%20b%2Fc',
+    'https://freehire.me/api/v1/jobs/gone',
+    'https://freehire.me/api/v1/jobs/broken',
+  ])
+  expect(calls[0]?.headers['User-Agent']).toBe(USER_AGENT)
+  expect(calls[0]?.headers.Accept).toBe('application/json')
+})
+
+test('getJob retries once after a 429', async () => {
+  const template = fixture.pages[0]!.body.data[0]!
+  const { fetch, calls } = fixtureFetch([
+    () => new Response('slow down', { status: 429, headers: { 'retry-after': '1' } }),
+    () => new Response(JSON.stringify({ data: template }), { status: 200 }),
+  ])
+  const sleeps: number[] = []
+  expect((await getJob('staff-engineer-acme-1', { fetch, sleep: async (ms) => { sleeps.push(ms) } }))?.title).toBe(template.title)
+  expect(calls).toHaveLength(2)
+  expect(sleeps).toHaveLength(1)
 })

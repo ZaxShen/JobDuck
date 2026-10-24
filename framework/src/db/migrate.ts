@@ -29,14 +29,40 @@ export function pendingMigrations(db: Db | null, migrations = loadMigrations()):
   return migrations.filter((m) => m.version > version)
 }
 
+export const FOREIGN_KEYS_OFF = '-- jobduck:foreign_keys=off'
+
+export const runsWithForeignKeysOff = (migration: Migration) => migration.sql.split('\n', 1)[0]?.trim() === FOREIGN_KEYS_OFF
+
+function apply(db: Db, migration: Migration): void {
+  db.exec(migration.sql)
+  db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(migration.version, nowIso())
+}
+
+function applyWithForeignKeysOff(db: Db, migration: Migration): void {
+  if (db.inTransaction) {
+    throw new Error(`migration ${migration.name} needs foreign keys off, which SQLite ignores inside a transaction; `
+      + 'run migrate() outside one')
+  }
+  db.exec('PRAGMA foreign_keys = OFF')
+  try {
+    transaction(db, () => {
+      apply(db, migration)
+      const violations = db.prepare('PRAGMA foreign_key_check').all()
+      if (violations.length > 0) {
+        throw new Error(`migration ${migration.name} broke ${violations.length} foreign key(s): ${JSON.stringify(violations)}`)
+      }
+    })
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON')
+  }
+}
+
 export function migrate(db: Db, migrations = loadMigrations()): number[] {
   db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)')
   const applied: number[] = []
   for (const migration of pendingMigrations(db, migrations)) {
-    transaction(db, () => {
-      db.exec(migration.sql)
-      db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(migration.version, nowIso())
-    })
+    if (runsWithForeignKeysOff(migration)) applyWithForeignKeysOff(db, migration)
+    else transaction(db, () => apply(db, migration))
     applied.push(migration.version)
   }
   return applied

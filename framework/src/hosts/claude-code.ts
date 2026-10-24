@@ -3,16 +3,18 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { TEMPLATES } from '../assets'
 import {
-  type FileChange, type Host, type HostContext, applyChanges, hasJsonMcpServer, mergeMcpServersJson, onPath,
-  planChange, readText, skillPointers, userHomeOf,
+  type FileChange, type Host, type HostContext, applyChanges, hasJsonMcpServer, homeLabel, mcpServer, mergeMcpServersJson,
+  onPath, planChange, readText, skillPointers, userHomeOf,
 } from './index'
 
 const AGENTS_START = '<!-- jobduck:start'
 const AGENTS_END = '<!-- jobduck:end -->'
 const LEGACY_AGENTS_SHA256 = new Set(['8a7cfdd54c987a9705a64eb83d8d2f814e62e0dbd53af19a9e7a2d89d5a4273a'])
 
-export function mergeAgentsMd(before: string | null): string {
-  const block = TEMPLATES['AGENTS.md']!
+export const DEFAULT_HOME_LABEL = '~/.jobduck'
+
+export function mergeAgentsMd(before: string | null, label = DEFAULT_HOME_LABEL): string {
+  const block = TEMPLATES['AGENTS.md']!.split(DEFAULT_HOME_LABEL).join(label)
   if (before === null || before.trim() === '') return block
   if (LEGACY_AGENTS_SHA256.has(createHash('sha256').update(before).digest('hex'))) return block
   const start = before.indexOf(AGENTS_START)
@@ -23,7 +25,7 @@ export function mergeAgentsMd(before: string | null): string {
 
 export function agentsPointer(ctx: HostContext): FileChange | null {
   const path = join(ctx.workspace, 'AGENTS.md')
-  return planChange(path, mergeAgentsMd(readText(path)))
+  return planChange(path, mergeAgentsMd(readText(path), homeLabel(ctx)))
 }
 
 function claudeMdPointer(ctx: HostContext): FileChange | null {
@@ -45,9 +47,9 @@ export const claudeCode: Host = {
   isRegistered: (ctx) => hasJsonMcpServer(mcpJson(ctx)),
   register: (ctx) =>
     applyChanges([
-      planChange(mcpJson(ctx), mergeMcpServersJson(mcpJson(ctx))),
+      planChange(mcpJson(ctx), mergeMcpServersJson(mcpJson(ctx), mcpServer(ctx))),
       agentsPointer(ctx),
       claudeMdPointer(ctx),
-      ...skillPointers(join(ctx.workspace, '.claude', 'skills')),
+      ...skillPointers(join(ctx.workspace, '.claude', 'skills'), homeLabel(ctx)),
     ], ctx.dryRun),
 }

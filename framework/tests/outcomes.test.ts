@@ -64,7 +64,7 @@ test('matchOutcome leaves terminal applications untouched', () => {
   expect(result.outcome.status).toBe('matched')
   expect(result.application.status).toBe('accepted')
   expect(getApplication(db, app.id)?.status).toBe('accepted')
-  expect(listEvents(db, app.id)).toHaveLength(1)
+  expect(listEvents(db, app.id)).toHaveLength(2)
 })
 
 test('matchOutcome rejects unknown ids without side effects', () => {

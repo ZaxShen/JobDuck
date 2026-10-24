@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
-import { BirdIcon, BriefcaseIcon, SettingsIcon, SparklesIcon, UserIcon, type LucideIcon } from 'lucide-react'
+import { BirdIcon, BriefcaseIcon, ListChecksIcon, SettingsIcon, SparklesIcon, UserIcon, type LucideIcon } from 'lucide-react'
 import type { View } from '@/hooks/use-hash-route'
 import { cn } from '@/lib/utils'
 
 const NAV: { view: View; label: string; icon: LucideIcon }[] = [
   { view: 'applications', label: 'Applications', icon: BriefcaseIcon },
   { view: 'profile', label: 'Profile', icon: UserIcon },
+  { view: 'facts', label: 'Experience facts', icon: ListChecksIcon },
   { view: 'settings', label: 'Settings', icon: SettingsIcon },
   { view: 'welcome', label: 'Setup', icon: SparklesIcon },
 ]

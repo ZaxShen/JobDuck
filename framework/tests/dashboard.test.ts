@@ -5,27 +5,31 @@ import { type Sandbox, migratedDb, sandbox } from './helpers'
 import { INBOX_EXTENSIONS, INBOX_MAX_FILE_BYTES, handleApi } from '../src/dashboard/api'
 import { INBOX_TYPES, MAX_UPLOAD_BYTES } from '../web/src/lib/inbox'
 import type { Db } from '../src/db/client'
-import { createApplication, listEvents } from '../src/db/applications'
+import { createApplication, getApplication, listEvents, updateApplicationFields } from '../src/db/applications'
 import { insertOutcome, listOutcomes } from '../src/db/outcomes'
+import { addStage } from '../src/db/interviews'
+import { getFact, saveFacts, updateFact } from '../src/db/profile-facts'
 import { upsertPosting } from '../src/db/postings'
 import { type Dashboard, startDashboard } from '../src/dashboard/server'
 
 let box: Sandbox
 let db: Db
 let dash: Dashboard
-let ids: { acme: number; beta: number; gamma: number }
+let ids: { acme: number; beta: number; gamma: number; delta: number }
 
 beforeEach(async () => {
   box = sandbox()
   db = migratedDb(box.home)
-  const make = (n: number, company: string, title: string, location: string, status: 'applied' | 'saved' | 'interviewing') => {
+  const make = (n: number, company: string, title: string, location: string, status: 'saved' | 'applied' | 'pending' | 'interviewing') => {
     const posting = upsertPosting(db, { source: 'manual', url: `https://jobs.example.com/${n}`, title, company, location })
-    return createApplication(db, { postingId: posting.id, status }).id
+    const pendingReason = status === 'pending' ? 'Enter the emailed code on the form.' : undefined
+    return createApplication(db, { postingId: posting.id, status, pendingReason }).id
   }
   ids = {
     acme: make(1, 'Acme', 'AI Engineer', 'Remote', 'applied'),
-    beta: make(2, 'Beta Labs', 'ML Engineer', 'New York', 'saved'),
+    beta: make(2, 'Beta Labs', 'ML Engineer', 'New York', 'pending'),
     gamma: make(3, 'Gamma', 'Data Scientist', 'Remote', 'interviewing'),
+    delta: make(4, 'Delta', 'Platform Engineer', 'Springfield', 'saved'),
   }
   dash = await startDashboard({ home: box.home, port: 0, open: false, out: () => undefined })
 })
@@ -87,15 +91,18 @@ test('requests with a foreign Host header are refused', async () => {
 
 test('summary and statuses describe the board', async () => {
   const { body: summary } = await get('/api/summary')
-  expect(summary.counts).toMatchObject({ applied: 1, saved: 1, interviewing: 1, offered: 0 })
+  expect(summary.counts).toMatchObject({ saved: 1, pending: 1, applied: 1, interviewing: 1, offered: 0 })
   expect(summary.needs_match).toBe(0)
   const { body: statuses } = await get('/api/statuses')
+  expect(statuses.statuses.slice(0, 3)).toEqual(['saved', 'pending', 'applied'])
   expect(statuses.statuses).toContain('deny_by_employer')
   expect(statuses.terminal).toEqual(['accepted', 'deny_by_employer', 'deny_by_candidate', 'no_response'])
 })
 
 test('GET /api/applications filters by status and q', async () => {
-  expect((await get('/api/applications')).body).toHaveLength(3)
+  expect((await get('/api/applications')).body).toHaveLength(4)
+  expect((await get('/api/applications?status=saved')).body.map((row: any) => row.id)).toEqual([ids.delta])
+  expect((await get('/api/applications?status=pending')).body.map((row: any) => row.id)).toEqual([ids.beta])
   const applied = (await get('/api/applications?status=applied')).body
   expect(applied.map((row: any) => row.id)).toEqual([ids.acme])
   expect(applied[0]).toMatchObject({ company: 'Acme', title: 'AI Engineer', location: 'Remote' })
@@ -116,7 +123,7 @@ test('mutations without the dashboard header or from a foreign origin get 403', 
   const foreign = await mutate('PATCH', `/api/applications/${ids.acme}`, { status: 'offered' }, { Origin: 'https://evil.example' })
   expect(foreign.res.status).toBe(403)
   expect((await mutate('DELETE', `/api/applications/${ids.acme}`, undefined, { 'X-JobDuck-Dashboard': '0' })).res.status).toBe(403)
-  expect(listEvents(db, ids.acme)).toHaveLength(1)
+  expect(listEvents(db, ids.acme)).toHaveLength(2)
 })
 
 test('PATCH status writes a dashboard event and returns the joined row', async () => {
@@ -127,7 +134,36 @@ test('PATCH status writes a dashboard event and returns the joined row', async (
   expect(last).toMatchObject({ from_status: 'applied', to_status: 'interviewing', source: 'dashboard', note: 'phone screen' })
   const detail = (await get(`/api/applications/${ids.acme}`)).body
   expect(detail.application.status).toBe('interviewing')
-  expect(detail.events).toHaveLength(2)
+  expect(detail.events).toHaveLength(3)
+})
+
+test('PATCH to pending needs a pending_reason, stores it, and any later status clears it', async () => {
+  const path = `/api/applications/${ids.acme}`
+  const missing = await mutate('PATCH', path, { status: 'pending' })
+  expect(missing.res.status).toBe(400)
+  expect(missing.body.error).toContain('pending_reason')
+  expect((await mutate('PATCH', path, { status: 'pending', pending_reason: '   ' })).res.status).toBe(400)
+  expect((await mutate('PATCH', path, { status: 'pending', pending_reason: 'x'.repeat(501) })).res.status).toBe(400)
+  expect((await mutate('PATCH', path, { status: 'offered', pending_reason: 'Call back' })).res.status).toBe(400)
+  expect((await mutate('PATCH', path, { pending_reason: 'Call back' })).res.status).toBe(400)
+  expect(listEvents(db, ids.acme)).toHaveLength(2)
+
+  const applied = getApplication(db, ids.acme)!
+  const pending = await mutate('PATCH', path, {
+    status: 'pending', pending_reason: ' Answer the visa question. ', expected_updated_at: applied.updated_at,
+  })
+  expect(pending.res.status).toBe(200)
+  expect(pending.body).toMatchObject({ status: 'pending', pending_reason: 'Answer the visa question.', applied_at: applied.applied_at })
+  const reworded = await mutate('PATCH', path, { status: 'pending', pending_reason: 'Answer the visa question by Friday.' })
+  expect(reworded.body.pending_reason).toBe('Answer the visa question by Friday.')
+  const back = await mutate('PATCH', path, { status: 'applied' })
+  expect(back.body).toMatchObject({ status: 'applied', pending_reason: null })
+  expect(listEvents(db, ids.acme).map((event) => event.to_status)).toEqual(['saved', 'applied', 'pending', 'pending', 'applied'])
+  expect((await get('/api/applications?status=pending')).body.map((row: any) => row.id)).toEqual([ids.beta])
+
+  const unsubmitted = await mutate('PATCH', `/api/applications/${ids.beta}`, { status: 'saved' })
+  expect(unsubmitted.res.status).toBe(200)
+  expect(unsubmitted.body).toMatchObject({ status: 'saved', pending_reason: null, applied_at: null })
 })
 
 test('note and override updates do not write events', async () => {
@@ -138,7 +174,7 @@ test('note and override updates do not write events', async () => {
     note: 'Recruiter: Dana', title: 'Senior ML Engineer', company: 'Beta', location: 'New York',
     posting_title: 'ML Engineer', location_override: null,
   })
-  expect(listEvents(db, ids.beta)).toHaveLength(1)
+  expect(listEvents(db, ids.beta)).toHaveLength(2)
   expect((await get('/api/applications?q=senior')).body.map((row: any) => row.id)).toEqual([ids.beta])
 })
 
@@ -348,4 +384,232 @@ test('POST /api/inbox writes the decoded file with mode 0600 and never overwrite
   } finally {
     await withInbox.close()
   }
+})
+
+test('stages: POST advances applied to interviewing, PATCH outcome, DELETE, and GET detail includes stages', async () => {
+  const types = (await get('/api/stage-types')).body
+  expect(types.interviewing).toContain('phone_screen')
+  expect(types.offered).toEqual(['verbal', 'written'])
+  expect(types.outcomes).toContain('pending')
+
+  const contacts = [{ name: 'Dana Lee', title: 'Recruiter', email: 'dana@acme.example' }]
+  const added = await mutate('POST', `/api/applications/${ids.acme}/stages`, {
+    kind: 'interviewing', stage_type: 'phone_screen', scheduled_at: '2026-11-03', note: 'intro call', contacts,
+  })
+  expect(added.res.status).toBe(200)
+  expect(added.body.application.status).toBe('interviewing')
+  expect(added.body.stage).toMatchObject({
+    to_status: 'interviewing', stage_type: 'phone_screen', scheduled_at: '2026-11-03', outcome: 'pending',
+    note: 'intro call', source: 'dashboard', contacts,
+  })
+  const stageId = added.body.stage.id
+
+  const detail = (await get(`/api/applications/${ids.acme}`)).body
+  expect(detail.application.status).toBe('interviewing')
+  expect(detail.stages).toHaveLength(1)
+  expect(detail.stages[0]).toMatchObject({ id: stageId, stage_type: 'phone_screen', contacts })
+
+  const patched = await mutate('PATCH', `/api/stages/${stageId}`, { outcome: 'advanced', note: '' })
+  expect(patched.res.status).toBe(200)
+  expect(patched.body).toMatchObject({ id: stageId, outcome: 'advanced', note: null, contacts })
+
+  const removed = await mutate('DELETE', `/api/stages/${stageId}`)
+  expect(removed.res.status).toBe(200)
+  expect((await get(`/api/applications/${ids.acme}`)).body.stages).toEqual([])
+})
+
+test('stages: mismatched kind and stage_type get 400, unknown ids 404, and mutations need the dashboard header', async () => {
+  const mismatched = await mutate('POST', `/api/applications/${ids.acme}/stages`, { kind: 'interviewing', stage_type: 'verbal' })
+  expect(mismatched.res.status).toBe(400)
+  expect(mismatched.body.error).toContain('verbal')
+  const badContact = await mutate('POST', `/api/applications/${ids.acme}/stages`, {
+    kind: 'interviewing', stage_type: 'technical', contacts: [{ name: '' }],
+  })
+  expect(badContact.res.status).toBe(400)
+  expect((await mutate('POST', '/api/applications/999/stages', { kind: 'offered', stage_type: 'verbal' })).res.status).toBe(404)
+  expect((await mutate('PATCH', '/api/stages/999', { outcome: 'advanced' })).res.status).toBe(404)
+  expect((await mutate('DELETE', '/api/stages/999')).res.status).toBe(404)
+  const created = listEvents(db, ids.acme)[0]!
+  expect((await mutate('PATCH', `/api/stages/${created.id}`, { outcome: 'advanced' })).res.status).toBe(404)
+
+  const offer = await mutate('POST', `/api/applications/${ids.acme}/stages`, { kind: 'offered', stage_type: 'written' })
+  expect(offer.body.application.status).toBe('offered')
+  expect((await mutate('PATCH', `/api/stages/${offer.body.stage.id}`, { stage_type: 'onsite' })).res.status).toBe(400)
+
+  const bare = await fetch(`${dash.url}/api/applications/${ids.beta}/stages`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'interviewing', stage_type: 'onsite' }),
+  })
+  expect(bare.status).toBe(403)
+  const bareDelete = await fetch(`${dash.url}/api/stages/${offer.body.stage.id}`, { method: 'DELETE' })
+  expect(bareDelete.status).toBe(403)
+  expect((await get(`/api/applications/${ids.beta}`)).body.stages).toEqual([])
+  expect((await get(`/api/applications/${ids.acme}`)).body.stages).toHaveLength(1)
+})
+
+test('PATCH pay fields and location overrides round-trips, invalid values get 400', async () => {
+  const pay = {
+    salary_min: 150000, salary_max: 190000, salary_offered: 180000, rsu: 40000, options: 0, bonus: 15000,
+    sign_on: 10000, relocation_fee: 5000, currency: 'usd', country_override: 'US', state_override: 'NY', city_override: 'New York',
+  }
+  const { res, body } = await mutate('PATCH', `/api/applications/${ids.beta}`, pay)
+  expect(res.status).toBe(200)
+  expect(body).toMatchObject({ ...pay, currency: 'USD' })
+  expect((await get(`/api/applications/${ids.beta}`)).body.application).toMatchObject({ ...pay, currency: 'USD' })
+
+  const cleared = await mutate('PATCH', `/api/applications/${ids.beta}`, { bonus: null, city_override: '', currency: '' })
+  expect(cleared.body).toMatchObject({ bonus: null, city_override: null, currency: null, salary_min: 150000 })
+
+  for (const bad of [{ salary_min: -1 }, { rsu: 1.5 }, { currency: 'US' }, { country_override: 'us' }, { salary_max: '100' }]) {
+    expect((await mutate('PATCH', `/api/applications/${ids.beta}`, bad)).res.status).toBe(400)
+  }
+  expect((await get(`/api/applications/${ids.beta}`)).body.application.salary_min).toBe(150000)
+  const bare = await fetch(`${dash.url}/api/applications/${ids.beta}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ salary_min: 1 }),
+  })
+  expect(bare.status).toBe(403)
+})
+
+const seedFacts = () => saveFacts(db, [
+  {
+    slug: 'acme-001', company: 'Acme', role: 'Data Engineer', project: 'Pipeline Migration', category: 'action',
+    action: 'Migrated nightly batch jobs to a workflow orchestrator.', metrics: '14 jobs', basis: 'stated',
+  },
+  {
+    slug: 'acme-002', company: 'Acme', role: 'Data Engineer', project: 'Pipeline Migration', category: 'outcome',
+    action: 'Added retries to flaky jobs.', basis: 'inferred', confidence: 'medium', rationale: 'Migrations usually need it.',
+  },
+]).facts
+
+test('profile facts: GET filters by status, PATCH accepts and edits, DELETE removes', async () => {
+  const [first, second] = seedFacts()
+  const all = await get('/api/profile-facts')
+  expect(all.res.status).toBe(200)
+  expect(all.body.facts.map((fact: any) => fact.slug)).toEqual(['acme-001', 'acme-002'])
+  expect((await get('/api/profile-facts?status=accepted')).body.facts).toEqual([])
+
+  const accepted = await mutate('PATCH', `/api/profile-facts/${first!.id}`, { status: 'accepted' })
+  expect(accepted.res.status).toBe(200)
+  expect(accepted.body).toMatchObject({ id: first!.id, status: 'accepted', action: first!.action })
+  const onlyAccepted = await get('/api/profile-facts?status=accepted')
+  expect(onlyAccepted.body.facts.map((fact: any) => fact.id)).toEqual([first!.id])
+  expect((await get('/api/profile-facts?status=proposed')).body.facts.map((fact: any) => fact.id)).toEqual([second!.id])
+
+  const edited = await mutate('PATCH', `/api/profile-facts/${second!.id}`, {
+    action: 'Added retries with backoff to flaky jobs.', outcome: 'Fewer reruns.', metrics: '',
+  })
+  expect(edited.res.status).toBe(200)
+  expect(edited.body).toMatchObject({ action: 'Added retries with backoff to flaky jobs.', outcome: 'Fewer reruns.', metrics: null })
+  expect(edited.body.status).toBe('proposed')
+
+  const removed = await mutate('DELETE', `/api/profile-facts/${second!.id}`)
+  expect(removed.res.status).toBe(200)
+  expect(removed.body.id).toBe(second!.id)
+  expect(getFact(db, second!.id)).toBeUndefined()
+})
+
+test('profile facts: invalid patches get 400, unknown ids 404, and mutations need the dashboard header', async () => {
+  const [first] = seedFacts()
+  for (const bad of [{ status: 'deleted' }, { action: '' }, { basis: 'inferred', rationale: null }, { unknown: 1 }]) {
+    expect((await mutate('PATCH', `/api/profile-facts/${first!.id}`, bad)).res.status).toBe(400)
+  }
+  expect((await get('/api/profile-facts?status=deleted')).res.status).toBe(400)
+  expect((await mutate('PATCH', '/api/profile-facts/999', { status: 'accepted' })).res.status).toBe(404)
+  expect((await mutate('DELETE', '/api/profile-facts/999')).res.status).toBe(404)
+
+  const bare = await fetch(`${dash.url}/api/profile-facts/${first!.id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'accepted' }),
+  })
+  expect(bare.status).toBe(403)
+  expect((await fetch(`${dash.url}/api/profile-facts/${first!.id}`, { method: 'DELETE' })).status).toBe(403)
+  expect(getFact(db, first!.id)).toMatchObject({ status: 'proposed', action: first!.action })
+})
+
+const STALE = 'changed since you opened it; reloaded'
+const tick = () => Bun.sleep(5)
+
+test('PATCH /api/applications/:id with a stale expected_updated_at gets 409 and writes nothing', async () => {
+  const opened = getApplication(db, ids.acme)!.updated_at
+  await tick()
+  const agent = updateApplicationFields(db, ids.acme, { note: 'agent note' })
+  const stale = await mutate('PATCH', `/api/applications/${ids.acme}`, { note: 'dashboard note', expected_updated_at: opened })
+  expect(stale.res.status).toBe(409)
+  expect(stale.body.error).toBe(STALE)
+  expect(getApplication(db, ids.acme)).toMatchObject({ note: 'agent note', updated_at: agent.updated_at })
+  const staleStatus = await mutate('PATCH', `/api/applications/${ids.acme}`, { status: 'offered', expected_updated_at: opened })
+  expect(staleStatus.res.status).toBe(409)
+  expect(listEvents(db, ids.acme)).toHaveLength(2)
+
+  const fresh = await mutate('PATCH', `/api/applications/${ids.acme}`, {
+    note: 'dashboard note', expected_updated_at: agent.updated_at,
+  })
+  expect(fresh.res.status).toBe(200)
+  expect(fresh.body.note).toBe('dashboard note')
+  expect((await mutate('PATCH', `/api/applications/${ids.acme}`, { note: 'no token' })).res.status).toBe(200)
+})
+
+test('DELETE /api/applications/:id with a stale expected_updated_at gets 409 and keeps the row', async () => {
+  const opened = getApplication(db, ids.gamma)!.updated_at
+  await tick()
+  const agent = updateApplicationFields(db, ids.gamma, { note: 'agent note' })
+  expect((await mutate('DELETE', `/api/applications/${ids.gamma}`, { expected_updated_at: opened })).res.status).toBe(409)
+  expect(getApplication(db, ids.gamma)).toBeDefined()
+  expect((await mutate('DELETE', `/api/applications/${ids.gamma}`, { expected_updated_at: agent.updated_at })).res.status).toBe(200)
+  expect(getApplication(db, ids.gamma)).toBeUndefined()
+})
+
+test('stage POST, PATCH and DELETE check expected_updated_at against the parent application', async () => {
+  const { stage, application } = addStage(db, ids.acme, { kind: 'interviewing', stageType: 'phone_screen' })
+  await tick()
+  const agent = updateApplicationFields(db, ids.acme, { note: 'agent note' })
+
+  const stalePatch = await mutate('PATCH', `/api/stages/${stage.id}`, { outcome: 'advanced', expected_updated_at: application.updated_at })
+  expect(stalePatch.res.status).toBe(409)
+  expect(stalePatch.body.error).toBe(STALE)
+  const staleAdd = await mutate('POST', `/api/applications/${ids.acme}/stages`, {
+    kind: 'interviewing', stage_type: 'technical', expected_updated_at: application.updated_at,
+  })
+  expect(staleAdd.res.status).toBe(409)
+  expect((await mutate('DELETE', `/api/stages/${stage.id}`, { expected_updated_at: application.updated_at })).res.status).toBe(409)
+  const unchanged = (await get(`/api/applications/${ids.acme}`)).body
+  expect(unchanged.stages).toHaveLength(1)
+  expect(unchanged.stages[0].outcome).toBe('pending')
+  expect(unchanged.application.updated_at).toBe(agent.updated_at)
+
+  const patched = await mutate('PATCH', `/api/stages/${stage.id}`, { outcome: 'advanced', expected_updated_at: agent.updated_at })
+  expect(patched.res.status).toBe(200)
+  expect(patched.body.outcome).toBe('advanced')
+  const touched = getApplication(db, ids.acme)!.updated_at
+  expect((await mutate('DELETE', `/api/stages/${stage.id}`, { expected_updated_at: touched })).res.status).toBe(200)
+})
+
+test('PATCH and DELETE /api/profile-facts/:id with a stale expected_updated_at get 409 and write nothing', async () => {
+  const [first] = seedFacts()
+  await tick()
+  const agent = updateFact(db, first!.id, { outcome: 'Agent outcome.' })
+  const stale = await mutate('PATCH', `/api/profile-facts/${first!.id}`, { status: 'accepted', expected_updated_at: first!.updated_at })
+  expect(stale.res.status).toBe(409)
+  expect(stale.body.error).toBe(STALE)
+  expect((await mutate('DELETE', `/api/profile-facts/${first!.id}`, { expected_updated_at: first!.updated_at })).res.status).toBe(409)
+  expect(getFact(db, first!.id)).toMatchObject({ status: 'proposed', outcome: 'Agent outcome.', updated_at: agent.updated_at })
+
+  const fresh = await mutate('PATCH', `/api/profile-facts/${first!.id}`, { status: 'accepted', expected_updated_at: agent.updated_at })
+  expect(fresh.res.status).toBe(200)
+  expect(fresh.body).toMatchObject({ status: 'accepted', outcome: 'Agent outcome.' })
+})
+
+test('renaming a fact to another fact\'s slug gets 409', async () => {
+  const [first, second] = seedFacts()
+  const taken = await mutate('PATCH', `/api/profile-facts/${second!.id}`, { slug: first!.slug })
+  expect(taken.res.status).toBe(409)
+  expect(taken.body.error).toBe(`slug ${first!.slug} is already used by fact ${first!.id}`)
+  expect(getFact(db, second!.id)!.slug).toBe(second!.slug)
+})
+
+test('fact skills and tools are capped at 20 entries of at most 60 characters', async () => {
+  const [first] = seedFacts()
+  const many = Array.from({ length: 21 }, (_, n) => `skill_${n}`)
+  expect((await mutate('PATCH', `/api/profile-facts/${first!.id}`, { skills: many })).res.status).toBe(400)
+  expect((await mutate('PATCH', `/api/profile-facts/${first!.id}`, { tools: ['a'.repeat(61)] })).res.status).toBe(400)
+  expect((await mutate('PATCH', `/api/profile-facts/${first!.id}`, { skills: many.slice(0, 20), tools: ['a'.repeat(60)] })).res.status)
+    .toBe(200)
 })

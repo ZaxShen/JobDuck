@@ -8,6 +8,7 @@ import { errorMessage, fetchJSON } from '@/lib/api'
 import { needsWelcome, PROFILE_DOC, SETTINGS_DOC } from '@/lib/docs'
 import type { PermissionsView, ProfileView as ProfileDoc, Statuses } from '@/lib/types'
 import { ApplicationsView } from '@/views/applications/applications-view'
+import { FactsView } from '@/views/facts/facts-view'
 import { ProfileView } from '@/views/profile/profile-view'
 import { SettingsView } from '@/views/settings/settings-view'
 import { WelcomeView } from '@/views/welcome/welcome-view'
@@ -72,6 +73,9 @@ export function App() {
       </div>
       <div hidden={view !== 'profile'}>
         <ProfileView form={profile} active={view === 'profile'} />
+      </div>
+      <div hidden={view !== 'facts'}>
+        <FactsView active={view === 'facts'} />
       </div>
       <div hidden={view !== 'settings'}>
         <SettingsView form={settings} active={view === 'settings'} />

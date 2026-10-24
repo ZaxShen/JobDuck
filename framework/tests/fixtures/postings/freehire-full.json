@@ -1,0 +1,33 @@
+{
+  "public_slug": "staff-engineer-acme-7001",
+  "source": "greenhouse",
+  "external_id": "acme:7001",
+  "url": "https://job-boards.greenhouse.io/acme/jobs/7001",
+  "title": "Staff Platform Engineer",
+  "company": "Acme",
+  "company_slug": "acme",
+  "location": "Laurel, MD",
+  "countries": ["us"],
+  "cities": ["Laurel"],
+  "work_mode": "hybrid",
+  "skills": ["typescript", "postgres", "kubernetes"],
+  "requires_clearance": false,
+  "posted_at": "2026-10-16T10:00:00Z",
+  "closed_at": "2026-12-01T00:00:00Z",
+  "description": "<h2>About the role</h2><p>Acme builds tools for example.com customers. You will design and run the platform that every Acme team ships on, from build pipelines to the database layer.</p><h3>What you bring</h3><ul><li>8+ years of software engineering experience</li><li>Deep knowledge of Postgres &amp; Kubernetes</li></ul><p>This is a hybrid role with three days a week in our Laurel office.</p><p>The annual base salary range for this role is $180,000 &ndash; $220,000.</p>",
+  "enrichment": {
+    "employment_type": "full_time",
+    "seniority": "staff",
+    "education_level": "bachelor",
+    "experience_years_min": 8,
+    "salary_min": 180000,
+    "salary_max": 220000,
+    "salary_currency": "USD",
+    "salary_period": "year",
+    "summary": "Run the platform every Acme team ships on.",
+    "requirements": [
+      { "text": "8+ years of software engineering experience", "priority": "must_have" },
+      { "text": "Kubernetes operations", "priority": "nice_to_have" }
+    ]
+  }
+}

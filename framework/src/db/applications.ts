@@ -1,7 +1,8 @@
+import { z } from 'zod'
 import { type Db, nowIso, one, transaction } from './client'
 
 export const APPLICATION_STATUSES = [
-  'saved', 'applied', 'interviewing', 'offered',
+  'saved', 'pending', 'applied', 'interviewing', 'offered',
   'accepted', 'deny_by_employer', 'deny_by_candidate', 'no_response',
 ] as const
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number]
@@ -11,11 +12,31 @@ export const EVENT_SOURCES = ['agent', 'dashboard', 'sync', 'user'] as const
 export type EventSource = (typeof EVENT_SOURCES)[number]
 
 export const isTerminal = (status: ApplicationStatus) => (TERMINAL_STATUSES as readonly string[]).includes(status)
+const isUnsubmitted = (status: ApplicationStatus) => status === 'saved' || status === 'pending'
+
+export const PENDING_REASON_MAX = 500
+export const PENDING_REASON_REQUIRED = 'pending_reason is required when status is pending'
+export const PENDING_REASON_ONLY_PENDING = 'pending_reason is only kept while status is pending'
+export const PendingReasonSchema = z.string().trim()
+  .min(1, PENDING_REASON_REQUIRED)
+  .max(PENDING_REASON_MAX, `pending_reason must be at most ${PENDING_REASON_MAX} characters`)
+
+export function checkPendingReason(status: ApplicationStatus, reason: string | null | undefined): string | null {
+  if (status !== 'pending') {
+    if (reason !== undefined && reason !== null) throw new Error(PENDING_REASON_ONLY_PENDING)
+    return null
+  }
+  if (reason === undefined || reason === null) throw new Error(PENDING_REASON_REQUIRED)
+  const parsed = PendingReasonSchema.safeParse(reason)
+  if (!parsed.success) throw new Error(formatIssues(parsed.error))
+  return parsed.data
+}
 
 export interface Application {
   id: number
   posting_id: number
   status: ApplicationStatus
+  pending_reason: string | null
   applied_at: string | null
   closed_at: string | null
   closed_by: string | null
@@ -24,6 +45,18 @@ export interface Application {
   title_override: string | null
   company_override: string | null
   location_override: string | null
+  salary_min: number | null
+  salary_max: number | null
+  salary_offered: number | null
+  rsu: number | null
+  options: number | null
+  bonus: number | null
+  sign_on: number | null
+  relocation_fee: number | null
+  currency: string | null
+  country_override: string | null
+  state_override: string | null
+  city_override: string | null
   created_at: string
   updated_at: string
   deleted_at: string | null
@@ -37,12 +70,16 @@ export interface ApplicationEvent {
   note: string | null
   source: EventSource
   metadata: string | null
+  stage_type: string | null
+  scheduled_at: string | null
+  outcome: string | null
   created_at: string
 }
 
 export interface CreateApplicationInput {
   postingId: number
   status?: ApplicationStatus
+  pendingReason?: string
   source?: EventSource
   appliedAt?: string
   note?: string
@@ -51,6 +88,7 @@ export interface CreateApplicationInput {
 }
 
 export interface SetStatusOptions {
+  pendingReason?: string
   source?: EventSource
   note?: string
   closedBy?: string
@@ -78,45 +116,53 @@ export function listEvents(db: Db, applicationId: number): ApplicationEvent[] {
 
 export function createApplication(db: Db, input: CreateApplicationInput): Application {
   const status = input.status ?? 'saved'
+  const pendingReason = checkPendingReason(status, input.pendingReason)
   const source = input.source ?? 'agent'
   const now = nowIso()
-  const appliedAt = input.appliedAt ?? (status === 'saved' ? null : now)
+  const note = input.note ?? null
   const terminal = isTerminal(status)
   return transaction(db, () => {
-    const row = one<Application>(db.prepare(`INSERT INTO applications
-        (posting_id, status, applied_at, closed_at, closed_by, note, extracted, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    const saved = one<Application>(db.prepare(`INSERT INTO applications
+        (posting_id, status, note, extracted, created_at, updated_at)
+        VALUES (?, 'saved', ?, ?, ?, ?)
         RETURNING *`),
-      input.postingId, status, appliedAt, terminal ? now : null, terminal ? (input.closedBy ?? source) : null,
-      input.note ?? null, toJson(input.extracted), now, now)
-    if (!row) throw new Error('createApplication returned no row')
-    insertEvent(db, row.id, null, status, source, input.note ?? null, undefined, now)
+      input.postingId, note, toJson(input.extracted), now, now)
+    if (!saved) throw new Error('createApplication returned no row')
+    insertEvent(db, saved.id, null, 'saved', source, status === 'saved' ? note : null, undefined, now)
+    if (status === 'saved') return saved
+    const row = one<Application>(db.prepare(`UPDATE applications
+        SET status = ?, pending_reason = ?, applied_at = ?, closed_at = ?, closed_by = ?
+        WHERE id = ?
+        RETURNING *`),
+      status, pendingReason, isUnsubmitted(status) ? null : (input.appliedAt ?? now),
+      terminal ? now : null, terminal ? (input.closedBy ?? source) : null, saved.id)
+    if (!row) throw new Error(`application ${saved.id} not found`)
+    insertEvent(db, row.id, 'saved', status, source, note, undefined, now)
     return row
   })
 }
 
-export function applyStatus(db: Db, id: number, status: ApplicationStatus, options: SetStatusOptions = {}): Application {
-  const source = options.source ?? 'agent'
-  const current = getApplication(db, id)
-  if (!current) throw new Error(`application ${id} not found`)
-  const now = nowIso()
-  const terminal = isTerminal(status)
-  const appliedAt = current.applied_at ?? (status === 'saved' ? null : now)
-  const note = options.note ?? null
-  const row = one<Application>(db.prepare(`UPDATE applications
-      SET status = ?, applied_at = ?, closed_at = ?, closed_by = ?, updated_at = ?,
-        note = CASE WHEN ? IS NULL THEN note WHEN note IS NULL THEN ? ELSE note || char(10) || ? END
-      WHERE id = ?
-      RETURNING *`),
-    status, appliedAt, terminal ? now : null, terminal ? (options.closedBy ?? source) : null, now,
-    note, note, note, id)
-  if (!row) throw new Error(`application ${id} not found`)
-  insertEvent(db, id, current.status, status, source, note, options.metadata, now)
-  return row
-}
-
 export function setStatus(db: Db, id: number, status: ApplicationStatus, options: SetStatusOptions = {}): Application {
-  return transaction(db, () => applyStatus(db, id, status, options))
+  const source = options.source ?? 'agent'
+  const pendingReason = checkPendingReason(status, options.pendingReason)
+  return transaction(db, () => {
+    const current = getApplication(db, id)
+    if (!current) throw new Error(`application ${id} not found`)
+    const now = nowIso()
+    const terminal = isTerminal(status)
+    const appliedAt = current.applied_at ?? (isUnsubmitted(status) ? null : now)
+    const note = options.note ?? null
+    const row = one<Application>(db.prepare(`UPDATE applications
+        SET status = ?, pending_reason = ?, applied_at = ?, closed_at = ?, closed_by = ?, updated_at = ?,
+          note = CASE WHEN ? IS NULL THEN note WHEN note IS NULL THEN ? ELSE note || char(10) || ? END
+        WHERE id = ?
+        RETURNING *`),
+      status, pendingReason, appliedAt, terminal ? now : null, terminal ? (options.closedBy ?? source) : null, now,
+      note, note, note, id)
+    if (!row) throw new Error(`application ${id} not found`)
+    insertEvent(db, id, current.status, status, source, note, options.metadata, now)
+    return row
+  })
 }
 
 export interface ListApplicationsFilter {
@@ -140,19 +186,48 @@ export function listApplications(db: Db, filter: ListApplicationsFilter = {}): A
     .all(...params) as Application[]
 }
 
-export const EDITABLE_FIELDS = ['note', 'title_override', 'company_override', 'location_override'] as const
+export const PAY_FIELDS = [
+  'salary_min', 'salary_max', 'salary_offered', 'rsu', 'options', 'bonus', 'sign_on', 'relocation_fee',
+] as const
+export type PayField = (typeof PAY_FIELDS)[number]
+export const TEXT_FIELDS = [
+  'note', 'title_override', 'company_override', 'location_override',
+  'currency', 'country_override', 'state_override', 'city_override',
+] as const
+export type TextField = (typeof TEXT_FIELDS)[number]
+export const EDITABLE_FIELDS = [...TEXT_FIELDS, ...PAY_FIELDS] as const
 export type EditableField = (typeof EDITABLE_FIELDS)[number]
-export type ApplicationFields = Partial<Record<EditableField, string | null>>
+export type ApplicationFields = Partial<Record<TextField, string | null> & Record<PayField, number | null>>
+
+const pay = z.number().int('must be a whole number').nonnegative('must be 0 or more').nullable().optional()
+const textField = z.string().nullable().optional()
+
+export const ApplicationFieldsSchema = z.object({
+  ...Object.fromEntries(TEXT_FIELDS.map((key) => [key, textField])) as Record<TextField, typeof textField>,
+  ...Object.fromEntries(PAY_FIELDS.map((key) => [key, pay])) as Record<PayField, typeof pay>,
+  currency: z.string().length(3, 'must be a 3-letter currency code').nullable().optional(),
+  country_override: z.string().regex(/^[A-Z]{2}$/, 'must be 2 uppercase letters (ISO country code)').nullable().optional(),
+}).strict()
+
+export function formatIssues(error: z.ZodError): string {
+  return error.issues.map((issue) => (issue.path.length > 0 ? `${issue.path.join('.')}: ${issue.message}` : issue.message))
+    .join('; ')
+}
 
 export function updateApplicationFields(db: Db, id: number, fields: ApplicationFields): Application {
-  const keys = EDITABLE_FIELDS.filter((key) => fields[key] !== undefined)
+  const parsed = ApplicationFieldsSchema.safeParse(fields)
+  if (!parsed.success) throw new Error(formatIssues(parsed.error))
+  const valid = parsed.data as ApplicationFields
+  const keys = EDITABLE_FIELDS.filter((key) => valid[key] !== undefined)
   const assignments = [...keys.map((key) => `${key} = ?`), 'updated_at = ?']
-  const row = one<Application>(db.prepare(`UPDATE applications SET ${assignments.join(', ')}
-      WHERE id = ? AND deleted_at IS NULL
-      RETURNING *`),
-    ...keys.map((key) => fields[key]), nowIso(), id)
-  if (!row) throw new Error(`application ${id} not found`)
-  return row
+  return transaction(db, () => {
+    const row = one<Application>(db.prepare(`UPDATE applications SET ${assignments.join(', ')}
+        WHERE id = ? AND deleted_at IS NULL
+        RETURNING *`),
+      ...keys.map((key) => valid[key]), nowIso(), id)
+    if (!row) throw new Error(`application ${id} not found`)
+    return row
+  })
 }
 
 export function softDeleteApplication(db: Db, id: number): boolean {
@@ -196,13 +271,21 @@ export interface ApplicationWithPosting extends Application {
   posting_title: string
   posting_company: string
   posting_location: string | null
+  posting_country: string | null
+  posting_state: string | null
+  posting_city: string | null
+  posting_pay_min: number | null
+  posting_pay_max: number | null
+  posting_pay_period: string | null
+  posting_currency: string | null
+  posting_pay_stated: number | null
 }
 
 export type ApplicationSummary = Pick<ApplicationWithPosting,
-  'id' | 'status' | 'title' | 'company' | 'location' | 'url' | 'applied_at' | 'closed_at' | 'updated_at' | 'note'>
+  'id' | 'status' | 'pending_reason' | 'title' | 'company' | 'location' | 'url' | 'applied_at' | 'closed_at' | 'updated_at' | 'note'>
 
 export const summarizeApplication = (row: ApplicationWithPosting): ApplicationSummary => ({
-  id: row.id, status: row.status, title: row.title, company: row.company, location: row.location, url: row.url,
+  id: row.id, status: row.status, pending_reason: row.pending_reason, title: row.title, company: row.company, location: row.location, url: row.url,
   applied_at: row.applied_at, closed_at: row.closed_at, updated_at: row.updated_at, note: row.note,
 })
 
@@ -216,7 +299,10 @@ const JOINED_SELECT = `SELECT a.*,
     COALESCE(a.company_override, p.company) AS company,
     COALESCE(a.location_override, p.location) AS location,
     p.url AS url, p.work_mode AS work_mode,
-    p.title AS posting_title, p.company AS posting_company, p.location AS posting_location
+    p.title AS posting_title, p.company AS posting_company, p.location AS posting_location,
+    p.country AS posting_country, p.state AS posting_state, p.city AS posting_city,
+    p.pay_min AS posting_pay_min, p.pay_max AS posting_pay_max, p.pay_period AS posting_pay_period,
+    p.currency AS posting_currency, p.pay_stated AS posting_pay_stated
   FROM applications a JOIN postings p ON p.id = a.posting_id`
 
 const likePattern = (q: string) => `%${q.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`
@@ -247,4 +333,10 @@ export function listApplicationsWithPostings(db: Db, filter: ListApplicationsWit
 
 export function getApplicationWithPosting(db: Db, id: number): ApplicationWithPosting | undefined {
   return one<ApplicationWithPosting>(db.prepare(`${JOINED_SELECT} WHERE a.id = ? AND a.deleted_at IS NULL`), id)
+}
+
+export function getPostingDescription(db: Db, applicationId: number): string | null {
+  const row = one<{ description: string | null }>(db.prepare(`SELECT p.description FROM applications a
+      JOIN postings p ON p.id = a.posting_id WHERE a.id = ? AND a.deleted_at IS NULL`), applicationId)
+  return row?.description ?? null
 }

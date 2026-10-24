@@ -1,0 +1,13 @@
+{
+  "id": 7002,
+  "title": "Senior Backend Engineer",
+  "company_name": "Acme",
+  "absolute_url": "https://job-boards.greenhouse.io/acme/jobs/7002",
+  "location": { "name": "Austin, TX - Hybrid" },
+  "first_published": "2026-10-14T08:00:00-05:00",
+  "updated_at": "2026-10-15T08:00:00-05:00",
+  "content": "&lt;p&gt;Acme is hiring a backend engineer to build the services behind example.com.&lt;/p&gt;&lt;p&gt;You will own APIs, data pipelines and reliability.&lt;/p&gt;&lt;p&gt;Benefits include a $2,000 annual learning stipend.&lt;/p&gt;",
+  "pay_input_ranges": [
+    { "min_cents": 15000000, "max_cents": 19000000, "currency_type": "USD", "title": "Austin" }
+  ]
+}

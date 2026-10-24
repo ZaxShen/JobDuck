@@ -5,11 +5,20 @@ import { RevisionConflict } from '../config/files'
 import { readStoredPermissions, writePermissions } from '../config/permissions'
 import { TEMPLATE_SECTIONS, isPlaceholder, readStoredProfile, splitSections, updateProfile } from '../config/profile'
 import {
-  APPLICATION_STATUSES, type ApplicationFields, EDITABLE_FIELDS, TERMINAL_STATUSES, getApplication,
+  APPLICATION_STATUSES, type ApplicationFields, PAY_FIELDS, PENDING_REASON_ONLY_PENDING, PENDING_REASON_REQUIRED,
+  PendingReasonSchema, type PayField, TERMINAL_STATUSES, getApplication,
   getApplicationWithPosting, listApplicationsWithPostings, listEvents, setStatus, softDeleteApplication,
   updateApplicationFields,
 } from '../db/applications'
-import type { Db } from '../db/client'
+import { type Db, transaction } from '../db/client'
+import {
+  ContactsSchema, INTERVIEW_STAGES, OFFER_STAGES, STAGE_KINDS, STAGE_OUTCOMES, STAGE_TYPES, addStage, deleteStage,
+  getStage, listStages, updateStage,
+} from '../db/interviews'
+import {
+  FACT_BASES, FACT_CATEGORIES, FACT_CONFIDENCES, FACT_STATUSES, MAX_TAG_LENGTH, MAX_TAGS, SlugConflict, deleteFact,
+  getFact, listFacts, updateFact,
+} from '../db/profile-facts'
 import { OUTCOME_STATUSES, type Outcome, dismissOutcome, getOutcome, listOutcomes, matchOutcome } from '../db/outcomes'
 import { permissionsPath, profilePath } from '../paths'
 
@@ -40,13 +49,49 @@ export interface ApiResponse {
 const text = (max: number) => z.string().max(max).nullable().optional()
   .transform((value) => (typeof value === 'string' && value.trim() === '' ? null : value))
 
+const code = (pattern: RegExp, message: string) => text(3).refine((value) => value == null || pattern.test(value), message)
+const pay = z.number().int('must be a whole number').nonnegative('must be 0 or more').nullable().optional()
+
+export const STALE_MESSAGE = 'changed since you opened it; reloaded'
+const versioned = { expected_updated_at: z.string().max(40).optional() }
+const deleteSchema = z.object(versioned).strict()
+
 const patchSchema = z.object({
+  ...versioned,
   status: z.enum(APPLICATION_STATUSES).optional(),
+  pending_reason: PendingReasonSchema.optional(),
   note: text(20_000),
   title_override: text(500),
   company_override: text(500),
   location_override: text(500),
+  state_override: text(200),
+  city_override: text(200),
+  currency: code(/^[A-Za-z]{3}$/, 'must be a 3-letter currency code')
+    .transform((value) => (typeof value === 'string' ? value.toUpperCase() : value)),
+  country_override: code(/^[A-Z]{2}$/, 'must be 2 uppercase letters (ISO country code)'),
+  ...Object.fromEntries(PAY_FIELDS.map((key) => [key, pay])) as Record<PayField, typeof pay>,
 }).strict()
+  .refine((input) => input.status !== 'pending' || input.pending_reason !== undefined,
+    { message: PENDING_REASON_REQUIRED, path: ['pending_reason'] })
+  .refine((input) => input.pending_reason === undefined || input.status === 'pending',
+    { message: PENDING_REASON_ONLY_PENDING, path: ['pending_reason'] })
+
+const stageFields = {
+  scheduled_at: z.string().max(40).nullable().optional()
+    .transform((value) => (typeof value === 'string' && value.trim() === '' ? null : value)),
+  outcome: z.enum(STAGE_OUTCOMES).nullable().optional(),
+  note: text(20_000),
+  contacts: ContactsSchema.optional(),
+}
+
+const addStageSchema = z.object({
+  ...versioned,
+  kind: z.enum(STAGE_KINDS),
+  stage_type: z.enum(STAGE_TYPES),
+  ...stageFields,
+}).strict()
+
+const stagePatchSchema = z.object({ ...versioned, stage_type: z.enum(STAGE_TYPES).optional(), ...stageFields }).strict()
 
 const matchSchema = z.object({ application_id: z.number().int().positive() }).strict()
 
@@ -55,6 +100,30 @@ const listQuerySchema = z.object({
   q: z.string().max(200).optional(),
   limit: z.coerce.number().int().min(1).max(5000).optional(),
 })
+
+const factsQuerySchema = z.object({ status: z.enum(FACT_STATUSES).optional() })
+
+const factText = (max: number) => z.string().max(max).nullable().optional()
+const factTags = z.array(z.string().max(MAX_TAG_LENGTH)).max(MAX_TAGS).optional()
+
+const factPatchSchema = z.object({
+  ...versioned,
+  status: z.enum(FACT_STATUSES).optional(),
+  slug: factText(100),
+  company: factText(200),
+  role: factText(200),
+  project: z.string().max(200).optional(),
+  category: z.enum(FACT_CATEGORIES).optional(),
+  action: z.string().max(1000).optional(),
+  outcome: factText(1000),
+  metrics: factText(1000),
+  skills: factTags,
+  tools: factTags,
+  basis: z.enum(FACT_BASES).optional(),
+  confidence: z.enum(FACT_CONFIDENCES).nullable().optional(),
+  rationale: factText(500),
+  sort_order: z.number().int().optional(),
+}).strict()
 
 const outcomesQuerySchema = z.object({ status: z.enum(OUTCOME_STATUSES).optional() })
 
@@ -150,21 +219,103 @@ function parseCandidates(value: string | null): unknown[] {
 
 const withCandidates = (outcome: Outcome) => ({ ...outcome, candidates: parseCandidates(outcome.candidates) })
 
-function patchApplication(db: Db, id: number, body: unknown) {
-  const input = parse(patchSchema, body ?? {})
+function checkVersion(row: { updated_at: string }, expected: string | undefined) {
+  if (expected !== undefined && expected !== row.updated_at) throw new ApiError(409, STALE_MESSAGE)
+}
+
+function currentApplication(db: Db, id: number, expected: string | undefined) {
   const current = getApplication(db, id)
   if (!current) throw new ApiError(404, `application ${id} not found`)
-  const changing = input.status !== undefined && input.status !== current.status
-  const fields: ApplicationFields = {}
-  for (const key of EDITABLE_FIELDS) {
-    if (key === 'note' && changing) continue
-    if (input[key] !== undefined) fields[key] = input[key]
+  checkVersion(current, expected)
+  return current
+}
+
+function patchApplication(db: Db, id: number, body: unknown) {
+  const { expected_updated_at: expected, ...input } = parse(patchSchema, body ?? {})
+  return transaction(db, () => {
+    const current = currentApplication(db, id, expected)
+    const changing = input.status !== undefined
+      && (input.status !== current.status || (input.status === 'pending' && input.pending_reason !== current.pending_reason))
+    const fields = Object.fromEntries(Object.entries(input)
+      .filter(([key, value]) => key !== 'status' && key !== 'pending_reason' && !(key === 'note' && changing)
+        && value !== undefined)) as ApplicationFields
+    if (Object.keys(fields).length > 0) saving(() => updateApplicationFields(db, id, fields))
+    if (changing && input.status !== undefined) {
+      const { status, pending_reason: pendingReason } = input
+      saving(() => setStatus(db, id, status, { source: 'dashboard', pendingReason, note: input.note ?? undefined }))
+    }
+    return requireApplication(db, id)
+  })
+}
+
+function deleteApplication(db: Db, id: number, body: unknown) {
+  const { expected_updated_at: expected } = parse(deleteSchema, body ?? {})
+  return transaction(db, () => {
+    currentApplication(db, id, expected)
+    softDeleteApplication(db, id)
+    return { ok: true }
+  })
+}
+
+function requireStage(db: Db, id: number) {
+  try {
+    return getStage(db, id)
+  } catch (error) {
+    if (error instanceof Error && 'code' in error) throw error
+    throw new ApiError(404, `stage ${id} not found`)
   }
-  if (Object.keys(fields).length > 0) updateApplicationFields(db, id, fields)
-  if (changing && input.status !== undefined) {
-    setStatus(db, id, input.status, { source: 'dashboard', note: input.note ?? undefined })
-  }
-  return requireApplication(db, id)
+}
+
+function postStage(db: Db, id: number, body: unknown) {
+  const input = parse(addStageSchema, body ?? {})
+  return transaction(db, () => {
+    currentApplication(db, id, input.expected_updated_at)
+    return saving(() => addStage(db, id, {
+      kind: input.kind, stageType: input.stage_type, scheduledAt: input.scheduled_at, outcome: input.outcome,
+      note: input.note, contacts: input.contacts, source: 'dashboard',
+    }))
+  })
+}
+
+function patchStage(db: Db, id: number, body: unknown) {
+  const input = parse(stagePatchSchema, body ?? {})
+  return transaction(db, () => {
+    currentApplication(db, requireStage(db, id).application_id, input.expected_updated_at)
+    return saving(() => updateStage(db, id, {
+      stageType: input.stage_type, scheduledAt: input.scheduled_at, outcome: input.outcome, note: input.note,
+      contacts: input.contacts,
+    }))
+  })
+}
+
+function removeStage(db: Db, id: number, body: unknown) {
+  const { expected_updated_at: expected } = parse(deleteSchema, body ?? {})
+  return transaction(db, () => {
+    currentApplication(db, requireStage(db, id).application_id, expected)
+    return deleteStage(db, id)
+  })
+}
+
+function requireFact(db: Db, id: number) {
+  const fact = getFact(db, id)
+  if (!fact) throw new ApiError(404, `fact ${id} not found`)
+  return fact
+}
+
+function patchFact(db: Db, id: number, body: unknown) {
+  const { expected_updated_at: expected, ...input } = parse(factPatchSchema, body ?? {})
+  return transaction(db, () => {
+    checkVersion(requireFact(db, id), expected)
+    return saving(() => updateFact(db, id, input))
+  })
+}
+
+function removeFact(db: Db, id: number, body: unknown) {
+  const { expected_updated_at: expected } = parse(deleteSchema, body ?? {})
+  return transaction(db, () => {
+    checkVersion(requireFact(db, id), expected)
+    return deleteFact(db, id)
+  })
 }
 
 function profileView(home: string) {
@@ -196,7 +347,7 @@ function saving<T>(fn: () => T): T {
   try {
     return fn()
   } catch (error) {
-    if (error instanceof RevisionConflict) throw new ApiError(409, error.message)
+    if (error instanceof RevisionConflict || error instanceof SlugConflict) throw new ApiError(409, error.message)
     if (error instanceof Error && !(error instanceof ApiError) && !('code' in error)) throw new ApiError(400, error.message)
     throw error
   }
@@ -232,21 +383,33 @@ const routes: { method: string; pattern: RegExp; handler: Handler }[] = [
     handler: () => ({ statuses: APPLICATION_STATUSES, terminal: TERMINAL_STATUSES }),
   },
   {
+    method: 'GET', pattern: /^\/api\/stage-types$/,
+    handler: () => ({ interviewing: INTERVIEW_STAGES, offered: OFFER_STAGES, outcomes: STAGE_OUTCOMES }),
+  },
+  {
     method: 'GET', pattern: /^\/api\/applications$/,
     handler: ({ db }, req) => listApplicationsWithPostings(db, { limit: 500, ...parse(listQuerySchema, queryObject(req.query)) }),
   },
   {
     method: 'GET', pattern: /^\/api\/applications\/(\d+)$/,
-    handler: ({ db }, _req, id) => ({ application: requireApplication(db, id), events: listEvents(db, id) }),
+    handler: ({ db }, _req, id) => ({
+      application: requireApplication(db, id), events: listEvents(db, id), stages: listStages(db, id),
+    }),
   },
+  { method: 'POST', pattern: /^\/api\/applications\/(\d+)\/stages$/, handler: ({ db }, req, id) => postStage(db, id, req.body) },
+  { method: 'PATCH', pattern: /^\/api\/stages\/(\d+)$/, handler: ({ db }, req, id) => patchStage(db, id, req.body) },
+  { method: 'DELETE', pattern: /^\/api\/stages\/(\d+)$/, handler: ({ db }, req, id) => removeStage(db, id, req.body) },
   { method: 'PATCH', pattern: /^\/api\/applications\/(\d+)$/, handler: ({ db }, req, id) => patchApplication(db, id, req.body) },
   {
     method: 'DELETE', pattern: /^\/api\/applications\/(\d+)$/,
-    handler: ({ db }, _req, id) => {
-      if (!softDeleteApplication(db, id)) throw new ApiError(404, `application ${id} not found`)
-      return { ok: true }
-    },
+    handler: ({ db }, req, id) => deleteApplication(db, id, req.body),
   },
+  {
+    method: 'GET', pattern: /^\/api\/profile-facts$/,
+    handler: ({ db }, req) => ({ facts: listFacts(db, parse(factsQuerySchema, queryObject(req.query))) }),
+  },
+  { method: 'PATCH', pattern: /^\/api\/profile-facts\/(\d+)$/, handler: ({ db }, req, id) => patchFact(db, id, req.body) },
+  { method: 'DELETE', pattern: /^\/api\/profile-facts\/(\d+)$/, handler: ({ db }, req, id) => removeFact(db, id, req.body) },
   {
     method: 'GET', pattern: /^\/api\/outcomes$/,
     handler: ({ db }, req) => listOutcomes(db, parse(outcomesQuerySchema, queryObject(req.query))).map(withCandidates),
@@ -255,17 +418,19 @@ const routes: { method: string; pattern: RegExp; handler: Handler }[] = [
     method: 'POST', pattern: /^\/api\/outcomes\/(\d+)\/match$/,
     handler: ({ db }, req, id) => {
       const { application_id } = parse(matchSchema, req.body ?? {})
-      if (!getOutcome(db, id)) throw new ApiError(404, `outcome ${id} not found`)
-      if (!getApplication(db, application_id)) throw new ApiError(404, `application ${application_id} not found`)
-      return matchOutcome(db, id, application_id, { source: 'dashboard' })
+      return transaction(db, () => {
+        if (!getOutcome(db, id)) throw new ApiError(404, `outcome ${id} not found`)
+        if (!getApplication(db, application_id)) throw new ApiError(404, `application ${application_id} not found`)
+        return matchOutcome(db, id, application_id, { source: 'dashboard' })
+      })
     },
   },
   {
     method: 'POST', pattern: /^\/api\/outcomes\/(\d+)\/dismiss$/,
-    handler: ({ db }, _req, id) => {
+    handler: ({ db }, _req, id) => transaction(db, () => {
       if (!getOutcome(db, id)) throw new ApiError(404, `outcome ${id} not found`)
       return dismissOutcome(db, id)
-    },
+    }),
   },
 ]
 
