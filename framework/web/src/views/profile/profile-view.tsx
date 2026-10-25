@@ -69,7 +69,7 @@ function SectionLink({ item, active, proposed, className }: { item: SectionItem;
 
 function SectionNav({ groups, active, proposed }: NavProps) {
   return (
-    <nav aria-label="Profile sections" className="hidden w-48 shrink-0 flex-col gap-4 lg:sticky lg:top-20 lg:flex lg:self-start">
+    <nav aria-label="Profile sections" className="hidden w-48 shrink-0 flex-col gap-4 lg:sticky lg:top-6 lg:flex lg:self-start">
       {groups.map((group) => (
         <div key={group.label}>
           <p className="mb-1.5 px-2 text-[11px] font-medium uppercase tracking-widest text-muted-foreground/50">{group.label}</p>

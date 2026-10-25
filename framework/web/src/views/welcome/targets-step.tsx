@@ -26,13 +26,28 @@ const TAGS = [
 ] as const
 
 export function TargetsStep({ targets, onChange, onSkip, onContinue }: TargetsStepProps) {
+  const count = targets.target_titles.length
+  const label = count > 0 ? `Continue with ${count} role${count > 1 ? 's' : ''}` : 'Continue'
   return (
-    <div className={cn('flex flex-col gap-10', stepMotion)}>
-      <StepIntro title="What are you looking for?">
-        Job Duck only suggests postings that match these. Press Enter after each one.
+    <div className={cn('flex flex-col items-center gap-6', stepMotion)}>
+      <StepIntro className="space-y-2" title="What are you looking for?">
+        Job Duck only suggests postings that match these. Press Enter after each one.{' '}
+        {count > 0 && (
+          <>
+            <span className="font-medium text-foreground">{count}</span> selected
+            {' · '}
+            <button
+              type="button"
+              onClick={() => onChange({ ...targets, target_titles: [] })}
+              className="text-muted-foreground underline hover:text-foreground"
+            >
+              clear
+            </button>
+          </>
+        )}
       </StepIntro>
 
-      <div className="space-y-5">
+      <div className="w-full space-y-5">
         {TAGS.map(([key, label, placeholder, suggest]) => (
           <div key={key} className="space-y-1.5">
             <Label htmlFor={`wizard-${key}`}>{label}</Label>
@@ -58,7 +73,11 @@ export function TargetsStep({ targets, onChange, onSkip, onContinue }: TargetsSt
         </div>
       </div>
 
-      <StepActions onSkip={onSkip} onContinue={onContinue} />
+      <p className="text-xs text-muted-foreground" aria-live="polite">
+        {count > 0 ? `${count} role${count > 1 ? 's' : ''} selected · remove a title to deselect it` : 'Add a target title to choose roles'}
+      </p>
+
+      <StepActions label={label} onSkip={onSkip} onContinue={onContinue} />
     </div>
   )
 }
