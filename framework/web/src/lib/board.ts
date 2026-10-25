@@ -28,6 +28,30 @@ export function stageOf(status: string, terminal: readonly string[]): StageKey {
   return stageColumns(terminal).find((column) => column.statuses.includes(status))?.key ?? 'pre_interview'
 }
 
+export const STAGE_ORDER: readonly StageKey[] = ['pre_interview', 'interviewing', 'offer', 'closed']
+
+const PRIMARY_STATUS: Record<StageKey, string> = {
+  pre_interview: 'applied',
+  interviewing: 'interviewing',
+  offer: 'offered',
+  closed: 'deny_by_employer',
+}
+
+export const isStageKey = (value: unknown): value is StageKey => STAGE_ORDER.includes(value as StageKey)
+
+export interface StageMove {
+  to: StageKey
+  target: string
+  confirm: 'back' | 'close' | null
+}
+
+export function stageMove(status: string, to: StageKey, terminal: readonly string[]): StageMove | null {
+  const from = stageOf(status, terminal)
+  if (from === to) return null
+  const backward = STAGE_ORDER.indexOf(to) < STAGE_ORDER.indexOf(from)
+  return { to, target: PRIMARY_STATUS[to], confirm: backward ? 'back' : to === 'closed' ? 'close' : null }
+}
+
 const HIDDEN_HINT = 'It moves to Closed on the board; List hides it until you click Show hidden.'
 
 const MARK_APPLIED: StatusAction = {
