@@ -27,4 +27,3 @@ export function profileEmpty(view: ProfileView): boolean {
   const front = view.front_matter
   return !front.name && !front.email && view.sections.every((section) => !section.content.trim())
 }
-

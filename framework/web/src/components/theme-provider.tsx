@@ -26,9 +26,7 @@ export function readStoredTheme(): Theme {
 function storeTheme(theme: Theme) {
   try {
     window.localStorage.setItem(STORAGE_KEY, theme)
-  } catch {
-    // Storage can be unavailable (private mode, disabled); the choice then lasts for this page only.
-  }
+  } catch {}
 }
 
 export function applyThemeClass(theme: Theme) {

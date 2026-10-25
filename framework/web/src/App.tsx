@@ -7,17 +7,17 @@ import { useFlash } from '@/hooks/use-flash'
 import { useHashRoute } from '@/hooks/use-hash-route'
 import { errorMessage, fetchJSON } from '@/lib/api'
 import { PROFILE_DOC, SETTINGS_DOC } from '@/lib/docs'
-import { landingView } from '@/lib/routing'
+import { hashFor, landingRoute } from '@/lib/routing'
 import type { PermissionsView, ProfileView as ProfileDoc, Statuses } from '@/lib/types'
 import { ApplicationsView } from '@/views/applications/applications-view'
-import { FactsView } from '@/views/facts/facts-view'
 import { ProfileView } from '@/views/profile/profile-view'
 import { SettingsView } from '@/views/settings/settings-view'
 import { WelcomeView } from '@/views/welcome/welcome-view'
 
 export function App() {
   const flash = useFlash()
-  const { view, replace } = useHashRoute()
+  const { route, replace } = useHashRoute()
+  const { view } = route
   const profile = useDocForm<ProfileDoc>(PROFILE_DOC)
   const settings = useDocForm<PermissionsView>(SETTINGS_DOC)
   const [statuses, setStatuses] = useState<Statuses | null>(null)
@@ -35,8 +35,8 @@ export function App() {
     started.current = true
     fetchJSON<Statuses>('/api/statuses').then(setStatuses, (error) => flash(errorMessage(error), true))
     void profile.load().then((loaded) => {
-      const next = landingView(window.location.hash, loaded)
-      if (window.location.hash !== `#${next}`) replace(next)
+      const next = landingRoute(window.location.hash, loaded)
+      if (window.location.hash !== hashFor(next)) replace(next)
       setRouted(true)
     })
   }, [flash, profile, replace])
@@ -78,10 +78,7 @@ export function App() {
           <ApplicationsView active={view === 'applications'} statuses={statuses.statuses} terminal={statuses.terminal} />
         </div>
         <div hidden={view !== 'profile'}>
-          <ProfileView form={profile} active={view === 'profile'} />
-        </div>
-        <div hidden={view !== 'facts'}>
-          <FactsView active={view === 'facts'} />
+          <ProfileView form={profile} active={view === 'profile'} section={route.section} />
         </div>
         <div hidden={view !== 'settings'}>
           <SettingsView form={settings} active={view === 'settings'} />

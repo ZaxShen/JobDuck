@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { BriefcaseIcon, ListChecksIcon, type LucideIcon } from 'lucide-react'
+import { BriefcaseIcon, type LucideIcon } from 'lucide-react'
 import { NavUser } from '@/components/layout/nav-user'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -24,12 +24,10 @@ import type { ProfileView } from '@/lib/types'
 
 const NAV: { view: View; label: string; icon: LucideIcon }[] = [
   { view: 'applications', label: 'Applications', icon: BriefcaseIcon },
-  { view: 'facts', label: 'Experience facts', icon: ListChecksIcon },
 ]
 
 const TITLES: Record<View, string> = {
   applications: 'Applications',
-  facts: 'Experience facts',
   profile: 'Profile',
   settings: 'Settings',
   welcome: 'Setup',
