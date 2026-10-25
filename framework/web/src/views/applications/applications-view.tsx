@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useState } from 'react'
-import { InboxIcon, SearchIcon } from 'lucide-react'
+import { type ReactNode, useCallback, useEffect, useState } from 'react'
+import { EyeIcon, EyeOffIcon, InboxIcon, KanbanIcon, ListIcon, SearchIcon } from 'lucide-react'
 import { SectionCard } from '@/components/composed/section-card'
-import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useFlash } from '@/hooks/use-flash'
 import { useVisiblePoll } from '@/hooks/use-visible-poll'
-import { applicationsPath, errorMessage, fetchJSON } from '@/lib/api'
-import { day, statusLabel } from '@/lib/format'
+import { applicationsPath, errorMessage, fetchJSON, isConflict, patchJSON } from '@/lib/api'
+import type { StatusAction } from '@/lib/board'
+import { statusLabel } from '@/lib/format'
 import type { ApplicationRow, Outcome, Summary } from '@/lib/types'
-import { cn } from '@/lib/utils'
+import { ApplicationBoard } from '@/views/applications/application-board'
+import { ApplicationList } from '@/views/applications/application-list'
 import { ApplicationSheet } from '@/views/applications/application-sheet'
 import { OutcomeItem } from '@/views/applications/outcome-item'
 
@@ -20,16 +22,50 @@ interface ApplicationsViewProps {
   terminal: string[]
 }
 
+type ViewMode = 'board' | 'list'
+
+const VIEW_MODE_KEY = 'applications-view-mode'
+
+function readViewMode(): ViewMode {
+  try {
+    return localStorage.getItem(VIEW_MODE_KEY) === 'list' ? 'list' : 'board'
+  } catch {
+    return 'board'
+  }
+}
+
+function saveViewMode(mode: ViewMode): void {
+  try {
+    localStorage.setItem(VIEW_MODE_KEY, mode)
+  } catch {
+    return
+  }
+}
+
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
+
+function EmptyState({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex flex-col items-center gap-2 px-6 py-12 text-center text-sm text-muted-foreground">
+      <InboxIcon className="size-5" aria-hidden />
+      {children}
+    </div>
+  )
+}
+
 export function ApplicationsView({ active, statuses, terminal }: ApplicationsViewProps) {
   const flash = useFlash()
+  const [view, setView] = useState<ViewMode>(readViewMode)
   const [filter, setFilter] = useState('')
   const [search, setSearch] = useState('')
   const [q, setQ] = useState('')
+  const [showHidden, setShowHidden] = useState(false)
   const [rows, setRows] = useState<ApplicationRow[]>([])
   const [loaded, setLoaded] = useState(false)
   const [summary, setSummary] = useState<Summary | null>(null)
   const [outcomes, setOutcomes] = useState<Outcome[]>([])
   const [selected, setSelected] = useState<number | null>(null)
+  const [busyId, setBusyId] = useState<number | null>(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -63,44 +99,117 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
   }, [active])
 
   const close = useCallback(() => setSelected(null), [])
+
+  const chooseView = (value: string[]) => {
+    const next = value[0]
+    if (next !== 'board' && next !== 'list') return
+    setView(next)
+    saveViewMode(next)
+  }
+
+  const runAction = async (row: ApplicationRow, action: StatusAction) => {
+    setBusyId(row.id)
+    try {
+      await patchJSON(`/api/applications/${row.id}`, { status: action.target, expected_updated_at: row.updated_at })
+      flash(`${action.label}: ${row.company}`)
+    } catch (error) {
+      flash(errorMessage(error), true)
+      if (!isConflict(error)) return
+    } finally {
+      setBusyId(null)
+    }
+    await refresh()
+  }
+
   const total = summary ? Object.values(summary.counts).reduce((a, b) => a + b, 0) : 0
-  const chips: [string, string, number][] = [
-    ['', 'All', total],
-    ...statuses.map((status): [string, string, number] => [status, statusLabel(status), summary?.counts[status] ?? 0]),
+  const items = [
+    { value: '', label: `All statuses (${total})` },
+    ...statuses.map((status) => ({ value: status, label: `${sentence(statusLabel(status))} (${summary?.counts[status] ?? 0})` })),
   ]
 
+  const closedFilter = terminal.includes(filter)
+  const activeRows = rows.filter((row) => !terminal.includes(row.status))
+  const hiddenCount = rows.length - activeRows.length
+  const listRows = showHidden || closedFilter ? rows : activeRows
+
+  const content = () => {
+    if (!loaded) return null
+    if (rows.length === 0) {
+      return (
+        <EmptyState>
+          {filter || q ? 'No applications match the current filters.' : 'No applications yet. Ask your agent to save or apply to a posting.'}
+        </EmptyState>
+      )
+    }
+    if (view === 'board') {
+      return <ApplicationBoard rows={rows} terminal={terminal} busyId={busyId} onOpen={setSelected} onAction={runAction} />
+    }
+    return (
+      <div className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
+        {listRows.length > 0
+          ? <ApplicationList rows={listRows} selected={selected} onOpen={setSelected} />
+          : <EmptyState>No active applications. Click Show hidden to see closed ones.</EmptyState>}
+      </div>
+    )
+  }
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="flex flex-col gap-6 animate-in fade-in duration-500">
       <p className="text-sm text-muted-foreground">Everything your agent saved, applied to or is waiting on you for, newest first.</p>
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <nav aria-label="Filter by status" className="flex flex-wrap gap-1.5">
-          {chips.map(([value, text, n]) => (
-            <Button
-              key={value || 'all'}
-              type="button"
-              size="sm"
-              variant={filter === value ? 'default' : 'outline'}
-              aria-pressed={filter === value}
-              className="capitalize"
-              onClick={() => setFilter(value)}
-            >
-              {text}
-              <span className={cn('tabular-nums', filter === value ? 'opacity-80' : 'text-muted-foreground')}>{n}</span>
-            </Button>
-          ))}
-        </nav>
-        <div className="relative lg:w-72">
-          <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="flex flex-wrap items-center gap-3">
+        <Select items={items} value={filter} onValueChange={(value: string | null) => setFilter(value ?? '')}>
+          <SelectTrigger aria-label="Status">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {items.map((item) => (
+              <SelectItem key={item.value || 'all'} value={item.value}>{item.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="relative w-full sm:w-72">
+          <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
           <Input
             type="search"
             className="pl-8"
-            placeholder="Search company, title, location"
+            placeholder="Search company, title, location…"
             aria-label="Search applications"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
+        {view === 'list' && loaded && !closedFilter && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="rounded-full text-muted-foreground"
+            aria-pressed={showHidden}
+            onClick={() => setShowHidden((current) => !current)}
+          >
+            {showHidden ? <EyeOffIcon data-icon="inline-start" aria-hidden /> : <EyeIcon data-icon="inline-start" aria-hidden />}
+            Showing {activeRows.length} active · {hiddenCount} hidden (closed) — {showHidden ? 'Hide' : 'Show hidden'}
+          </Button>
+        )}
+        <ToggleGroup
+          variant="outline"
+          size="sm"
+          spacing={0}
+          value={[view]}
+          onValueChange={chooseView}
+          aria-label="View"
+          className="sm:ml-auto"
+        >
+          <ToggleGroupItem value="board" aria-label="Board view">
+            <KanbanIcon data-icon="inline-start" aria-hidden />
+            Board
+          </ToggleGroupItem>
+          <ToggleGroupItem value="list" aria-label="List view">
+            <ListIcon data-icon="inline-start" aria-hidden />
+            List
+          </ToggleGroupItem>
+        </ToggleGroup>
       </div>
 
       {outcomes.length > 0 && (
@@ -114,52 +223,7 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
         </SectionCard>
       )}
 
-      <div className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Company</TableHead>
-              <TableHead>Title</TableHead>
-              <TableHead className="hidden md:table-cell">Location</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="hidden sm:table-cell">Applied</TableHead>
-              <TableHead className="hidden lg:table-cell">Updated</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow
-                key={row.id}
-                data-state={row.id === selected ? 'selected' : undefined}
-                className="cursor-pointer"
-                tabIndex={0}
-                onClick={() => setSelected(row.id)}
-                onKeyDown={(event) => { if (event.key === 'Enter') setSelected(row.id) }}
-              >
-                <TableCell className="max-w-40 truncate font-medium">{row.company}</TableCell>
-                <TableCell className="max-w-56">
-                  <div className="truncate">{row.title}</div>
-                  {row.pending_reason && (
-                    <div className="truncate text-xs text-amber-700 dark:text-amber-400" title={row.pending_reason}>
-                      {row.pending_reason}
-                    </div>
-                  )}
-                </TableCell>
-                <TableCell className="hidden max-w-48 truncate text-muted-foreground md:table-cell">{row.location ?? ''}</TableCell>
-                <TableCell><StatusBadge status={row.status} /></TableCell>
-                <TableCell className="hidden text-muted-foreground sm:table-cell">{day(row.applied_at)}</TableCell>
-                <TableCell className="hidden text-muted-foreground lg:table-cell">{day(row.updated_at)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {loaded && rows.length === 0 && (
-          <div className="flex flex-col items-center gap-2 px-6 py-12 text-center text-sm text-muted-foreground">
-            <InboxIcon className="size-5" />
-            No applications yet. Ask your agent to save or apply to a posting.
-          </div>
-        )}
-      </div>
+      {content()}
 
       <ApplicationSheet id={selected} statuses={statuses} terminal={terminal} onClose={close} onChanged={refresh} />
     </div>
