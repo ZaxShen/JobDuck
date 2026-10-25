@@ -88,7 +88,7 @@ function SectionNav({ groups, active, proposed }: NavProps) {
 
 function SectionPills({ groups, active, proposed }: NavProps) {
   return (
-    <nav aria-label="Profile sections" className="overflow-x-auto lg:hidden">
+    <nav aria-label="Profile sections" className="relative overflow-x-auto lg:hidden">
       <div className="flex min-w-max items-center gap-1 pb-2">
         {groups.map((group, index) => (
           <Fragment key={group.label}>
