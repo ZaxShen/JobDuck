@@ -84,6 +84,33 @@ test('GET / serves the page with security headers', async () => {
   expect((await fetch(`${dash.url}/missing`)).status).toBe(404)
 })
 
+test('the brand icons and manifest are served and linked from the page', async () => {
+  const html = await (await fetch(`${dash.url}/`)).text()
+  expect(html).toContain('<link rel="icon" href="/favicon.ico"')
+  expect(html).toContain('<link rel="icon" href="/favicon.svg" type="image/svg+xml"')
+  expect(html).toContain('<link rel="apple-touch-icon" href="/apple-touch-icon.png"')
+  expect(html).toContain('<link rel="manifest" href="/site.webmanifest"')
+  expect(html).toContain('<meta name="theme-color" content="#C98F00"')
+  const brand: Record<string, string> = {
+    '/favicon.ico': 'image/x-icon',
+    '/favicon.svg': 'image/svg+xml',
+    '/logo.svg': 'image/svg+xml',
+    '/apple-touch-icon.png': 'image/png',
+    '/icon-192.png': 'image/png',
+    '/icon-512.png': 'image/png',
+    '/site.webmanifest': 'application/manifest+json',
+  }
+  for (const [path, type] of Object.entries(brand)) {
+    const res = await fetch(`${dash.url}${path}`)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe(type)
+    expect((await res.arrayBuffer()).byteLength).toBeGreaterThan(0)
+  }
+  const png = new Uint8Array(await (await fetch(`${dash.url}/icon-192.png`)).arrayBuffer())
+  expect([...png.slice(1, 4)].map((byte) => String.fromCharCode(byte)).join('')).toBe('PNG')
+  expect(((await (await fetch(`${dash.url}/site.webmanifest`)).json()) as { icons: unknown[] }).icons).toHaveLength(2)
+})
+
 test('requests with a foreign Host header are refused', async () => {
   const res = await fetch(`${dash.url}/api/summary`, { headers: { Host: `evil.example:${dash.port}` } })
   expect(res.status).toBe(403)

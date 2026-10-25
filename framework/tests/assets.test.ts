@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { DASHBOARD, DASHBOARD_FONTS, MIGRATIONS, SKILLS, TEMPLATES } from '../src/assets'
+import { DASHBOARD, DASHBOARD_FILES, MIGRATIONS, SKILLS, TEMPLATES } from '../src/assets'
 
 const root = join(import.meta.dir, '..')
 const filesIn = (dir: string) => readdirSync(join(root, dir)).sort()
@@ -27,12 +27,13 @@ test('every migration on disk is embedded byte-identical and in order', () => {
 
 test('every dashboard file on disk is embedded byte-identical', () => {
   const names = filesIn('src/dashboard/public')
-  const text = names.filter((file) => !file.endsWith('.woff2'))
-  const fonts = names.filter((file) => file.endsWith('.woff2'))
+  const isBinary = (file: string) => /\.(woff2|ico|png)$/.test(file)
+  const text = names.filter((file) => !isBinary(file))
+  const binary = names.filter(isBinary)
   expect(Object.keys(DASHBOARD).sort()).toEqual(text)
   for (const file of text) expect(DASHBOARD[file]).toBe(read('src/dashboard/public', file))
-  expect(Object.keys(DASHBOARD_FONTS).sort()).toEqual(fonts)
-  for (const file of fonts) {
-    expect(readFileSync(DASHBOARD_FONTS[file]!).equals(readFileSync(join(root, 'src/dashboard/public', file)))).toBe(true)
+  expect(Object.keys(DASHBOARD_FILES).sort()).toEqual(binary)
+  for (const file of binary) {
+    expect(readFileSync(DASHBOARD_FILES[file]!).equals(readFileSync(join(root, 'src/dashboard/public', file)))).toBe(true)
   }
 })

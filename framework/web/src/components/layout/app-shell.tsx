@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { BirdIcon, BriefcaseIcon, ListChecksIcon, SettingsIcon, SparklesIcon, UserIcon, type LucideIcon } from 'lucide-react'
+import { BriefcaseIcon, ListChecksIcon, SettingsIcon, SparklesIcon, UserIcon, type LucideIcon } from 'lucide-react'
 import type { View } from '@/hooks/use-hash-route'
 import { cn } from '@/lib/utils'
 
@@ -14,9 +14,7 @@ const NAV: { view: View; label: string; icon: LucideIcon }[] = [
 function Brand() {
   return (
     <div className="flex items-center gap-2 px-2 text-sm font-semibold tracking-tight text-foreground">
-      <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-        <BirdIcon className="size-4" />
-      </span>
+      <img src="/logo.svg" alt="" className="size-8" />
       Job Duck
     </div>
   )

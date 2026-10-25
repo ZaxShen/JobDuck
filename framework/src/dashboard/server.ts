@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { type IncomingMessage, type ServerResponse, createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { DASHBOARD, DASHBOARD_FONTS } from '../assets'
+import { DASHBOARD, DASHBOARD_FILES } from '../assets'
 import { openDb } from '../db/client'
 import { migrate } from '../db/migrate'
 import { dbPath, ensureHome, jobduckHome } from '../paths'
@@ -41,17 +41,28 @@ const SECURITY_HEADERS = {
   'Cache-Control': 'no-store',
 }
 
+const CONTENT_TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.webmanifest': 'application/manifest+json',
+  '.woff2': 'font/woff2',
+  '.ico': 'image/x-icon',
+  '.png': 'image/png',
+}
+
+const contentType = (file: string) => CONTENT_TYPES[file.slice(file.lastIndexOf('.'))]!
+
 const ASSETS: Record<string, { file: string; type: string }> = {
-  '/': { file: 'index.html', type: 'text/html; charset=utf-8' },
-  '/index.html': { file: 'index.html', type: 'text/html; charset=utf-8' },
-  '/app.js': { file: 'app.js', type: 'text/javascript; charset=utf-8' },
-  '/style.css': { file: 'style.css', type: 'text/css; charset=utf-8' },
-  ...Object.fromEntries(Object.keys(DASHBOARD_FONTS).map((name) => [`/${name}`, { file: name, type: 'font/woff2' }])),
+  '/': { file: 'index.html', type: contentType('index.html') },
+  ...Object.fromEntries([...Object.keys(DASHBOARD), ...Object.keys(DASHBOARD_FILES)]
+    .map((name) => [`/${name}`, { file: name, type: contentType(name) }])),
 }
 
 const assetBody = async (file: string): Promise<string | Buffer> => {
-  const font = DASHBOARD_FONTS[file]
-  return font ? Buffer.from(await Bun.file(font).arrayBuffer()) : DASHBOARD[file]!
+  const binary = DASHBOARD_FILES[file]
+  return binary ? Buffer.from(await Bun.file(binary).arrayBuffer()) : DASHBOARD[file]!
 }
 
 const MUTATIONS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
