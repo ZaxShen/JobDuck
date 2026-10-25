@@ -3,7 +3,7 @@ import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node
 import {
   DASHBOARD_HOST, DASHBOARD_VIEWS, DEFAULT_PORT, type Dashboard, type DashboardView, openBrowser, pageUrl, startDashboard,
 } from '../dashboard/server'
-import { dashboardStatePath, jobduckHome, resolveWorkspace } from '../paths'
+import { NoHomeError, dashboardStatePath, discoverHome, jobduckHome, resolveWorkspace } from '../paths'
 
 export interface DashboardRecord {
   pid: number
@@ -175,7 +175,11 @@ export async function runDashboard(options: DashboardCommandOptions = {}): Promi
   }
   const view = options.view as DashboardView | undefined
   const workspace = resolveWorkspace(options.workspace ?? process.cwd())
-  const home = options.home ?? jobduckHome(workspace)
+  const home = options.home ?? discoverHome(workspace)
+  if (home === undefined) {
+    err(new NoHomeError(workspace).message)
+    return 1
+  }
 
   if (options.background) {
     try {
