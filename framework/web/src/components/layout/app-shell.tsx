@@ -1,7 +1,23 @@
 import type { ReactNode } from 'react'
 import { BriefcaseIcon, ListChecksIcon, SettingsIcon, SparklesIcon, UserIcon, type LucideIcon } from 'lucide-react'
+import { ThemeSwitch } from '@/components/theme-switch'
+import { Separator } from '@/components/ui/separator'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+  useSidebar,
+} from '@/components/ui/sidebar'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import type { View } from '@/hooks/use-hash-route'
-import { cn } from '@/lib/utils'
 
 const NAV: { view: View; label: string; icon: LucideIcon }[] = [
   { view: 'applications', label: 'Applications', icon: BriefcaseIcon },
@@ -13,52 +29,68 @@ const NAV: { view: View; label: string; icon: LucideIcon }[] = [
 
 function Brand() {
   return (
-    <div className="flex items-center gap-2 px-2 text-sm font-semibold tracking-tight text-foreground">
-      <img src="/logo.svg" alt="" className="size-8" />
-      Job Duck
-    </div>
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton size="lg" render={<div />} className="pointer-events-none">
+          <img src="/logo.svg" alt="" width={32} height={32} className="aspect-square size-8 shrink-0" />
+          <span translate="no" className="truncate text-sm font-semibold tracking-tight">Job Duck</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
   )
 }
 
-function NavLinks({ view, compact }: { view: View; compact?: boolean }) {
+function NavLinks({ view }: { view: View }) {
+  const { setOpenMobile } = useSidebar()
   return (
-    <nav aria-label="Sections" className={cn('flex gap-1', compact ? 'flex-row' : 'flex-col')}>
-      {NAV.map((item) => {
-        const active = item.view === view
-        return (
-          <a
-            key={item.view}
-            href={`#${item.view}`}
-            aria-current={active ? 'page' : undefined}
-            className={cn(
-              'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
-              compact && 'flex-1 justify-center px-1.5 text-xs',
-              active
-                ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
-                : 'text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground',
-            )}
-          >
-            <item.icon className="size-4 shrink-0" />
-            <span className={cn(compact && 'max-[379px]:sr-only')}>{item.label}</span>
-          </a>
-        )
-      })}
-    </nav>
+    <SidebarGroup>
+      <nav aria-label="Sections">
+        <SidebarMenu>
+          {NAV.map((item) => {
+            const active = item.view === view
+            return (
+              <SidebarMenuItem key={item.view}>
+                <SidebarMenuButton
+                  render={<a href={`#${item.view}`} aria-current={active ? 'page' : undefined} onClick={() => setOpenMobile(false)} />}
+                  isActive={active}
+                  tooltip={item.label}
+                >
+                  <item.icon aria-hidden="true" />
+                  <span>{item.label}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )
+          })}
+        </SidebarMenu>
+      </nav>
+    </SidebarGroup>
   )
 }
 
 export function AppShell({ view, children }: { view: View; children: ReactNode }) {
+  const title = NAV.find((item) => item.view === view)?.label
   return (
-    <div className="flex min-h-svh flex-col bg-background md:flex-row">
-      <aside className="hidden w-56 shrink-0 flex-col gap-6 border-r border-sidebar-border bg-sidebar p-3 md:flex">
-        <div className="pt-1"><Brand /></div>
-        <NavLinks view={view} />
-      </aside>
-      <header className="sticky top-0 z-40 space-y-2 border-b border-sidebar-border bg-sidebar/95 p-2 backdrop-blur md:hidden">
-        <Brand />
-        <NavLinks view={view} compact />
-      </header>
-      <main className="min-w-0 flex-1">{children}</main>
-    </div>
+    <TooltipProvider>
+      <SidebarProvider>
+        <Sidebar collapsible="icon">
+          <SidebarHeader>
+            <Brand />
+          </SidebarHeader>
+          <SidebarContent>
+            <NavLinks view={view} />
+          </SidebarContent>
+          <SidebarRail />
+        </Sidebar>
+        <SidebarInset className="min-w-0">
+          <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur">
+            <SidebarTrigger />
+            <Separator orientation="vertical" className="data-vertical:h-5 data-vertical:self-center" />
+            <p className="min-w-0 flex-1 truncate text-sm font-medium">{title}</p>
+            <ThemeSwitch />
+          </header>
+          {children}
+        </SidebarInset>
+      </SidebarProvider>
+    </TooltipProvider>
   )
 }
