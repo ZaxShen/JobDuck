@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react'
-import { BriefcaseIcon, ListChecksIcon, SettingsIcon, SparklesIcon, UserIcon, type LucideIcon } from 'lucide-react'
-import { ThemeSwitch } from '@/components/theme-switch'
+import { BriefcaseIcon, ListChecksIcon, type LucideIcon } from 'lucide-react'
+import { NavUser } from '@/components/layout/nav-user'
 import { Separator } from '@/components/ui/separator'
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarHeader,
   SidebarInset,
@@ -13,19 +14,26 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarRail,
+  SidebarSeparator,
   SidebarTrigger,
   useSidebar,
 } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { View } from '@/hooks/use-hash-route'
+import type { ProfileView } from '@/lib/types'
 
 const NAV: { view: View; label: string; icon: LucideIcon }[] = [
   { view: 'applications', label: 'Applications', icon: BriefcaseIcon },
-  { view: 'profile', label: 'Profile', icon: UserIcon },
   { view: 'facts', label: 'Experience facts', icon: ListChecksIcon },
-  { view: 'settings', label: 'Settings', icon: SettingsIcon },
-  { view: 'welcome', label: 'Setup', icon: SparklesIcon },
 ]
+
+const TITLES: Record<View, string> = {
+  applications: 'Applications',
+  facts: 'Experience facts',
+  profile: 'Profile',
+  settings: 'Settings',
+  welcome: 'Setup',
+}
 
 function Brand() {
   return (
@@ -33,7 +41,10 @@ function Brand() {
       <SidebarMenuItem>
         <SidebarMenuButton size="lg" render={<div />} className="pointer-events-none">
           <img src="/logo.svg" alt="" width={32} height={32} className="aspect-square size-8 shrink-0" />
-          <span translate="no" className="truncate text-sm font-semibold tracking-tight">Job Duck</span>
+          <div className="grid flex-1 text-start text-sm leading-tight">
+            <span translate="no" className="truncate font-semibold">Job Duck</span>
+            <span className="truncate text-xs text-muted-foreground">Career Intelligence</span>
+          </div>
         </SidebarMenuButton>
       </SidebarMenuItem>
     </SidebarMenu>
@@ -67,8 +78,7 @@ function NavLinks({ view }: { view: View }) {
   )
 }
 
-export function AppShell({ view, children }: { view: View; children: ReactNode }) {
-  const title = NAV.find((item) => item.view === view)?.label
+export function AppShell({ view, profile, children }: { view: View; profile: ProfileView | null; children: ReactNode }) {
   return (
     <TooltipProvider>
       <SidebarProvider>
@@ -79,14 +89,17 @@ export function AppShell({ view, children }: { view: View; children: ReactNode }
           <SidebarContent>
             <NavLinks view={view} />
           </SidebarContent>
+          <SidebarFooter>
+            <SidebarSeparator />
+            <NavUser profile={profile} />
+          </SidebarFooter>
           <SidebarRail />
         </Sidebar>
-        <SidebarInset className="min-w-0">
+        <SidebarInset className="@container/content min-w-0">
           <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur">
             <SidebarTrigger />
             <Separator orientation="vertical" className="data-vertical:h-5 data-vertical:self-center" />
-            <p className="min-w-0 flex-1 truncate text-sm font-medium">{title}</p>
-            <ThemeSwitch />
+            <h1 className="min-w-0 flex-1 truncate text-sm font-medium">{TITLES[view]}</h1>
           </header>
           {children}
         </SidebarInset>

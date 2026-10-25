@@ -28,7 +28,3 @@ export function profileEmpty(view: ProfileView): boolean {
   return !front.name && !front.email && view.sections.every((section) => !section.content.trim())
 }
 
-export function needsWelcome(view: ProfileView): boolean {
-  const titles = view.front_matter.target_titles
-  return !view.front_matter.name && (!Array.isArray(titles) || titles.length === 0)
-}

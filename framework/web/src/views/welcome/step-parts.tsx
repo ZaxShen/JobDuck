@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 export function StepIntro({ title, children }: { title: ReactNode; children: ReactNode }) {
   return (
     <div className="space-y-3 text-center">
-      <h1 className="text-3xl leading-tight font-semibold tracking-tight">{title}</h1>
+      <h2 className="text-3xl leading-tight font-semibold tracking-tight">{title}</h2>
       <p className="text-base text-muted-foreground">{children}</p>
     </div>
   )

@@ -88,11 +88,8 @@ export function ProfileView({ form, active }: { form: DocForm<ProfileDoc>; activ
   }, [active, loaded, load])
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-4 sm:p-6 animate-in fade-in duration-500">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
-        <p className="text-sm text-muted-foreground">Who you are and what you want. Every skill reads this first.</p>
-      </div>
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <p className="text-sm text-muted-foreground">Who you are and what you want. Every skill reads this first.</p>
       {view && draft && (
         <div key={version} className="space-y-6">
           {profileEmpty(view) && <Intake />}

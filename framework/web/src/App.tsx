@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppShell } from '@/components/layout/app-shell'
+import { Main } from '@/components/layout/main'
 import { SaveBar } from '@/components/save-bar'
 import { useDocForm } from '@/hooks/use-doc-form'
 import { useFlash } from '@/hooks/use-flash'
 import { useHashRoute } from '@/hooks/use-hash-route'
 import { errorMessage, fetchJSON } from '@/lib/api'
-import { needsWelcome, PROFILE_DOC, SETTINGS_DOC } from '@/lib/docs'
+import { PROFILE_DOC, SETTINGS_DOC } from '@/lib/docs'
+import { landingView } from '@/lib/routing'
 import type { PermissionsView, ProfileView as ProfileDoc, Statuses } from '@/lib/types'
 import { ApplicationsView } from '@/views/applications/applications-view'
 import { FactsView } from '@/views/facts/facts-view'
@@ -19,8 +21,11 @@ export function App() {
   const profile = useDocForm<ProfileDoc>(PROFILE_DOC)
   const settings = useDocForm<PermissionsView>(SETTINGS_DOC)
   const [statuses, setStatuses] = useState<Statuses | null>(null)
-  const [routed, setRouted] = useState(() => Boolean(window.location.hash))
+  const [routed, setRouted] = useState(false)
   const started = useRef(false)
+
+  const { load: loadProfile } = profile
+  const reloadProfile = useCallback(() => void loadProfile(), [loadProfile])
 
   const form = view === 'profile' ? profile : view === 'settings' ? settings : null
   const anyDirty = profile.dirty || settings.dirty
@@ -29,9 +34,9 @@ export function App() {
     if (started.current) return
     started.current = true
     fetchJSON<Statuses>('/api/statuses').then(setStatuses, (error) => flash(errorMessage(error), true))
-    if (window.location.hash) return
     void profile.load().then((loaded) => {
-      if (loaded && needsWelcome(loaded)) replace('welcome')
+      const next = landingView(window.location.hash, loaded)
+      if (window.location.hash !== `#${next}`) replace(next)
       setRouted(true)
     })
   }, [flash, profile, replace])
@@ -64,24 +69,26 @@ export function App() {
     }
   }, [view])
 
-  if (!statuses || !routed) return <AppShell view={view}>{null}</AppShell>
+  if (!statuses || !routed) return <AppShell view={view} profile={profile.view}>{null}</AppShell>
 
   return (
-    <AppShell view={view}>
-      <div hidden={view !== 'applications'}>
-        <ApplicationsView active={view === 'applications'} statuses={statuses.statuses} terminal={statuses.terminal} />
-      </div>
-      <div hidden={view !== 'profile'}>
-        <ProfileView form={profile} active={view === 'profile'} />
-      </div>
-      <div hidden={view !== 'facts'}>
-        <FactsView active={view === 'facts'} />
-      </div>
-      <div hidden={view !== 'settings'}>
-        <SettingsView form={settings} active={view === 'settings'} />
-      </div>
+    <AppShell view={view} profile={profile.view}>
+      <Main hidden={view === 'welcome'}>
+        <div hidden={view !== 'applications'}>
+          <ApplicationsView active={view === 'applications'} statuses={statuses.statuses} terminal={statuses.terminal} />
+        </div>
+        <div hidden={view !== 'profile'}>
+          <ProfileView form={profile} active={view === 'profile'} />
+        </div>
+        <div hidden={view !== 'facts'}>
+          <FactsView active={view === 'facts'} />
+        </div>
+        <div hidden={view !== 'settings'}>
+          <SettingsView form={settings} active={view === 'settings'} />
+        </div>
+      </Main>
       <div hidden={view !== 'welcome'}>
-        <WelcomeView active={view === 'welcome'} onProfileSaved={profile.invalidate} onSettingsSaved={settings.invalidate} />
+        <WelcomeView active={view === 'welcome'} onProfileSaved={reloadProfile} onSettingsSaved={settings.invalidate} />
       </div>
       {form?.dirty && (
         <div className="sticky bottom-0 z-30 px-4 pb-4">
