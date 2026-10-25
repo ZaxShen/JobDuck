@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppShell } from '@/components/layout/app-shell'
 import { Main } from '@/components/layout/main'
 import { SaveBar } from '@/components/save-bar'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useDocForm } from '@/hooks/use-doc-form'
 import { useFlash } from '@/hooks/use-flash'
 import { useHashRoute } from '@/hooks/use-hash-route'
@@ -69,29 +70,39 @@ export function App() {
     }
   }, [view])
 
-  if (!statuses || !routed) return <AppShell view={view} profile={profile.view}>{null}</AppShell>
+  if (!statuses || !routed) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Skeleton className="h-8 w-48" />
+      </div>
+    )
+  }
 
   return (
-    <AppShell view={view} profile={profile.view}>
-      <Main hidden={view === 'welcome'}>
-        <div hidden={view !== 'applications'}>
-          <ApplicationsView active={view === 'applications'} statuses={statuses.statuses} terminal={statuses.terminal} />
-        </div>
-        <div hidden={view !== 'profile'}>
-          <ProfileView form={profile} active={view === 'profile'} section={route.section} />
-        </div>
-        <div hidden={view !== 'settings'}>
-          <SettingsView form={settings} active={view === 'settings'} />
-        </div>
-      </Main>
+    <>
+      <div hidden={view === 'welcome'}>
+        <AppShell view={view} profile={profile.view}>
+          <Main>
+            <div hidden={view !== 'applications'}>
+              <ApplicationsView active={view === 'applications'} statuses={statuses.statuses} terminal={statuses.terminal} />
+            </div>
+            <div hidden={view !== 'profile'}>
+              <ProfileView form={profile} active={view === 'profile'} section={route.section} />
+            </div>
+            <div hidden={view !== 'settings'}>
+              <SettingsView form={settings} active={view === 'settings'} />
+            </div>
+          </Main>
+          {form?.dirty && (
+            <div className="sticky bottom-0 z-30 px-4 pb-4">
+              <SaveBar onSave={() => void form.save()} onDiscard={() => void form.load()} />
+            </div>
+          )}
+        </AppShell>
+      </div>
       <div hidden={view !== 'welcome'}>
         <WelcomeView active={view === 'welcome'} onProfileSaved={reloadProfile} onSettingsSaved={settings.invalidate} />
       </div>
-      {form?.dirty && (
-        <div className="sticky bottom-0 z-30 px-4 pb-4">
-          <SaveBar onSave={() => void form.save()} onDiscard={() => void form.load()} />
-        </div>
-      )}
-    </AppShell>
+    </>
   )
 }

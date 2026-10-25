@@ -1,6 +1,6 @@
 import { ChevronsUpDown, MonitorIcon, MoonIcon, PaletteIcon, SettingsIcon, SparklesIcon, SunIcon, UserIcon, type LucideIcon } from 'lucide-react'
 import { useTheme, type Theme } from '@/components/theme-provider'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,15 +54,14 @@ type Identity = ReturnType<typeof identityOf>
 function IdentityRow({ identity }: { identity: Identity }) {
   return (
     <>
-      <Avatar className="size-8 rounded-lg after:rounded-lg">
-        {identity.name ? null : <AvatarImage src="/logo.svg" alt="" className="rounded-lg" />}
+      <Avatar className="h-8 w-8 rounded-lg after:rounded-lg">
         <AvatarFallback className="rounded-lg">
           {identity.initials || <UserIcon aria-hidden="true" />}
         </AvatarFallback>
       </Avatar>
       <div className="grid flex-1 text-start text-sm leading-tight">
         <span className="truncate font-semibold">{identity.title}</span>
-        <span className="truncate text-xs text-muted-foreground">{identity.subtitle}</span>
+        <span className="truncate text-xs">{identity.subtitle}</span>
       </div>
     </>
   )
@@ -89,7 +88,7 @@ export function NavUser({ profile }: { profile: ProfileView | null }) {
             }
           >
             <IdentityRow identity={identity} />
-            <ChevronsUpDown aria-hidden="true" className="ms-auto" />
+            <ChevronsUpDown aria-hidden="true" className="ms-auto size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent className="min-w-56 rounded-lg" side={isMobile ? 'bottom' : 'right'} align="end" sideOffset={4}>
             <DropdownMenuGroup>

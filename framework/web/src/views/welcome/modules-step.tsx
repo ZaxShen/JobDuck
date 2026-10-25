@@ -13,7 +13,7 @@ interface ModulesStepProps {
 export function ModulesStep({ modules, onChange, onSkip, onContinue }: ModulesStepProps) {
   return (
     <div className={cn('flex flex-col gap-10', stepMotion)}>
-      <StepIntro title="What should Job Duck do?">
+      <StepIntro className="space-y-2" title="What should Job Duck do?">
         Nothing runs until its module is on. Change this any time in Settings.
       </StepIntro>
       <div className="space-y-3">

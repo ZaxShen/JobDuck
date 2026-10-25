@@ -46,9 +46,14 @@ export function WelcomeStep({ file, noInbox, onFile, onSkip, onContinue }: Welco
 
   return (
     <div className={cn('flex flex-col items-center gap-10', stepMotion)}>
-      <StepIntro title="Let's get you set up.">Tell Job Duck who you are. Every step is optional.</StepIntro>
+      <StepIntro
+        className="space-y-4"
+        title={<>We value your worth — just as<br />your future employer does.</>}
+      >
+        Tell Job Duck who you are. Your resume goes into your workspace's inbox/ folder, not to a server.
+      </StepIntro>
 
-      <div className="w-full">
+      <div className="w-full space-y-3">
         {noInbox ? <InboxHelp /> : (
           <div
             role="button"
@@ -116,14 +121,14 @@ export function WelcomeStep({ file, noInbox, onFile, onSkip, onContinue }: Welco
                     <span className="text-foreground underline underline-offset-4">browse</span>
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    PDF, Word, Markdown or text.
+                    PDF, DOCX, Markdown or text — completely optional
                   </p>
                 </div>
               </>
             )}
           </div>
         )}
-        <p className="mt-3 text-center text-xs text-muted-foreground">
+        <p className="text-center text-xs text-muted-foreground">
           No resume handy? Skip this, then tell your agent "import my LinkedIn". It reads your own LinkedIn profile, read-only.
         </p>
       </div>

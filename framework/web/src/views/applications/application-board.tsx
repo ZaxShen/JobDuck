@@ -128,7 +128,7 @@ export function ApplicationBoard({ rows, terminal, onMove, ...actions }: Applica
           },
         }}
       >
-        <div className="flex gap-4 overflow-x-auto pb-4">
+        <div className="relative flex gap-4 overflow-x-auto pb-4">
           {columns.map((column) => (
             <BoardColumn key={column.key} column={column} rows={grouped.get(column.key) ?? []} {...actions} />
           ))}

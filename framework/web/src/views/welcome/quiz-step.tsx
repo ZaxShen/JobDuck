@@ -5,7 +5,6 @@ import { StepActions, StepIntro, stepMotion } from '@/views/welcome/step-parts'
 interface QuizStepProps {
   quiz: Quiz
   onChange: (quiz: Quiz) => void
-  onSkip: () => void
   onContinue: () => Promise<void>
 }
 
@@ -18,10 +17,10 @@ function QuestionHead({ question }: { question: Question }) {
   )
 }
 
-export function QuizStep({ quiz, onChange, onSkip, onContinue }: QuizStepProps) {
+export function QuizStep({ quiz, onChange, onContinue }: QuizStepProps) {
   return (
     <div className={cn('flex flex-col gap-10', stepMotion)}>
-      <StepIntro title="Your Career DNA">Five quick questions. No wrong answers.</StepIntro>
+      <StepIntro className="space-y-2" title="Your Career DNA">Five questions. Thirty seconds. No wrong answers.</StepIntro>
 
       <div className="space-y-8">
         {QUIZ.map((question, index) => (
@@ -73,9 +72,11 @@ export function QuizStep({ quiz, onChange, onSkip, onContinue }: QuizStepProps) 
                     className="peer absolute inset-0 w-full cursor-pointer opacity-0"
                   />
                   <div
-                    className="pointer-events-none absolute top-1/2 size-[18px] -translate-y-1/2 rounded-full border-2 border-foreground bg-background shadow-sm transition-all duration-150 ease-out peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50"
+                    className="pointer-events-none absolute top-1/2 -translate-y-1/2 transition-all duration-150 ease-out peer-focus-visible:*:ring-3 peer-focus-visible:*:ring-ring/50"
                     style={{ left: `calc(${quiz[question.key]}% - 9px)` }}
-                  />
+                  >
+                    <div className="size-[18px] rounded-full border-2 border-foreground bg-background shadow-sm transition-shadow hover:shadow-md" />
+                  </div>
                 </div>
                 <div className="flex justify-between gap-4">
                   <span className={cn('text-[11px] font-medium transition-colors duration-200', quiz[question.key] <= 50 ? 'text-foreground' : 'text-muted-foreground')}>
@@ -91,7 +92,7 @@ export function QuizStep({ quiz, onChange, onSkip, onContinue }: QuizStepProps) 
         ))}
       </div>
 
-      <StepActions onSkip={onSkip} onContinue={onContinue} />
+      <StepActions onContinue={onContinue} />
     </div>
   )
 }

@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
-export function StepIntro({ title, children }: { title: ReactNode; children: ReactNode }) {
+export function StepIntro({ title, children, className }: { title: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <div className="space-y-3 text-center">
-      <h2 className="text-3xl leading-tight font-semibold tracking-tight">{title}</h2>
+    <div className={cn('text-center', className)}>
+      <h1 className="text-3xl leading-tight font-semibold tracking-tight">{title}</h1>
       <p className="text-base text-muted-foreground">{children}</p>
     </div>
   )

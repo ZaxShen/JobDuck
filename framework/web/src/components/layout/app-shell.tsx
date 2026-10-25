@@ -7,6 +7,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
@@ -14,7 +15,6 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarRail,
-  SidebarSeparator,
   SidebarTrigger,
   useSidebar,
 } from '@/components/ui/sidebar'
@@ -22,9 +22,10 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import type { View } from '@/hooks/use-hash-route'
 import type { ProfileView } from '@/lib/types'
 
-const NAV: { view: View; label: string; icon: LucideIcon }[] = [
-  { view: 'applications', label: 'Applications', icon: BriefcaseIcon },
-]
+const NAV_GROUP: { title: string; items: { view: View; label: string; icon: LucideIcon }[] } = {
+  title: 'Main',
+  items: [{ view: 'applications', label: 'Applications', icon: BriefcaseIcon }],
+}
 
 const TITLES: Record<View, string> = {
   applications: 'Applications',
@@ -38,10 +39,10 @@ function Brand() {
     <SidebarMenu>
       <SidebarMenuItem>
         <SidebarMenuButton size="lg" render={<div />} className="pointer-events-none">
-          <img src="/logo.svg" alt="" width={32} height={32} className="aspect-square size-8 shrink-0" />
+          <img src="/logo.svg" alt="" aria-hidden="true" width={32} height={32} className="aspect-square size-8 shrink-0" />
           <div className="grid flex-1 text-start text-sm leading-tight">
             <span translate="no" className="truncate font-semibold">Job Duck</span>
-            <span className="truncate text-xs text-muted-foreground">Career Intelligence</span>
+            <span className="truncate text-xs">Career Intelligence</span>
           </div>
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -49,13 +50,16 @@ function Brand() {
   )
 }
 
-function NavLinks({ view }: { view: View }) {
+function NavGroup({ view }: { view: View }) {
   const { setOpenMobile } = useSidebar()
   return (
     <SidebarGroup>
-      <nav aria-label="Sections">
+      <SidebarGroupLabel id="nav-group-main" className="text-[11px] font-medium tracking-widest text-sidebar-foreground/40 uppercase">
+        {NAV_GROUP.title}
+      </SidebarGroupLabel>
+      <nav aria-labelledby="nav-group-main">
         <SidebarMenu>
-          {NAV.map((item) => {
+          {NAV_GROUP.items.map((item) => {
             const active = item.view === view
             return (
               <SidebarMenuItem key={item.view}>
@@ -76,6 +80,18 @@ function NavLinks({ view }: { view: View }) {
   )
 }
 
+function Header({ title }: { title: string }) {
+  return (
+    <header className="z-50 h-16 shrink-0 border-b border-border bg-background">
+      <div className="relative flex h-full items-center gap-3 p-4 sm:gap-4">
+        <SidebarTrigger variant="outline" className="max-md:scale-125" />
+        <Separator orientation="vertical" className="h-6" />
+        <h1 className="truncate text-sm font-medium text-muted-foreground">{title}</h1>
+      </div>
+    </header>
+  )
+}
+
 export function AppShell({ view, profile, children }: { view: View; profile: ProfileView | null; children: ReactNode }) {
   return (
     <TooltipProvider>
@@ -85,20 +101,16 @@ export function AppShell({ view, profile, children }: { view: View; profile: Pro
             <Brand />
           </SidebarHeader>
           <SidebarContent>
-            <NavLinks view={view} />
+            <NavGroup view={view} />
           </SidebarContent>
           <SidebarFooter>
-            <SidebarSeparator />
+            <div className="mx-3 border-t border-sidebar-border" />
             <NavUser profile={profile} />
           </SidebarFooter>
           <SidebarRail />
         </Sidebar>
-        <SidebarInset className="@container/content min-w-0">
-          <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur">
-            <SidebarTrigger />
-            <Separator orientation="vertical" className="data-vertical:h-5 data-vertical:self-center" />
-            <h1 className="min-w-0 flex-1 truncate text-sm font-medium">{TITLES[view]}</h1>
-          </header>
+        <SidebarInset className="@container/content h-svh min-w-0 overflow-auto">
+          <Header title={TITLES[view]} />
           {children}
         </SidebarInset>
       </SidebarProvider>

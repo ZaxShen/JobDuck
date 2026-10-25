@@ -32,13 +32,13 @@ const targetsOf = (front: FrontMatter): Targets => ({
 
 function Progress({ step }: { step: number }) {
   return (
-    <div className="flex flex-col items-center gap-4">
-      <p className="text-[11px] font-medium tracking-widest text-muted-foreground uppercase" aria-live="polite">
+    <div className="space-y-3">
+      <p className="text-center text-[11px] font-medium tracking-widest text-muted-foreground uppercase" aria-live="polite">
         {WIZARD_STEPS[step]}
       </p>
-      <div className="flex items-center gap-1.5" aria-hidden="true">
+      <div className="flex justify-center gap-1.5" aria-hidden="true">
         {WIZARD_STEPS.map((name, index) => (
-          <span
+          <div
             key={name}
             className={cn('h-0.5 rounded-full transition-all duration-500', index <= step ? 'w-14 bg-foreground' : 'w-10 bg-border')}
           />
@@ -153,19 +153,19 @@ export function WelcomeView({ active, onProfileSaved, onSettingsSaved }: Welcome
   })
 
   return (
-    <div className="relative min-h-svh overflow-hidden">
+    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-background p-6">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,var(--color-muted)_0%,transparent_60%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,var(--muted)_0%,transparent_60%)] opacity-60"
       />
-      <div className="relative mx-auto flex w-full max-w-lg flex-col gap-12 px-6 py-12 sm:py-16">
+      <div className="relative z-10 w-full max-w-lg space-y-8">
         <Progress step={step} />
         {ready && (
           <div key={step}>
             {step === 0 && (
               <WelcomeStep file={file} noInbox={noInbox} onFile={setFile} onSkip={() => goTo(1)} onContinue={uploadAndContinue} />
             )}
-            {step === 1 && <QuizStep quiz={quiz} onChange={setQuiz} onSkip={() => goTo(2)} onContinue={saveQuiz} />}
+            {step === 1 && <QuizStep quiz={quiz} onChange={setQuiz} onContinue={saveQuiz} />}
             {step === 2 && targets && (
               <TargetsStep targets={targets} onChange={setTargets} onSkip={() => goTo(3)} onContinue={saveTargets} />
             )}
