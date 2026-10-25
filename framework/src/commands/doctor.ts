@@ -6,7 +6,8 @@ import { openDb } from '../db/client'
 import { currentVersion, loadMigrations, migrate } from '../db/migrate'
 import { type HostContext, allHosts, userHomeOf } from '../hosts'
 import {
-  PACKAGE_VERSION, SKILLS_VERSION_FILE, dbPath, ensureHome, installedSkillsPath, jobduckHome, permissionsPath, profilePath, resolveWorkspace, skillNames,
+  HOME_DIR, NoHomeError, PACKAGE_VERSION, SKILLS_VERSION_FILE, dbPath, discoverHome, ensureHome, installedSkillsPath, permissionsPath, profilePath,
+  resolveWorkspace, skillNames,
 } from '../paths'
 import { workspaceLine } from './init'
 
@@ -51,7 +52,7 @@ export function runDoctor(options: DoctorOptions = {}): number {
   const out = options.out ?? ((line: string) => console.log(line))
   const given = resolve(options.workspace ?? process.cwd())
   const workspace = resolveWorkspace(given, userHomeOf({ userHome: options.userHome }))
-  const home = jobduckHome(workspace, options.userHome)
+  const home = discoverHome(workspace, userHomeOf({ userHome: options.userHome }))
   const checks: Check[] = []
 
   checks.push({ name: 'runtime', ok: true, detail: `jobduck ${PACKAGE_VERSION} on bun ${Bun.version}` })
@@ -61,6 +62,43 @@ export function runDoctor(options: DoctorOptions = {}): number {
     ? { name: 'path', ok: true, detail: `jobduck found at ${onPath}` }
     : { name: 'path', ok: false, detail: 'not on PATH; hosts start the MCP server with `jobduck mcp`' })
 
+  if (home === undefined) {
+    checks.push({ name: 'home', ok: false, detail: new NoHomeError(workspace).message })
+  } else {
+    checks.push(...homeChecks(home))
+  }
+
+  const ctx: HostContext = {
+    workspace,
+    home: home ?? join(workspace, HOME_DIR),
+    userHome: options.userHome,
+    pathEnv: options.pathEnv,
+    dryRun: true,
+  }
+  const hosts = allHosts().map((host) => ({
+    id: host.id,
+    label: host.label,
+    detected: host.detect(ctx),
+    registered: host.isRegistered(ctx),
+    config: host.configPath(ctx),
+  }))
+
+  const ok = checks.every((check) => check.ok)
+  if (options.json) {
+    out(JSON.stringify({ ok, home: home ?? null, checks, hosts }, null, 2))
+  } else {
+    if (workspace !== given) out(workspaceLine(given, workspace))
+    for (const check of checks) out(`${check.warn ? 'warn' : check.ok ? 'ok  ' : 'FAIL'} ${check.name}: ${check.detail}`)
+    for (const host of hosts) {
+      const state = host.registered ? 'registered' : host.detected ? 'detected, not registered' : 'not detected'
+      out(`     host ${host.label}: ${state} (${host.config})`)
+    }
+  }
+  return ok ? 0 : 1
+}
+
+function homeChecks(home: string): Check[] {
+  const checks: Check[] = []
   checks.push(attempt('home', () => {
     ensureHome(home)
     const mode = statSync(home).mode & 0o777
@@ -110,32 +148,5 @@ export function runDoctor(options: DoctorOptions = {}): number {
     skills.warn = true
     skills.detail = `version ${installedVersion} installed, jobduck is ${PACKAGE_VERSION}; run jobduck init to refresh them`
   }
-
-  const ctx: HostContext = {
-    workspace,
-    home,
-    userHome: options.userHome,
-    pathEnv: options.pathEnv,
-    dryRun: true,
-  }
-  const hosts = allHosts().map((host) => ({
-    id: host.id,
-    label: host.label,
-    detected: host.detect(ctx),
-    registered: host.isRegistered(ctx),
-    config: host.configPath(ctx),
-  }))
-
-  const ok = checks.every((check) => check.ok)
-  if (options.json) {
-    out(JSON.stringify({ ok, home, checks, hosts }, null, 2))
-  } else {
-    if (workspace !== given) out(workspaceLine(given, workspace))
-    for (const check of checks) out(`${check.warn ? 'warn' : check.ok ? 'ok  ' : 'FAIL'} ${check.name}: ${check.detail}`)
-    for (const host of hosts) {
-      const state = host.registered ? 'registered' : host.detected ? 'detected, not registered' : 'not detected'
-      out(`     host ${host.label}: ${state} (${host.config})`)
-    }
-  }
-  return ok ? 0 : 1
+  return checks
 }

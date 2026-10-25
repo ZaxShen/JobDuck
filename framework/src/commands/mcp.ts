@@ -1,8 +1,17 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { createServer, log } from '../mcp/server'
+import { type JobduckServer, createServer, log } from '../mcp/server'
+import { NoHomeError } from '../paths'
 
 export async function runMcp(): Promise<number> {
-  const { server, close } = createServer()
+  let created: JobduckServer
+  try {
+    created = createServer()
+  } catch (error) {
+    if (!(error instanceof NoHomeError)) throw error
+    log(error.message)
+    return 1
+  }
+  const { server, close } = created
   const transport = new StdioServerTransport()
   const closed = new Promise<void>((resolve) => {
     transport.onclose = () => resolve()

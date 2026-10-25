@@ -8,8 +8,8 @@ import {
   type FileChange, type Host, type HostContext, allHosts, hostById, isWorkspaceLocal, userHomeOf,
 } from '../hosts'
 import {
-  HOME_DIR, PACKAGE_VERSION, PERMISSIONS_FILE, PROFILE_FILE, dbPath, defaultHome, ensureHome, findHome, installSkills,
-  installedSkillsPath, isMarkedHome, jobduckHome, resolveWorkspace, skillNames, skillsUpToDate,
+  HOME_DIR, PACKAGE_VERSION, PERMISSIONS_FILE, PROFILE_FILE, dbPath, discoverHome, ensureHome, findHome, installSkills,
+  installedSkillsPath, resolveWorkspace, skillNames, skillsUpToDate,
 } from '../paths'
 import { launchDashboard } from './dashboard'
 
@@ -26,6 +26,7 @@ export interface InitOptions {
   dashboard?: boolean
   launchDashboard?: (options: { view: DashboardView; workspace: string; home: string }) => Promise<string>
   out?: (line: string) => void
+  err?: (line: string) => void
   confirm?: (question: string) => Promise<boolean>
 }
 
@@ -136,14 +137,12 @@ function missingFolders(ctx: HostContext): string[] {
   return WORKSPACE_FOLDERS.filter((folder) => !existsSync(join(ctx.workspace, folder)))
 }
 
-export function chooseHome(ctx: WorkspaceContext, flag?: string): string {
+export function chooseHome(ctx: WorkspaceContext, flag?: string): string | undefined {
   if (flag) return resolve(ctx.workspace, flag)
   if (process.env.JOBDUCK_HOME) return resolve(process.env.JOBDUCK_HOME)
-  const found = findHome(ctx.workspace)
+  const found = findHome(ctx.workspace, userHomeOf(ctx))
   if (found) return found
-  const fallback = defaultHome(userHomeOf(ctx))
-  if (isMarkedHome(fallback)) return fallback
-  return isDedicatedWorkspace(ctx) ? join(resolve(ctx.workspace), HOME_DIR) : fallback
+  return isDedicatedWorkspace(ctx) ? join(resolve(ctx.workspace), HOME_DIR) : undefined
 }
 
 export const workspaceLine = (given: string, workspace: string) =>
@@ -159,9 +158,15 @@ export const DEDICATED_TIP = [
 
 export async function runInit(options: InitOptions = {}): Promise<number> {
   const out = options.out ?? ((line: string) => console.log(line))
+  const err = options.err ?? ((line: string) => console.error(line))
   const given = resolve(options.workspace ?? process.cwd())
   const workspace = resolveWorkspace(given, userHomeOf({ userHome: options.userHome }))
   const home = chooseHome({ workspace: given, userHome: options.userHome }, options.home)
+  if (home === undefined) {
+    err(`No Job Duck home for ${given}: pass --home <dir> or set JOBDUCK_HOME to keep one for this folder anyway.`)
+    for (const line of DEDICATED_TIP) err(line)
+    return 1
+  }
   const ctx: HostContext = { workspace, home, userHome: options.userHome, pathEnv: options.pathEnv, dryRun: true }
   const local = isWorkspaceLocal(ctx)
   const show = (path: string) => shortPath(path, ctx)
@@ -245,7 +250,7 @@ async function finishSetup(ctx: HostContext, isTTY: boolean, options: InitOption
     }
   }
   const elsewhere = workspace === resolve(process.cwd()) ? '' : ` --workspace ${JSON.stringify(workspace)}`
-  const env = home === jobduckHome(workspace, userHomeOf(ctx)) ? '' : `JOBDUCK_HOME=${JSON.stringify(home)} `
+  const env = home === discoverHome(workspace, userHomeOf(ctx)) ? '' : `JOBDUCK_HOME=${JSON.stringify(home)} `
   out(`Finish setup in your browser: ${env}jobduck dashboard --background --view welcome${elsewhere}`)
   out(existsSync(join(workspace, 'inbox'))
     ? 'To fill in your profile later, drop your resume or LinkedIn PDF in inbox/, or run: jobduck dashboard --view profile'

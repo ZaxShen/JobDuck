@@ -13,32 +13,44 @@ export const SKILLS_VERSION_FILE = '.version'
 export const DASHBOARD_STATE_FILE = 'dashboard.json'
 export const PACKAGE_VERSION: string = pkg.version
 
-export const defaultHome = (userHome = homedir()) => join(resolve(userHome), HOME_DIR)
+export class NoHomeError extends Error {
+  constructor(readonly start: string) {
+    super(`No Job Duck home in ${start} or any folder above it: run jobduck init in a dedicated folder, or set JOBDUCK_HOME.`)
+    this.name = 'NoHomeError'
+  }
+}
 
 export function isMarkedHome(dir: string): boolean {
   return [DB_FILE, PERMISSIONS_FILE].some((file) => existsSync(join(dir, file)))
 }
 
-export function findHome(start: string): string | undefined {
+export function findHome(start: string, userHome = homedir()): string | undefined {
+  const skipped = resolve(userHome)
   let dir = resolve(start)
   while (true) {
     const candidate = join(dir, HOME_DIR)
-    if (isMarkedHome(candidate)) return candidate
+    if (dir !== skipped && isMarkedHome(candidate)) return candidate
     const parent = dirname(dir)
     if (parent === dir) return undefined
     dir = parent
   }
 }
 
-export function jobduckHome(start = process.cwd(), userHome = homedir()): string {
+export function discoverHome(start = process.cwd(), userHome = homedir()): string | undefined {
   const fromEnv = process.env.JOBDUCK_HOME
-  if (fromEnv) return resolve(fromEnv)
-  return findHome(start) ?? defaultHome(userHome)
+  return fromEnv ? resolve(fromEnv) : findHome(start, userHome)
+}
+
+export function jobduckHome(start = process.cwd(), userHome = homedir()): string {
+  const home = discoverHome(start, userHome)
+  if (home === undefined) throw new NoHomeError(resolve(start))
+  return home
 }
 
 export function resolveWorkspace(start: string, userHome = homedir()): string {
   const folder = resolve(start)
-  const home = jobduckHome(folder, userHome)
+  const home = discoverHome(folder, userHome)
+  if (home === undefined) return folder
   const holder = dirname(home)
   if (basename(home) !== HOME_DIR || holder === resolve(userHome)) return folder
   const rel = relative(holder, folder)
