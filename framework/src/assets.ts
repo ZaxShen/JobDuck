@@ -6,6 +6,13 @@ import migration005 from './db/migrations/005_posting_fields.sql' with { type: '
 import dashboardApp from './dashboard/public/app.js' with { type: 'text' }
 import dashboardIndex from './dashboard/public/index.html' with { type: 'text' }
 import dashboardStyle from './dashboard/public/style.css' with { type: 'text' }
+import dashboardFaviconSvg from './dashboard/public/favicon.svg' with { type: 'text' }
+import dashboardLogo from './dashboard/public/logo.svg' with { type: 'text' }
+import dashboardManifest from './dashboard/public/site.webmanifest' with { type: 'text' }
+import appleTouchIcon from './dashboard/public/apple-touch-icon.png' with { type: 'file' }
+import faviconIco from './dashboard/public/favicon.ico' with { type: 'file' }
+import icon192 from './dashboard/public/icon-192.png' with { type: 'file' }
+import icon512 from './dashboard/public/icon-512.png' with { type: 'file' }
 import fontCyrillic from './dashboard/public/geist-cyrillic-wght-normal.woff2' with { type: 'file' }
 import fontCyrillicExt from './dashboard/public/geist-cyrillic-ext-wght-normal.woff2' with { type: 'file' }
 import fontLatin from './dashboard/public/geist-latin-wght-normal.woff2' with { type: 'file' }
@@ -48,14 +55,21 @@ export const MIGRATIONS: { name: string; sql: string }[] = [
 
 export const DASHBOARD: Record<string, string> = {
   'app.js': dashboardApp,
+  'favicon.svg': dashboardFaviconSvg,
   'index.html': dashboardIndex as unknown as string,
+  'logo.svg': dashboardLogo,
+  'site.webmanifest': dashboardManifest,
   'style.css': dashboardStyle,
 }
 
-export const DASHBOARD_FONTS: Record<string, string> = {
+export const DASHBOARD_FILES: Record<string, string> = {
+  'apple-touch-icon.png': appleTouchIcon,
+  'favicon.ico': faviconIco,
   'geist-cyrillic-ext-wght-normal.woff2': fontCyrillicExt,
   'geist-cyrillic-wght-normal.woff2': fontCyrillic,
   'geist-latin-ext-wght-normal.woff2': fontLatinExt,
   'geist-latin-wght-normal.woff2': fontLatin,
   'geist-vietnamese-wght-normal.woff2': fontVietnamese,
+  'icon-192.png': icon192,
+  'icon-512.png': icon512,
 }
