@@ -14,7 +14,7 @@
  * Setup (serve mode):
  *   1. Run generateSyncToken and copy the logged token.
  *   2. Deploy → New deployment → Web app, Execute as Me, Who has access Anyone; copy the /exec URL.
- *   3. Put both into ~/.jobduck/permissions.toml ([track] sync_url, sync_token).
+ *   3. Put both into permissions.toml in your Job Duck home ([track] sync_url, sync_token).
  *   4. Run checkConnection, then preview, then install. Optional: backfill, previewReaudit, reauditApplications.
  * Push mode (legacy): add the script property JOBDUCK_TOKEN (Job Duck → Settings → API tokens) instead.
  * Optional properties: PROTECTED_LABELS and EXCLUDED_DOMAINS (comma-separated), KEEP_ACTION_MAIL_IN_INBOX=true.
@@ -455,7 +455,7 @@ function ackOutcomes_(messageIds) {
 function generateSyncToken() {
   var value = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
   PropertiesService.getScriptProperties().setProperty('SYNC_TOKEN', value);
-  Logger.log('SYNC_TOKEN (copy it into ~/.jobduck/permissions.toml [track] sync_token; any earlier token stops working): ' + value);
+  Logger.log('SYNC_TOKEN (copy it into permissions.toml in your Job Duck home, [track] sync_token; any earlier token stops working): ' + value);
 }
 
 function doGet() {
