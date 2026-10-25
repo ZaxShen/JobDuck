@@ -63,7 +63,7 @@ jobs:
             require("fs").writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n")
             console.log(pkg.version)')
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - run: bash scripts/build-all.sh
+      - run: bun run build:all
       - name: Replace the dev-latest prerelease
         env:
           GH_TOKEN: ${{ github.token }}

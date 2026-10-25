@@ -25,10 +25,11 @@
   "type": "module",
   "scripts": {
     "build": "bun build --compile src/cli.ts --outfile dist/jobduck",
-    "build:all": "bash scripts/build-all.sh",
+    "build:all": "bun scripts/build-all.ts",
     "build:web": "cd web && bun install --frozen-lockfile && bun run build",
     "dev": "bun scripts/dev.ts",
-    "smoke": "bash scripts/smoke.sh",
+    "smoke": "bun scripts/smoke.ts",
+    "smoke:dev": "bun scripts/dev-smoke.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const GATE = join(import.meta.dir, '..', 'scripts', 'release-gate.sh')
+const GATE = join(import.meta.dir, '..', 'scripts', 'release-gate.ts')
 const ENV = {
   ...process.env,
   GIT_CONFIG_GLOBAL: '/dev/null',
@@ -36,7 +36,7 @@ function commit(files: Record<string, string>, message: string): void {
 const pkg = (version: string, extra = '') => `{\n  "name": "jobduck",\n  "version": "${version}",${extra}\n  "type": "module"\n}\n`
 
 function gate(tag: string): { code: number; out: string; err: string } {
-  const result = Bun.spawnSync(['bash', GATE, tag], { cwd: join(repo, 'framework'), env: ENV })
+  const result = Bun.spawnSync(['bun', GATE, tag], { cwd: join(repo, 'framework'), env: ENV })
   return { code: result.exitCode, out: result.stdout.toString(), err: result.stderr.toString() }
 }
 
