@@ -70,11 +70,8 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
   ]
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6 animate-in fade-in duration-500">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Applications</h1>
-        <p className="text-sm text-muted-foreground">Everything your agent saved, applied to or is waiting on you for, newest first.</p>
-      </div>
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <p className="text-sm text-muted-foreground">Everything your agent saved, applied to or is waiting on you for, newest first.</p>
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <nav aria-label="Filter by status" className="flex flex-wrap gap-1.5">

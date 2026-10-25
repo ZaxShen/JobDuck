@@ -95,13 +95,10 @@ export function FactsView({ active }: { active: boolean }) {
   const current = TABS.find((item) => item.status === tab)!
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6 animate-in fade-in duration-500">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Experience facts</h1>
-        <p className="text-sm text-muted-foreground">
-          Atomic facts about your work, proposed by your agent. Your CV is written only from the ones you accept.
-        </p>
-      </div>
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <p className="text-sm text-muted-foreground">
+        Atomic facts about your work, proposed by your agent. Your CV is written only from the ones you accept.
+      </p>
 
       {loaded && facts.length === 0 ? <EmptyState /> : (
         <>

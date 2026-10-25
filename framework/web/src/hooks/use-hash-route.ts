@@ -1,12 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
+import { viewFromHash, type View } from '@/lib/routing'
 
-export const VIEWS = ['applications', 'profile', 'facts', 'settings', 'welcome'] as const
-export type View = (typeof VIEWS)[number]
+export type { View } from '@/lib/routing'
 
-const current = (): View => {
-  const name = window.location.hash.slice(1)
-  return (VIEWS as readonly string[]).includes(name) ? (name as View) : 'applications'
-}
+const current = (): View => viewFromHash(window.location.hash)
 
 export function useHashRoute() {
   const [view, setView] = useState<View>(current)
