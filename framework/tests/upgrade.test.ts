@@ -190,6 +190,13 @@ test('the dev channel installs the rolling dev-latest build named by its title',
   expect(readFileSync(execPath, 'utf8')).toBe(NEW_BYTES)
 })
 
+test('a v-prefixed dev-latest title installs as the bare dev version', async () => {
+  const dev = { ...release(DEV_TAG), name: 'v9.9.9-dev.4.gh12' }
+  expect(await run(github({ api: () => dev }), { channel: 'dev' })).toBe(0)
+  expect(lines).toEqual([`upgraded ${CURRENT_VERSION} -> 9.9.9-dev.4.gh12`])
+  expect(readFileSync(execPath, 'utf8')).toBe(NEW_BYTES)
+})
+
 test('a dev-latest release without a dev version title is refused', async () => {
   expect(await run(github({ api: () => ({ ...release(DEV_TAG), name: 'dev-latest' }) }), { channel: 'dev' })).toBe(1)
   expect(errors[0]).toContain('not titled with a dev version')
