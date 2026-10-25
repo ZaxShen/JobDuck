@@ -1,28 +1,25 @@
 /**
- * Job Duck — Gmail Rejection Sync v4
- * Script v4 — serves rejections to `jobduck sync` as a web app (serve mode); with JOBDUCK_TOKEN set it still pushes
- * them to Job Duck Applications v3 (push mode, inbound API v1: /api/inbound/ping, /api/inbound/rejections).
+ * Job Duck — Gmail Rejection Sync v5
+ * Script v5 — serve-only: rejections are queued in the script and served to `jobduck sync` by the script deployed
+ * as a web app. Nothing is pushed anywhere.
  *
  * Moves job-application mail out of the Inbox into the nested label "Job Duck/Applications" and rejections
  * into "Job Duck/Rejections". Each rejection becomes an outcome (header fields and a job link/ID only; the email
- * body never leaves Gmail) that is either queued for the web app (serve) or posted to Job Duck (push).
+ * body never leaves Gmail) queued for the web app.
  *
  * Scope: the script only ever searches the Inbox (in:inbox), plus the "Job Duck/Applications" label when you run
  * previewReaudit/reauditApplications. Threads already labeled "Job Duck/Rejections" are never re-read or re-labeled;
  * a thread that is back in the Inbox because a new message arrived is re-archived only.
  *
- * Setup (serve mode):
+ * Setup:
  *   1. Run generateSyncToken and copy the logged token.
  *   2. Deploy → New deployment → Web app, Execute as Me, Who has access Anyone; copy the /exec URL.
  *   3. Put both into permissions.toml in your Job Duck home ([track] sync_url, sync_token).
  *   4. Run checkConnection, then preview, then install. Optional: backfill, previewReaudit, reauditApplications.
- * Push mode (legacy): add the script property JOBDUCK_TOKEN (Job Duck → Settings → API tokens) instead.
  * Optional properties: PROTECTED_LABELS and EXCLUDED_DOMAINS (comma-separated), KEEP_ACTION_MAIL_IN_INBOX=true.
  */
 
-var SCRIPT_VERSION = '4';
-var COMPATIBLE_WITH = 'Job Duck Applications v3';
-var INBOUND_API_VERSION = '1';
+var SCRIPT_VERSION = '5';
 
 var LABEL_PARENT = 'Job Duck';
 
@@ -32,8 +29,7 @@ var CONFIG = {
   // Labels from earlier versions, renamed by install() so existing threads keep their history.
   LEGACY_JOB_LABELS: ['Job Applications', 'JD - Job Applications'],
   LEGACY_DENY_LABELS: ['Deny Letters', 'JD - Deny Letters'],
-  LEGACY_SYNC_LABEL: 'JobDuck Sync',
-  LEGACY_DROP_LABELS: ['JobDuck Synced', 'JobDuck Review'],
+  LEGACY_DROP_LABELS: ['JobDuck Sync', 'JobDuck Synced', 'JobDuck Review'],
   // Threads carrying any of these labels are left alone, e.g. ['Offers', 'Immigration'].
   // Also read from the script property PROTECTED_LABELS (comma-separated).
   PROTECTED_LABELS: [],
@@ -43,20 +39,15 @@ var CONFIG = {
   // Interview, assessment and verification-code emails are labeled but stay in the Inbox when true.
   // Also read from the script property KEEP_ACTION_MAIL_IN_INBOX ('true').
   KEEP_ACTION_MAIL_IN_INBOX: false,
-  // Only rejections on/after this date are sent to Job Duck.
+  // Only rejections on/after this date are queued for jobduck sync.
   SYNC_SINCE: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
   RUN_QUERY: 'in:inbox newer_than:3d',
   MAX_THREADS_PER_RUN: 100,
-  MAX_SYNC_PER_RUN: 15,
-  MAX_SYNC_PER_DAY: 90,
-  MAX_PENDING: 400,
   TIME_BUDGET_MS: 4.5 * 60 * 1000
 };
 
-var DEFAULT_JOBDUCK_URL = 'https://jobduck.work';
-var MISSING_TOKEN_MESSAGE = 'Add JOBDUCK_TOKEN in Project Settings → Script properties';
-var DAILY_COUNT_PREFIX = 'jobduckSyncCount_';
-var PENDING_KEY = 'jobduckPendingThreads';
+var LEGACY_PENDING_KEY = 'jobduckPendingThreads';
+var LEGACY_DAILY_COUNT_PREFIX = 'jobduckSyncCount_';
 var MAX_FIELD_LENGTH = 500;
 var MAX_TITLE_LENGTH = 120;
 var OUTCOME_PREFIX = 'outcome:';
@@ -68,6 +59,7 @@ var REAUDIT_PAGE = 50;
 function install() {
   uninstall();
   migrateLabels_();
+  clearPushQueue_();
   labels_();
   ScriptApp.newTrigger('run').timeBased().everyMinutes(10).create();
   Logger.log('Installed: run() every 10 minutes.');
@@ -81,47 +73,19 @@ function uninstall() {
 }
 
 function run() {
-  var session = syncMode_() === 'push' ? syncSession_() : null;
   var stats = { job: 0, deny: 0, kept: 0, skipped: 0 };
   var threads = GmailApp.search(CONFIG.RUN_QUERY, 0, CONFIG.MAX_THREADS_PER_RUN);
-  threads.forEach(function (t) { tally_(stats, processThread_(t, session)); });
-  if (session) drainPending_(session);
+  threads.forEach(function (t) { tally_(stats, processThread_(t)); });
   if (stats.job || stats.deny) Logger.log(JSON.stringify(stats));
-  if (session && session.calls) Logger.log('Job Duck sync: ' + JSON.stringify(session.stats));
 }
-
-function syncPending() {
-  if (syncMode_() === 'serve') {
-    Logger.log('Serve mode: ' + pendingCount_() + ' outcomes pending for jobduck sync.');
-    return;
-  }
-  var session = syncSession_();
-  if (!session) return;
-  drainPending_(session);
-  var left = pendingThreads_().length;
-  Logger.log('Job Duck sync: ' + JSON.stringify(session.stats) + (left ? ' — ' + left + ' still pending; run syncPending() again later.' : ' — nothing pending.'));
-}
-
-function syncMode_() { return token_() ? 'push' : 'serve'; }
 
 function checkConnection() {
-  if (syncMode_() === 'serve') {
-    var hasSyncToken = !!PropertiesService.getScriptProperties().getProperty('SYNC_TOKEN');
-    Logger.log('Mode: serve (script v' + SCRIPT_VERSION + '). Pending outcomes: ' + pendingCount_() + '. SYNC_TOKEN is ' +
-      (hasSyncToken ? 'set.' : 'not set — run generateSyncToken.'));
-    return;
-  }
-  var token = token_();
-  if (!token) { Logger.log(MISSING_TOKEN_MESSAGE); return; }
-  var url = baseUrl_() + '/api/inbound/ping';
-  try {
-    var res = UrlFetchApp.fetch(url, { headers: headers_(token), muteHttpExceptions: true });
-    var code = res.getResponseCode();
-    if (code === 200) Logger.log('Connected as ' + JSON.parse(res.getContentText()).email + ' (script v' + SCRIPT_VERSION + ', ' + COMPATIBLE_WITH + ')');
-    else if (code === 401 || code === 403) Logger.log('Token rejected (HTTP ' + code + '). It was revoked or expired: create a new one in Job Duck → Settings → API tokens and replace JOBDUCK_TOKEN.');
-    else Logger.log('Connection failed (HTTP ' + code + '): ' + res.getContentText().slice(0, 200));
-  } catch (e) {
-    Logger.log('Could not reach ' + url + ': ' + e.message);
+  var props = PropertiesService.getScriptProperties();
+  var hasSyncToken = !!props.getProperty('SYNC_TOKEN');
+  Logger.log('Mode: serve (script v' + SCRIPT_VERSION + '). Pending outcomes: ' + pendingCount_() + '. SYNC_TOKEN is ' +
+    (hasSyncToken ? 'set.' : 'not set — run generateSyncToken.'));
+  if (props.getProperty('JOBDUCK_TOKEN')) {
+    Logger.log('Push mode was removed in v5: the JOBDUCK_TOKEN script property is ignored and can be deleted.');
   }
 }
 
@@ -134,11 +98,11 @@ function backfill() {
     var threads = GmailApp.search('in:inbox', start, 100);
     if (!threads.length) {
       props.deleteProperty('backfillOffset');
-      Logger.log('Backfill complete. ' + JSON.stringify(stats) + ' Run syncPending() to send rejections to Job Duck.');
+      Logger.log('Backfill complete. ' + JSON.stringify(stats) + ' Run jobduck sync to fetch the queued rejections.');
       return;
     }
     threads.forEach(function (t) {
-      var r = processThread_(t, null);
+      var r = processThread_(t);
       tally_(stats, r);
       if (r !== 'job' && r !== 'deny') start++;
     });
@@ -149,7 +113,7 @@ function backfill() {
 
 function resetBackfill() { PropertiesService.getUserProperties().deleteProperty('backfillOffset'); }
 
-function processThread_(thread, session) {
+function processThread_(thread) {
   var L = labels_();
   var rules = rules_();
   var userLabels = thread.getLabels().map(function (l) { return l.getName(); });
@@ -184,7 +148,7 @@ function processThread_(thread, session) {
     thread.addLabel(L.deny);
     if (hasJob) thread.removeLabel(L.job);
     var latestDeny = denyMsgs[denyMsgs.length - 1];
-    if (latestDeny.getDate() >= CONFIG.SYNC_SINCE) recordRejection_(thread, latestDeny, session);
+    if (latestDeny.getDate() >= CONFIG.SYNC_SINCE) recordRejection_(latestDeny);
     thread.moveToArchive();
     return 'deny';
   }
@@ -225,8 +189,8 @@ function label_(name) {
   }
 }
 
-/** One-time: rename the labels of earlier versions into the nested ones, move the old sync queue into the
- *  property queue, and drop the old bookkeeping labels. Threads keep every label they had. */
+/** One-time: rename the labels of earlier versions into the nested ones and drop the old bookkeeping labels.
+ *  Threads keep every label they had. */
 function migrateLabels_() {
   var byName = {};
   (Gmail.Users.Labels.list('me').labels || []).forEach(function (l) { byName[l.name] = l; });
@@ -255,19 +219,17 @@ function migrateLabels_() {
   rename(CONFIG.LEGACY_JOB_LABELS, CONFIG.JOB_LABEL);
   rename(CONFIG.LEGACY_DENY_LABELS, CONFIG.DENY_LABEL);
 
-  var sync = GmailApp.getUserLabelByName(CONFIG.LEGACY_SYNC_LABEL);
-  if (sync) {
-    var pending;
-    while ((pending = sync.getThreads(0, 100)).length) {
-      pending.forEach(function (t) { enqueue_(t.getId()); });
-      sync.removeFromThreads(pending);
-    }
-    sync.deleteLabel();
-    Logger.log('Moved the "' + CONFIG.LEGACY_SYNC_LABEL + '" queue into the script and removed the label.');
-  }
   CONFIG.LEGACY_DROP_LABELS.forEach(function (name) {
     var label = GmailApp.getUserLabelByName(name);
     if (label) { label.deleteLabel(); Logger.log('Removed label "' + name + '".'); }
+  });
+}
+
+/** One-time: delete the v3/v4 push-mode thread queue and daily counters from the user properties. */
+function clearPushQueue_() {
+  var props = PropertiesService.getUserProperties();
+  props.getKeys().forEach(function (k) {
+    if (k === LEGACY_PENDING_KEY || k.indexOf(LEGACY_DAILY_COUNT_PREFIX) === 0) props.deleteProperty(k);
   });
 }
 
@@ -275,7 +237,6 @@ function tally_(stats, r) { stats[r] = (stats[r] || 0) + 1; }
 
 function preview() {
   var jobs = 0, denies = 0, start = 0, began = Date.now();
-  var serve = syncMode_() === 'serve';
   while (Date.now() - began < 4 * 60 * 1000) {
     var threads = GmailApp.search('in:inbox', start, 100);
     if (!threads.length) break;
@@ -289,8 +250,7 @@ function preview() {
       if (d.score >= DENY_THRESHOLD && d.strong) {
         denies++;
         Logger.log('DENY [' + d.score + '] ' + last.getDate().toISOString().slice(0, 10) + ' | ' + subj + '  <=  ' + d.reasons.join(' ') + ' | "' + String(d.evidence || '').slice(0, 90) + '"');
-        if (serve) Logger.log('  would queue: ' + JSON.stringify(buildOutcome_(last)));
-        else Logger.log('  would send: ' + JSON.stringify(buildPayload_(last)));
+        Logger.log('  would queue: ' + JSON.stringify(buildOutcome_(last)));
       }
       else jobs++;
     });
@@ -339,7 +299,7 @@ function reaudit_(apply) {
       if (d.action === 'rejection') {
         t.addLabel(L.deny);
         t.removeLabel(L.job);
-        recordRejection_(t, d.message, null);
+        recordRejection_(d.message);
       } else {
         t.removeLabel(L.job);
       }
@@ -377,13 +337,7 @@ function reauditDecision_(thread, rules, me) {
   return kept;
 }
 
-/** Push mode keeps the v3 thread queue and posts to Job Duck; serve mode queues an outcome for jobduck sync. */
-function recordRejection_(thread, message, session) {
-  if (syncMode_() === 'push') {
-    enqueue_(thread.getId());
-    if (session) syncThread_(thread, message, session);
-    return;
-  }
+function recordRejection_(message) {
   queueOutcome_(buildOutcome_(message));
 }
 
@@ -471,7 +425,7 @@ function doPost(e) {
     var ids = request.messageIds.filter(function (id) { return typeof id === 'string' && id.length > 0; });
     return json_({ ok: true, acked: ackOutcomes_(ids) });
   }
-  if (request.action === 'status') return json_({ ok: true, scriptVersion: SCRIPT_VERSION, mode: syncMode_(), pending: pendingCount_() });
+  if (request.action === 'status') return json_({ ok: true, scriptVersion: SCRIPT_VERSION, mode: 'serve', pending: pendingCount_() });
   return json_({ ok: false, error: 'bad_request' });
 }
 
@@ -492,126 +446,6 @@ function constantTimeEqual_(a, b) {
 
 function json_(value) {
   return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON);
-}
-
-function token_() { return PropertiesService.getScriptProperties().getProperty('JOBDUCK_TOKEN'); }
-
-function headers_(token) {
-  return {
-    Authorization: 'Bearer ' + token,
-    'X-JobDuck-Script-Version': SCRIPT_VERSION,
-    'X-JobDuck-Inbound-API': INBOUND_API_VERSION
-  };
-}
-
-function baseUrl_() {
-  var url = PropertiesService.getScriptProperties().getProperty('JOBDUCK_URL') || DEFAULT_JOBDUCK_URL;
-  return url.replace(/\/+$/, '');
-}
-
-function syncSession_() {
-  var token = token_();
-  if (!token) { Logger.log(MISSING_TOKEN_MESSAGE); return null; }
-  return { token: token, base: baseUrl_(), calls: 0, stopped: false, stats: {} };
-}
-
-function pendingThreads_() {
-  try { return JSON.parse(PropertiesService.getUserProperties().getProperty(PENDING_KEY) || '[]'); }
-  catch (e) { return []; }
-}
-
-function savePending_(ids) {
-  PropertiesService.getUserProperties().setProperty(PENDING_KEY, JSON.stringify(ids.slice(-CONFIG.MAX_PENDING)));
-}
-
-function enqueue_(threadId) {
-  var ids = pendingThreads_();
-  if (ids.indexOf(threadId) < 0) { ids.push(threadId); savePending_(ids); }
-}
-
-function dequeue_(threadId) {
-  savePending_(pendingThreads_().filter(function (id) { return id !== threadId; }));
-}
-
-function drainPending_(session) {
-  var ids = pendingThreads_();
-  for (var i = 0; i < ids.length && canSync_(session); i++) {
-    var thread = GmailApp.getThreadById(ids[i]);
-    if (!thread) { dequeue_(ids[i]); continue; }
-    var message = latestRejection_(thread);
-    if (message) syncThread_(thread, message, session);
-    else dequeue_(ids[i]);
-  }
-}
-
-function latestRejection_(thread) {
-  var messages = thread.getMessages();
-  for (var i = messages.length - 1; i >= 0; i--) {
-    var m = messages[i], subject = m.getSubject(), body = m.getPlainBody();
-    if (isJobEmail(m.getFrom(), subject, body) && isRejection(subject, body)) return m;
-  }
-  return messages[messages.length - 1] || null;
-}
-
-function canSync_(session) {
-  if (session.stopped || session.calls >= CONFIG.MAX_SYNC_PER_RUN) return false;
-  if (dailyCount_() >= CONFIG.MAX_SYNC_PER_DAY) {
-    session.stopped = true;
-    Logger.log('Daily limit of ' + CONFIG.MAX_SYNC_PER_DAY + ' syncs reached; the rest stay queued for tomorrow.');
-    return false;
-  }
-  return true;
-}
-
-function dailyKey_() { return DAILY_COUNT_PREFIX + new Date().toISOString().slice(0, 10); }
-
-function dailyCount_() { return Number(PropertiesService.getUserProperties().getProperty(dailyKey_()) || 0); }
-
-function bumpDailyCount_() {
-  var props = PropertiesService.getUserProperties(), key = dailyKey_();
-  props.getKeys().forEach(function (k) { if (k.indexOf(DAILY_COUNT_PREFIX) === 0 && k !== key) props.deleteProperty(k); });
-  props.setProperty(key, String(dailyCount_() + 1));
-}
-
-function syncThread_(thread, message, session) {
-  if (!canSync_(session)) return;
-  var outcome = syncRejection_(message, session);
-  tally_(session.stats, outcome);
-  if (outcome !== 'retry' && outcome !== 'unauthorized') dequeue_(thread.getId());
-}
-
-function syncRejection_(message, session) {
-  var payload = buildPayload_(message);
-  session.calls++;
-  bumpDailyCount_();
-  var res;
-  try {
-    res = UrlFetchApp.fetch(session.base + '/api/inbound/rejections', {
-      method: 'post',
-      contentType: 'application/json',
-      payload: JSON.stringify(payload),
-      headers: headers_(session.token),
-      muteHttpExceptions: true
-    });
-  } catch (e) {
-    session.stopped = true;
-    Logger.log('Could not reach Job Duck (' + e.message + '); will retry next run.');
-    return 'retry';
-  }
-  var code = res.getResponseCode();
-  if (code === 200) return JSON.parse(res.getContentText()).outcome;
-  if (code === 401 || code === 403) {
-    session.stopped = true;
-    Logger.log('Job Duck rejected the token (HTTP ' + code + '). It was revoked or expired: create a new one in Settings → API tokens and replace JOBDUCK_TOKEN. Syncing stopped for this run.');
-    return 'unauthorized';
-  }
-  if (code === 429 || code >= 500) {
-    session.stopped = true;
-    Logger.log('Job Duck is unavailable or at its daily limit (HTTP ' + code + '); will retry next run.');
-    return 'retry';
-  }
-  Logger.log('Job Duck refused "' + payload.subject + '" (HTTP ' + code + '): ' + res.getContentText().slice(0, 200));
-  return 'refused';
 }
 
 function buildPayload_(message) {

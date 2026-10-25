@@ -14,10 +14,10 @@ function makeStore(initial) {
   };
 }
 
-function load(scriptProps) {
+function load(scriptProps, userProps) {
   const logs = [];
   const scriptStore = makeStore(scriptProps);
-  const userStore = makeStore({});
+  const userStore = makeStore(userProps);
   let uuid = 0;
   const sandbox = {
     Logger: { log: (m) => logs.push(String(m)) },
@@ -32,16 +32,18 @@ function load(scriptProps) {
       }),
     },
     Utilities: { getUuid: () => '0000000' + (++uuid) + '-aaaa-bbbb-cccc-dddddddddddd' },
-    GmailApp: {},
-    UrlFetchApp: {},
-    ScriptApp: {},
+    GmailApp: { getUserLabelByName: (name) => (name.startsWith('Job Duck/') ? { name } : null) },
+    ScriptApp: {
+      getProjectTriggers: () => [],
+      newTrigger: () => ({ timeBased: () => ({ everyMinutes: () => ({ create: () => {} }) }) }),
+    },
     Session: {},
-    Gmail: {},
+    Gmail: { Users: { Labels: { list: () => ({ labels: [] }) } } },
   };
   vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'Code.gs'), 'utf8') +
-    '\nthis.__api = { doGet, doPost, queueOutcome_, listOutcomes_, ackOutcomes_, generateSyncToken, MAX_OUTCOMES };', sandbox);
-  return { api: sandbox.__api, logs, scriptStore };
+    '\nthis.__api = { doGet, doPost, queueOutcome_, listOutcomes_, ackOutcomes_, generateSyncToken, checkConnection, install, MAX_OUTCOMES };', sandbox);
+  return { api: sandbox.__api, logs, scriptStore, userStore };
 }
 
 const TOKEN = 'a'.repeat(64);
@@ -87,7 +89,7 @@ function outcome(id, receivedAt) {
 
   const pending = post(api, { token: TOKEN, action: 'pending' });
   check('pending responds as JSON', pending.mime === 'application/json');
-  check('pending returns outcomes sorted by receivedAt', pending.json.ok === true && pending.json.scriptVersion === '4' &&
+  check('pending returns outcomes sorted by receivedAt', pending.json.ok === true && pending.json.scriptVersion === '5' &&
     pending.json.outcomes.map((o) => o.messageId).join(',') === '<a@x>,<b@x>,<c@x>', pending.json);
 
   const ack = post(api, { token: TOKEN, action: 'ack', messageIds: ['<a@x>', '<c@x>', '<unknown@x>'] });
@@ -95,18 +97,26 @@ function outcome(id, receivedAt) {
   check('ack removes exactly the given ids', ack.json.ok === true && ack.json.acked === 2 && left.join(',') === '<b@x>', { ack: ack.json, left });
 
   const status = post(api, { token: TOKEN, action: 'status' });
-  check('status reports mode and pending', status.json.ok === true && status.json.mode === 'serve' && status.json.pending === 1 && status.json.scriptVersion === '4', status.json);
+  check('status reports mode and pending', status.json.ok === true && status.json.mode === 'serve' && status.json.pending === 1 && status.json.scriptVersion === '5', status.json);
 
   check('bad action → bad_request', post(api, { token: TOKEN, action: 'delete-all' }).json.error === 'bad_request');
   check('ack without messageIds → bad_request', post(api, { token: TOKEN, action: 'ack' }).json.error === 'bad_request');
 
   const page = api.doGet({ parameter: { token: TOKEN } }).getContent();
-  check('doGet is a one-line page without outcome data or token', page === 'Job Duck Gmail script v4 — POST only' && !page.includes('<b@x>') && !page.includes(TOKEN), page);
+  check('doGet is a one-line page without outcome data or token', page === 'Job Duck Gmail script v5 — POST only' && !page.includes('<b@x>') && !page.includes(TOKEN), page);
 }
 
 {
-  const { api } = load({ SYNC_TOKEN: TOKEN, JOBDUCK_TOKEN: 'legacy' });
-  check('status reports push mode when JOBDUCK_TOKEN is set', post(api, { token: TOKEN, action: 'status' }).json.mode === 'push');
+  const { api, logs } = load({ SYNC_TOKEN: TOKEN, JOBDUCK_TOKEN: 'legacy' });
+  check('status stays serve mode when JOBDUCK_TOKEN is set', post(api, { token: TOKEN, action: 'status' }).json.mode === 'serve');
+  api.checkConnection();
+  check('checkConnection notes that JOBDUCK_TOKEN is ignored', logs.some((l) => /Push mode was removed in v5/.test(l)), logs);
+}
+
+{
+  const { api, userStore } = load({}, { jobduckPendingThreads: '["t1"]', 'jobduckSyncCount_2026-10-01': '3', backfillOffset: '200' });
+  api.install();
+  check('install clears the v3/v4 push queue and daily counters only', Object.keys(userStore.data).join(',') === 'backfillOffset', userStore.data);
 }
 
 {
