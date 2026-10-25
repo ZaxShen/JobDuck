@@ -142,7 +142,7 @@ async function findRelease(
   }
   if (channel === 'dev') {
     const release = toRelease(await getReleases(fetch, `releases/tags/${DEV_TAG}`, userAgent, 'dev build'))
-    const name = release.name?.trim() ?? ''
+    const name = (release.name?.trim() ?? '').replace(/^v/, '')
     if (channelOf(name) !== 'dev') throw new UpgradeError(`the ${DEV_TAG} release is not titled with a dev version`)
     return { release, version: name }
   }

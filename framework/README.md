@@ -83,7 +83,7 @@ jobduck upgrade 0.1.0            # install a specific version
 |---|---|---|---|
 | `stable` | everyone (the default) | a `vX.Y.Z` tag on `main` | `0.2.0` |
 | `rc` | testers before a release | a `vX.Y.Z-rc.N` tag on `dev`, published as a prerelease | `0.2.0-rc.1` |
-| `dev` | developers | `dev`, rebuilt daily when it changed (or on demand) as the rolling `dev-latest` prerelease | `0.2.1-dev.42+abc1234` |
+| `dev` | developers | `dev`, rebuilt daily when it changed (or on demand) as the rolling `dev-latest` prerelease; see [Dev builds](../CONTRIBUTING.md#dev-builds) | `0.2.1-dev.42.gh17` |
 
 The channel follows the installed version, so plain `jobduck upgrade` stays on it; `--channel` switches, even to an older version. On `stable` and `rc`, `upgrade` never moves to an older version by itself. The `rc` channel takes the highest stable or rc release, so once an rc ships as `X.Y.Z` you are back on `stable`; `--channel rc` again to keep testing.
 
@@ -301,7 +301,7 @@ Nothing reaches `stable` without a release candidate people have run.
 
 The release workflow (`.github/workflows/release.yml`) runs `scripts/release-gate.ts` first: an rc tag must be on `dev`; a stable tag must be on `main`, its `vX.Y.Z-rc.N` must already be published, and nothing but the `package.json` version may differ from the newest rc. Then it tests, checks the tag matches `package.json`, builds `jobduck-darwin-arm64`, `jobduck-darwin-x64`, `jobduck-linux-x64`, `jobduck-linux-arm64`, `jobduck-windows-x64.exe` and `SHA256SUMS`, and publishes the GitHub Release (stable notes start from the previous stable tag).
 
-`.github/workflows/dev-channel.yml` runs daily, and does nothing unless `dev` moved since the last `dev-latest` build. It tests, stamps the version `X.Y.Z-dev.<run>+<sha>` (the next patch after a stable `package.json` version) and replaces the `dev-latest` prerelease. For a build right away, run `gh workflow run dev-channel.yml`. Scheduled and manual runs use the workflow file on `main`.
+`.github/workflows/dev-channel.yml` runs daily, and does nothing unless `dev` moved since the last `dev-latest` build. It tests, stamps the version `X.Y.Z-dev.<n>.gh<PR>` with `scripts/dev-version.ts` (X.Y.Z is the core of a prerelease `package.json` version or the next patch after a stable one, n the first-parent commits since the last stable tag, PR the pull request behind the build) and replaces the `dev-latest` prerelease, titled `vX.Y.Z-dev.<n>.gh<PR>`. [Dev builds](../CONTRIBUTING.md#dev-builds) explains how to read it. For a build right away, run `gh workflow run dev-channel.yml`. Scheduled and manual runs use the workflow file on `main`.
 
 CI runs only on pull requests, and a newer push cancels the run still in progress. A PR that touches only `README.md` or `CLAUDE.md` skips the build, test and smoke jobs, and the installer job runs only when `install.sh` changes. The required `ci` check reports either way.
 
