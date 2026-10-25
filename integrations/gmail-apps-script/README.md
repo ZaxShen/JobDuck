@@ -59,8 +59,8 @@ recorded; acknowledged outcomes are deleted from the script. The agent never get
    It stores a random `SYNC_TOKEN` script property and logs it once; running it again replaces the token.
 3. **Deploy → New deployment → Select type: Web app**, **Execute as: Me**, **Who has access: Anyone**, **Deploy**.
    Copy the web app URL ending in `/exec`.
-4. In `~/.jobduck/permissions.toml`, under `[track]`, set `sync_url` to the `/exec` URL and `sync_token` to the
-   logged token.
+4. In `permissions.toml` in your Job Duck home (`<your Job Duck folder>/.jobduck/`; `jobduck doctor` shows where it
+   is), under `[track]`, set `sync_url` to the `/exec` URL and `sync_token` to the logged token.
 5. Run `checkConnection`: it logs the mode (`serve`), the number of pending outcomes and whether `SYNC_TOKEN` is set.
    Then run `preview` and `install` as in push-mode steps 5–6.
 
