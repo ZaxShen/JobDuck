@@ -11,13 +11,21 @@ import { gemini } from '../src/hosts/gemini'
 import { type HostContext, skillFrontMatter } from '../src/hosts'
 import { skillNames } from '../src/paths'
 
+const LABEL = '~/search/.jobduck'
+
 let box: Sandbox
 let ctx: HostContext
+let entry: { command: string; args: string[]; env: { JOBDUCK_HOME: string } }
+let tomlEntry: string
 beforeEach(() => {
   box = sandbox()
-  ctx = { workspace: box.workspace, home: join(box.userHome, '.jobduck'), userHome: box.userHome, pathEnv: '', dryRun: true }
+  ctx = { workspace: box.workspace, home: join(box.userHome, 'search', '.jobduck'), userHome: box.userHome, pathEnv: '', dryRun: true }
+  entry = { command: 'jobduck', args: ['mcp'], env: { JOBDUCK_HOME: ctx.home } }
+  tomlEntry = `[mcp_servers.jobduck]\ncommand = "jobduck"\nargs = ["mcp"]\nenv = { JOBDUCK_HOME = ${JSON.stringify(ctx.home)} }\n`
 })
 afterEach(() => box.cleanup())
+
+const block = () => mergeAgentsMd(null, LABEL)
 
 const pointerPaths = (dir: string) => skillNames().map((name) => join(dir, `jobduck-${name}`, 'SKILL.md'))
 
@@ -55,7 +63,7 @@ test('Claude Code dry run merges .mcp.json, adds pointers, and writes nothing', 
 
   const merged = JSON.parse(changes[0]!.after)
   expect(merged).toEqual({
-    mcpServers: { other: { command: 'x' }, jobduck: { command: 'jobduck', args: ['mcp'] } },
+    mcpServers: { other: { command: 'x' }, jobduck: entry },
     extra: 1,
   })
   expect(changes[0]!.diff).toContain('+    "jobduck": {')
@@ -69,11 +77,11 @@ test('Claude Code registration is idempotent once applied', () => {
   expect(claudeCode.isRegistered(ctx)).toBe(false)
   claudeCode.register({ ...ctx, dryRun: false })
   expect(claudeCode.isRegistered(ctx)).toBe(true)
-  expect(readFileSync(join(box.workspace, 'AGENTS.md'), 'utf8')).toBe(`mine\n\n${TEMPLATES['AGENTS.md']}`)
+  expect(readFileSync(join(box.workspace, 'AGENTS.md'), 'utf8')).toBe(`mine\n\n${block()}`)
   expect(readFileSync(join(box.workspace, 'CLAUDE.md'), 'utf8')).toBe('@AGENTS.md\n')
   expect(claudeCode.register(ctx)).toEqual([])
   expect(readFileSync(join(box.workspace, '.claude', 'skills', 'jobduck-apply', 'SKILL.md'), 'utf8'))
-    .toContain('Read and follow `~/.jobduck/skills/apply.md`.')
+    .toContain(`Read and follow \`${LABEL}/skills/apply.md\`.`)
 })
 
 test('skill pointers carry the jobduck- name and the skill description', () => {
@@ -83,7 +91,7 @@ test('skill pointers carry the jobduck- name and the skill description', () => {
     const meta = skillFrontMatter(changes[index]!.after)
     expect(meta.name).toBe(`jobduck-${name}`)
     expect(meta.description!.length).toBeGreaterThan(20)
-    expect(changes[index]!.after).toEndWith(`Read and follow \`~/.jobduck/skills/${name}.md\`.\n`)
+    expect(changes[index]!.after).toEndWith(`Read and follow \`${LABEL}/skills/${name}.md\`.\n`)
     expect(changes[index]!.diff).toContain('--- /dev/null')
   }
 })
@@ -100,7 +108,7 @@ test('Codex dry run appends the server table and preserves other sections byte f
     path, join(box.workspace, 'AGENTS.md'), ...pointerPaths(join(box.workspace, '.agents', 'skills')),
   ])
   expect(changes[0]!.after.startsWith(fixture)).toBe(true)
-  expect(changes[0]!.after.slice(fixture.length)).toBe('\n[mcp_servers.jobduck]\ncommand = "jobduck"\nargs = ["mcp"]\n')
+  expect(changes[0]!.after.slice(fixture.length)).toBe(`\n${tomlEntry}`)
   expect(changes[0]!.diff).toContain('+[mcp_servers.jobduck]')
   const parsed = parse(changes[0]!.after) as Record<string, any>
   expect(parsed.mcp_servers.other).toEqual({ command: 'other', args: [] })
@@ -117,7 +125,7 @@ test('Codex replaces an outdated jobduck table in place', () => {
 test('Codex creates a config when none exists', () => {
   const changes = codex.register(ctx)
   expect(changes[0]!.before).toBeNull()
-  expect(changes[0]!.after).toBe('[mcp_servers.jobduck]\ncommand = "jobduck"\nargs = ["mcp"]\n')
+  expect(changes[0]!.after).toBe(tomlEntry)
 })
 
 test('Gemini dry run merges settings.json and adds GEMINI.md', () => {
@@ -130,7 +138,7 @@ test('Gemini dry run merges settings.json and adds GEMINI.md', () => {
   expect(changes.map((c) => c.path)).toEqual([path, join(box.workspace, 'AGENTS.md'), join(box.workspace, 'GEMINI.md')])
   expect(JSON.parse(changes[0]!.after)).toEqual({
     theme: 'Dracula',
-    mcpServers: { other: { command: 'y' }, jobduck: { command: 'jobduck', args: ['mcp'] } },
+    mcpServers: { other: { command: 'y' }, jobduck: entry },
   })
   expect(changes[2]!.after).toBe('See AGENTS.md\n')
   expect(changes.some((c) => c.path.endsWith('SKILL.md'))).toBe(false)
@@ -138,25 +146,26 @@ test('Gemini dry run merges settings.json and adds GEMINI.md', () => {
 })
 
 test('AGENTS.md keeps the user text and replaces only the Job Duck block', () => {
-  const block = TEMPLATES['AGENTS.md']!
-  expect(block.startsWith('<!-- jobduck:start')).toBe(true)
-  expect(block.trimEnd().endsWith('<!-- jobduck:end -->')).toBe(true)
-  expect(mergeAgentsMd(null)).toBe(block)
-  expect(mergeAgentsMd('')).toBe(block)
-  expect(mergeAgentsMd('# Notes\nkeep me')).toBe(`# Notes\nkeep me\n\n${block}`)
+  const rendered = block()
+  expect(rendered.startsWith('<!-- jobduck:start')).toBe(true)
+  expect(rendered.trimEnd().endsWith('<!-- jobduck:end -->')).toBe(true)
+  expect(rendered).toBe(TEMPLATES['AGENTS.md']!.split('{{home}}').join(LABEL))
+  expect(rendered).not.toContain('{{home}}')
+  expect(mergeAgentsMd('', LABEL)).toBe(rendered)
+  expect(mergeAgentsMd('# Notes\nkeep me', LABEL)).toBe(`# Notes\nkeep me\n\n${rendered}`)
   const stale = '# Notes\n\n<!-- jobduck:start old -->\nold rules\n<!-- jobduck:end -->\n\n## Mine\nafter\n'
-  const merged = mergeAgentsMd(stale)
-  expect(merged).toBe(`# Notes\n\n${block.trimEnd()}\n\n## Mine\nafter\n`)
-  expect(mergeAgentsMd(merged)).toBe(merged)
+  const merged = mergeAgentsMd(stale, LABEL)
+  expect(merged).toBe(`# Notes\n\n${rendered.trimEnd()}\n\n## Mine\nafter\n`)
+  expect(mergeAgentsMd(merged, LABEL)).toBe(merged)
 })
 
 test('AGENTS.md written by jobduck 0.1.x is replaced by the block', () => {
   const legacy = readFileSync(join(import.meta.dir, 'fixtures', 'agents-0.1.md'), 'utf8')
-  expect(mergeAgentsMd(legacy)).toBe(TEMPLATES['AGENTS.md']!)
-  expect(mergeAgentsMd(`${legacy}edited\n`)).toBe(`${legacy}edited\n\n${TEMPLATES['AGENTS.md']}`)
+  expect(mergeAgentsMd(legacy, LABEL)).toBe(block())
+  expect(mergeAgentsMd(`${legacy}edited\n`, LABEL)).toBe(`${legacy}edited\n\n${block()}`)
 })
 
 test('Codex gets the AGENTS.md block, since Codex reads AGENTS.md itself', () => {
   codex.register({ ...ctx, dryRun: false })
-  expect(readFileSync(join(box.workspace, 'AGENTS.md'), 'utf8')).toBe(TEMPLATES['AGENTS.md']!)
+  expect(readFileSync(join(box.workspace, 'AGENTS.md'), 'utf8')).toBe(block())
 })

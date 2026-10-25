@@ -27,7 +27,7 @@ program
   .command('init')
   .description('Create the Job Duck home, apply migrations, and register Job Duck with your agent hosts')
   .option('--workspace <dir>', 'project directory for workspace-scoped host files', process.cwd())
-  .option('--home <dir>', 'Job Duck home to use, relative to the workspace (default: an existing home, else <workspace>/.jobduck in a dedicated folder, else ~/.jobduck)')
+  .option('--home <dir>', 'Job Duck home to use, relative to the workspace (default: JOBDUCK_HOME, else an existing home, else <workspace>/.jobduck in a dedicated folder)')
   .option('--hosts <list>', `comma-separated hosts (${HOST_IDS.join(',')}); default: detected`)
   .option('--dry-run', 'print the plan without writing anything')
   .option('--diff', 'also print a unified diff of every file the plan touches')

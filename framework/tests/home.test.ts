@@ -1,25 +1,31 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse } from 'smol-toml'
-import { type Sandbox, sandbox } from './helpers'
+import { type Sandbox, sandbox, snapshot } from './helpers'
+import { runDashboard } from '../src/commands/dashboard'
 import { runDoctor } from '../src/commands/doctor'
-import { CODEX_TRUST_NOTE, chooseHome, runInit } from '../src/commands/init'
+import { CODEX_TRUST_NOTE, DEDICATED_TIP, chooseHome, runInit } from '../src/commands/init'
+import { runSync } from '../src/commands/sync'
 import { TEMPLATES } from '../src/assets'
 import { claudeCode, mergeAgentsMd } from '../src/hosts/claude-code'
 import { codex, mergeCodexConfig } from '../src/hosts/codex'
 import { gemini } from '../src/hosts/gemini'
-import { type HostContext, MCP_SERVER, homeLabel, isWorkspaceLocal, mcpServer } from '../src/hosts'
-import { defaultHome, findHome, jobduckHome, resolveWorkspace } from '../src/paths'
+import { type HostContext, MCP_SERVER, allHosts, homeLabel, isWorkspaceLocal, mcpServer } from '../src/hosts'
+import { NoHomeError, findHome, jobduckHome, resolveWorkspace } from '../src/paths'
 
 let box: Sandbox
 let lines: string[]
+let errors: string[]
 const out = (line: string) => { lines.push(line) }
+const err = (line: string) => { errors.push(line) }
 
 beforeEach(() => {
   box = sandbox()
   delete process.env.JOBDUCK_HOME
   lines = []
+  errors = []
 })
 afterEach(() => {
   process.env.JOBDUCK_HOME = box.home
@@ -34,10 +40,14 @@ const mark = (home: string, file = 'jobduck.db') => {
 const ctxFor = (workspace: string, home: string): HostContext =>
   ({ workspace, home, userHome: box.userHome, pathEnv: '', dryRun: true })
 
-test('jobduckHome prefers JOBDUCK_HOME, then the nearest marked .jobduck upward, then the default', () => {
+const cli = join(import.meta.dir, '..', 'src', 'cli.ts')
+
+test('jobduckHome prefers JOBDUCK_HOME, then the nearest marked .jobduck upward, else throws NoHomeError', () => {
   const deep = join(box.workspace, 'cv', 'deep')
   mkdirSync(deep, { recursive: true })
-  expect(jobduckHome(deep, box.userHome)).toBe(join(box.userHome, '.jobduck'))
+  expect(() => jobduckHome(deep, box.userHome)).toThrow(NoHomeError)
+  expect(() => jobduckHome(deep, box.userHome)).toThrow(`No Job Duck home in ${deep} or any folder above it`)
+  expect(() => jobduckHome(deep, box.userHome)).toThrow('run jobduck init in a dedicated folder, or set JOBDUCK_HOME')
 
   mark(join(box.workspace, '.jobduck'))
   expect(jobduckHome(deep, box.userHome)).toBe(join(box.workspace, '.jobduck'))
@@ -49,29 +59,71 @@ test('jobduckHome prefers JOBDUCK_HOME, then the nearest marked .jobduck upward,
   expect(jobduckHome(deep, box.userHome)).toBe(join(box.root, 'elsewhere'))
 })
 
+test('a marked .jobduck in the user home folder is ignored by the walk-up but works through JOBDUCK_HOME', () => {
+  const userLevel = join(box.userHome, '.jobduck')
+  mark(userLevel)
+  const deep = join(box.userHome, 'notes', 'deep')
+  mkdirSync(deep, { recursive: true })
+  expect(findHome(box.userHome, box.userHome)).toBeUndefined()
+  expect(() => jobduckHome(deep, box.userHome)).toThrow(NoHomeError)
+
+  mark(join(box.root, '.jobduck'))
+  expect(jobduckHome(deep, box.userHome)).toBe(join(box.root, '.jobduck'))
+
+  process.env.JOBDUCK_HOME = userLevel
+  expect(jobduckHome(deep, box.userHome)).toBe(userLevel)
+})
+
 test('a bare .jobduck folder without jobduck.db or permissions.toml is not a home', () => {
   mkdirSync(join(box.workspace, '.jobduck', 'skills'), { recursive: true })
   writeFileSync(join(box.workspace, '.jobduck', 'profile.md'), '')
-  expect(findHome(box.workspace)).toBeUndefined()
-  expect(jobduckHome(box.workspace, box.userHome)).toBe(defaultHome(box.userHome))
+  expect(findHome(box.workspace, box.userHome)).toBeUndefined()
+  expect(() => jobduckHome(box.workspace, box.userHome)).toThrow(NoHomeError)
 })
 
-test('init picks --home, then JOBDUCK_HOME, then an existing home, then the workspace when dedicated', () => {
+test('init picks --home, then JOBDUCK_HOME, then an existing home, then the workspace when dedicated, else none', () => {
   const ctx = { workspace: box.workspace, userHome: box.userHome }
   expect(chooseHome(ctx, 'store')).toBe(join(box.workspace, 'store'))
   expect(chooseHome(ctx)).toBe(join(box.workspace, '.jobduck'))
 
   writeFileSync(join(box.workspace, 'package.json'), '{}')
-  expect(chooseHome(ctx)).toBe(join(box.userHome, '.jobduck'))
+  expect(chooseHome(ctx)).toBeUndefined()
+  expect(chooseHome({ workspace: box.userHome, userHome: box.userHome })).toBeUndefined()
+
+  mark(join(box.workspace, '.jobduck'))
+  expect(chooseHome(ctx)).toBe(join(box.workspace, '.jobduck'))
 
   process.env.JOBDUCK_HOME = join(box.root, 'env-home')
   expect(chooseHome(ctx)).toBe(join(box.root, 'env-home'))
   expect(chooseHome(ctx, 'store')).toBe(join(box.workspace, 'store'))
 })
 
-test('init keeps an existing ~/.jobduck even in a dedicated folder outside the user home', () => {
+test('init never picks a marked .jobduck in the user home folder', () => {
   mark(join(box.userHome, '.jobduck'), 'permissions.toml')
-  expect(chooseHome({ workspace: box.workspace, userHome: box.userHome })).toBe(join(box.userHome, '.jobduck'))
+  expect(chooseHome({ workspace: box.workspace, userHome: box.userHome })).toBe(join(box.workspace, '.jobduck'))
+  expect(chooseHome({ workspace: box.userHome, userHome: box.userHome })).toBeUndefined()
+})
+
+test('init outside a dedicated folder without --home or JOBDUCK_HOME refuses, prints the tip and writes nothing', async () => {
+  writeFileSync(join(box.workspace, 'package.json'), '{}')
+  const before = snapshot(box.root)
+  for (const workspace of [box.workspace, box.userHome]) {
+    lines = []
+    errors = []
+    const code = await runInit({
+      workspace, userHome: box.userHome, pathEnv: '', isTTY: false, yes: true, out, err, hosts: ['claude', 'codex', 'gemini'],
+    })
+    expect(code).not.toBe(0)
+    expect(errors[0]).toContain(`No Job Duck home for ${workspace}`)
+    expect(errors.slice(1)).toEqual(DEDICATED_TIP)
+    expect(lines).toEqual([])
+    expect(snapshot(box.root)).toEqual(before)
+  }
+
+  expect(await runInit({ workspace: box.workspace, userHome: box.userHome, pathEnv: '', dryRun: true, out, err, home: 'store' })).toBe(0)
+  process.env.JOBDUCK_HOME = join(box.root, 'env-home')
+  expect(await runInit({ workspace: box.workspace, userHome: box.userHome, pathEnv: '', dryRun: true, out, err })).toBe(0)
+  expect(snapshot(box.root)).toEqual(before)
 })
 
 test('init in a dedicated folder keeps the home and every host config in the workspace', async () => {
@@ -96,7 +148,7 @@ test('init in a dedicated folder keeps the home and every host config in the wor
 
   const agents = readFileSync(join(box.workspace, 'AGENTS.md'), 'utf8')
   expect(agents).toContain('`.jobduck/skills/cv.md`')
-  expect(agents).not.toContain('~/.jobduck')
+  expect(agents).not.toContain('{{home}}')
   expect(readFileSync(join(box.workspace, '.agents', 'skills', 'jobduck-cv', 'SKILL.md'), 'utf8'))
     .toEndWith('Read and follow `.jobduck/skills/cv.md`.\n')
 
@@ -114,9 +166,10 @@ test('init in a dedicated folder keeps the home and every host config in the wor
   expect(readdirSync(box.userHome)).toEqual([])
 })
 
-test('an existing ~/.jobduck keeps the global host configs and entries without env', async () => {
+test('a JOBDUCK_HOME outside the workspace keeps the global host configs, with the home in every entry', async () => {
   const home = join(box.userHome, '.jobduck')
   mark(home)
+  process.env.JOBDUCK_HOME = home
   expect(await runInit({
     workspace: box.workspace, userHome: box.userHome, pathEnv: '', isTTY: false, yes: true, out, hosts: ['codex', 'gemini'],
   })).toBe(0)
@@ -124,18 +177,33 @@ test('an existing ~/.jobduck keeps the global host configs and entries without e
   expect(existsSync(join(box.workspace, '.codex'))).toBe(false)
   expect(existsSync(join(home, '.gitignore'))).toBe(false)
   expect(readFileSync(join(box.userHome, '.codex', 'config.toml'), 'utf8'))
-    .toBe('[mcp_servers.jobduck]\ncommand = "jobduck"\nargs = ["mcp"]\n')
-  expect(JSON.parse(readFileSync(join(box.userHome, '.gemini', 'settings.json'), 'utf8')).mcpServers.jobduck).toEqual(MCP_SERVER)
+    .toBe(`[mcp_servers.jobduck]\ncommand = "jobduck"\nargs = ["mcp"]\nenv = { JOBDUCK_HOME = ${JSON.stringify(home)} }\n`)
+  expect(JSON.parse(readFileSync(join(box.userHome, '.gemini', 'settings.json'), 'utf8')).mcpServers.jobduck)
+    .toEqual({ ...MCP_SERVER, env: { JOBDUCK_HOME: home } })
   expect(lines).not.toContain(CODEX_TRUST_NOTE)
-  expect(readFileSync(join(box.workspace, 'AGENTS.md'), 'utf8')).toBe(TEMPLATES['AGENTS.md']!)
+  expect(readFileSync(join(box.workspace, 'AGENTS.md'), 'utf8')).toBe(mergeAgentsMd(null, homeLabel(ctxFor(box.workspace, home))))
 })
 
-test('server entries carry JOBDUCK_HOME only for a home other than ~/.jobduck', () => {
-  expect(mcpServer(ctxFor(box.workspace, join(box.userHome, '.jobduck')))).toBe(MCP_SERVER)
-  const other = join(box.root, 'other-home')
-  expect(mcpServer(ctxFor(box.workspace, other))).toEqual({ ...MCP_SERVER, env: { JOBDUCK_HOME: other } })
+test('every host entry carries JOBDUCK_HOME for every home', () => {
+  const homes = [
+    join(box.workspace, '.jobduck'),
+    join(box.userHome, '.jobduck'),
+    join(box.userHome, 'search', '.jobduck'),
+    join(box.root, 'other-home'),
+  ]
+  for (const home of homes) {
+    const ctx = ctxFor(box.workspace, home)
+    expect(mcpServer(ctx)).toEqual({ ...MCP_SERVER, env: { JOBDUCK_HOME: home } })
+    for (const host of allHosts()) {
+      const change = host.register(ctx).find((candidate) => candidate.path === host.configPath(ctx))!
+      const entry = host.id === 'codex'
+        ? (parse(change.after) as Record<string, any>).mcp_servers.jobduck
+        : JSON.parse(change.after).mcpServers.jobduck
+      expect(entry).toEqual({ ...MCP_SERVER, env: { JOBDUCK_HOME: home } })
+    }
+  }
 
-  const ctx = ctxFor(box.workspace, other)
+  const ctx = ctxFor(box.workspace, join(box.root, 'other-home'))
   expect(isWorkspaceLocal(ctx)).toBe(false)
   expect(codex.configPath(ctx)).toBe(join(box.userHome, '.codex', 'config.toml'))
   expect(gemini.configPath(ctx)).toBe(join(box.userHome, '.gemini', 'settings.json'))
@@ -153,18 +221,18 @@ test('Codex rewrites a jobduck table whose JOBDUCK_HOME is stale and keeps a cur
 
 test('the home label is .jobduck in the workspace, ~/ under the user home, else absolute', () => {
   expect(homeLabel(ctxFor(box.workspace, join(box.workspace, '.jobduck')))).toBe('.jobduck')
-  expect(homeLabel(ctxFor(box.workspace, join(box.userHome, '.jobduck')))).toBe('~/.jobduck')
   expect(homeLabel(ctxFor(box.workspace, join(box.userHome, 'search', '.jobduck')))).toBe('~/search/.jobduck')
   expect(homeLabel(ctxFor(box.workspace, join(box.root, 'other')))).toBe(join(box.root, 'other'))
 })
 
 test('AGENTS.md and skill pointers name the home by its label', () => {
+  expect(TEMPLATES['AGENTS.md']).toContain('`{{home}}/profile.md`')
   const block = mergeAgentsMd(null, '.jobduck')
   expect(block.startsWith('<!-- jobduck:start')).toBe(true)
   expect(block.trimEnd().endsWith('<!-- jobduck:end -->')).toBe(true)
   expect(block).toContain('`.jobduck/profile.md`')
   expect(block).toContain('`.jobduck` is this workspace\'s Job Duck home')
-  expect(block).not.toContain('~/.jobduck')
+  expect(block).not.toContain('{{home}}')
 
   const stale = `# Notes\n\n${TEMPLATES['AGENTS.md']!.trimEnd()}\n\n## Mine\n`
   expect(mergeAgentsMd(stale, '.jobduck')).toBe(`# Notes\n\n${block.trimEnd()}\n\n## Mine\n`)
@@ -194,6 +262,9 @@ test('resolveWorkspace snaps a folder inside a workspace home to the folder that
   const outside = join(box.root, 'outside')
   expect(resolveWorkspace(outside, box.userHome)).toBe(outside)
   expect(resolveWorkspace(deep, box.userHome)).toBe(box.workspace)
+
+  process.env.JOBDUCK_HOME = join(box.userHome, '.jobduck')
+  expect(resolveWorkspace(join(box.userHome, 'notes'), box.userHome)).toBe(join(box.userHome, 'notes'))
 })
 
 test('init and doctor from a subfolder of a workspace home use the folder that holds .jobduck/', async () => {
@@ -218,3 +289,41 @@ test('init and doctor from a subfolder of a workspace home use the folder that h
   runDoctor({ workspace: cv, userHome: box.userHome, pathEnv: '', out })
   expect(lines[0]).toBe(`Workspace: ${box.workspace} (holds .jobduck/)`)
 })
+
+test('doctor without a home reports a failing home check and still prints its other lines', () => {
+  const before = snapshot(box.root)
+  expect(runDoctor({ workspace: box.workspace, userHome: box.userHome, pathEnv: '', out })).toBe(1)
+  expect(lines[0]).toStartWith('ok   runtime: ')
+  expect(lines[1]).toStartWith('FAIL path: ')
+  expect(lines[2]).toBe(`FAIL home: ${new NoHomeError(box.workspace).message}`)
+  expect(lines.filter((line) => line.startsWith('     host '))).toHaveLength(3)
+  expect(snapshot(box.root)).toEqual(before)
+
+  lines = []
+  expect(runDoctor({ workspace: box.workspace, userHome: box.userHome, pathEnv: '', json: true, out })).toBe(1)
+  const report = JSON.parse(lines.join('\n'))
+  expect(report.ok).toBe(false)
+  expect(report.home).toBeNull()
+  expect(report.checks.find((check: { name: string }) => check.name === 'home').ok).toBe(false)
+})
+
+test('dashboard and sync without a home print the error and exit 1', async () => {
+  const message = new NoHomeError(box.workspace).message
+  expect(await runDashboard({ workspace: box.workspace, port: 0, open: false, out, err })).toBe(1)
+  expect(await runSync({ workspace: box.workspace, out, err, fetch: () => { throw new Error('no network') } })).toBe(1)
+  expect(errors).toEqual([message, message])
+  expect(lines).toEqual([])
+})
+
+test('mcp without a home exits 1 with the message on stderr and nothing on stdout', () => {
+  const result = spawnSync('bun', [cli, 'mcp'], {
+    cwd: box.workspace,
+    env: { ...process.env, HOME: box.userHome, USERPROFILE: box.userHome },
+    input: '',
+    encoding: 'utf8',
+  })
+  expect(result.status).toBe(1)
+  expect(result.stdout).toBe('')
+  expect(result.stderr).toContain('No Job Duck home in ')
+  expect(result.stderr).toContain('run jobduck init in a dedicated folder, or set JOBDUCK_HOME')
+}, 20_000)

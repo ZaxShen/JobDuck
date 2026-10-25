@@ -11,10 +11,10 @@ const AGENTS_START = '<!-- jobduck:start'
 const AGENTS_END = '<!-- jobduck:end -->'
 const LEGACY_AGENTS_SHA256 = new Set(['8a7cfdd54c987a9705a64eb83d8d2f814e62e0dbd53af19a9e7a2d89d5a4273a'])
 
-export const DEFAULT_HOME_LABEL = '~/.jobduck'
+const HOME_PLACEHOLDER = '{{home}}'
 
-export function mergeAgentsMd(before: string | null, label = DEFAULT_HOME_LABEL): string {
-  const block = TEMPLATES['AGENTS.md']!.split(DEFAULT_HOME_LABEL).join(label)
+export function mergeAgentsMd(before: string | null, label: string): string {
+  const block = TEMPLATES['AGENTS.md']!.split(HOME_PLACEHOLDER).join(label)
   if (before === null || before.trim() === '') return block
   if (LEGACY_AGENTS_SHA256.has(createHash('sha256').update(before).digest('hex'))) return block
   const start = before.indexOf(AGENTS_START)

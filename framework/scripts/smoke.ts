@@ -263,6 +263,21 @@ try {
   const localDoctorJson = read(localDoctor)
   await check('local: doctor finds the home from a subfolder', () => matches(/"home": ".*local-workspace.{1,2}\.jobduck"/, localDoctorJson) || show(localDoctorJson))
 
+  const homeless = join(sandbox, 'homeless')
+  mkdirSync(homeless, { recursive: true })
+  const homelessDoctor = join(sandbox, 'homeless-doctor.log')
+  const homelessDoctorCode = run(homelessDoctor, ['doctor'], { env: localEnv, cwd: homeless })
+  const homelessDoctorLog = read(homelessDoctor)
+  await check('no home: doctor exits non-zero', () => homelessDoctorCode !== 0 || show(homelessDoctorLog))
+  await check('no home: doctor reports a failing home check', () => matches(/^FAIL home: No Job Duck home in /, homelessDoctorLog) || show(homelessDoctorLog))
+  await check('no home: doctor still lists the hosts', () => count(/^ {5}host /, homelessDoctorLog, 3))
+  const homelessMcp = Bun.spawnSync([binary, 'mcp'], { cwd: homeless, env: localEnv, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' })
+  const homelessMcpErr = homelessMcp.stderr.toString()
+  await check('no home: mcp exits 1', () => homelessMcp.exitCode === 1 || show(homelessMcpErr))
+  await check('no home: mcp prints the error on stderr', () => contains('No Job Duck home in ', homelessMcpErr))
+  await check('no home: mcp writes nothing to stdout', () => homelessMcp.stdout.toString() === '' || show(homelessMcp.stdout.toString()))
+  await check('no home: nothing created', () => entries(homeless).length === 0 || show(entries(homeless).join('\n')))
+
   if (checks.failures > 0) {
     console.error(`smoke: ${checks.failures} check(s) failed`)
     process.exitCode = 1

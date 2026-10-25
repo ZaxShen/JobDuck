@@ -6,7 +6,7 @@ import { codex } from './codex'
 import { unifiedDiff } from './diff'
 import { gemini } from './gemini'
 import { SKILLS } from '../assets'
-import { defaultHome, skillNames } from '../paths'
+import { skillNames } from '../paths'
 
 export const HOST_IDS = ['claude', 'codex', 'gemini'] as const
 export type HostId = (typeof HOST_IDS)[number]
@@ -45,10 +45,7 @@ export interface Host {
 
 export const userHomeOf = (ctx: Pick<HostContext, 'userHome'>) => ctx.userHome ?? homedir()
 
-export const isDefaultHome = (ctx: HostContext) => resolve(ctx.home) === defaultHome(userHomeOf(ctx))
-
-export const isWorkspaceLocal = (ctx: HostContext) =>
-  !isDefaultHome(ctx) && dirname(resolve(ctx.home)) === resolve(ctx.workspace)
+export const isWorkspaceLocal = (ctx: HostContext) => dirname(resolve(ctx.home)) === resolve(ctx.workspace)
 
 const slashes = (path: string) => path.split(sep).join('/')
 
@@ -61,7 +58,7 @@ export function homeLabel(ctx: HostContext): string {
 }
 
 export function mcpServer(ctx: HostContext): McpServerEntry {
-  return isDefaultHome(ctx) ? MCP_SERVER : { ...MCP_SERVER, env: { JOBDUCK_HOME: resolve(ctx.home) } }
+  return { ...MCP_SERVER, env: { JOBDUCK_HOME: resolve(ctx.home) } }
 }
 
 export function onPath(binary: string, pathEnv = process.env.PATH ?? ''): boolean {
