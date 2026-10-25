@@ -1,13 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { LightbulbIcon } from 'lucide-react'
 import { SectionCard } from '@/components/composed/section-card'
 import { Button } from '@/components/ui/button'
-import { useFlash } from '@/hooks/use-flash'
-import { useVisiblePoll } from '@/hooks/use-visible-poll'
-import { type SaveResult, deleteJSON, errorMessage, fetchJSON, isConflict, patchJSON } from '@/lib/api'
+import { deleteJSON, patchJSON } from '@/lib/api'
 import type { FactStatus, ProfileFact } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { FactCard } from '@/views/facts/fact-card'
+import type { ProfileFacts } from '@/views/facts/use-profile-facts'
 
 const TABS: { status: FactStatus; label: string; empty: string }[] = [
   { status: 'proposed', label: 'Proposed', empty: 'Nothing waiting for review.' },
@@ -47,47 +46,8 @@ function EmptyState() {
   )
 }
 
-export function FactsView({ active }: { active: boolean }) {
-  const flash = useFlash()
-  const [facts, setFacts] = useState<ProfileFact[]>([])
-  const [loaded, setLoaded] = useState(false)
+export function FactsView({ facts, loaded, mutate }: ProfileFacts) {
   const [tab, setTab] = useState<FactStatus>('proposed')
-
-  const refresh = useCallback(async () => {
-    try {
-      setFacts((await fetchJSON<{ facts: ProfileFact[] }>('/api/profile-facts')).facts)
-      setLoaded(true)
-    } catch (error) {
-      flash(errorMessage(error), true)
-    }
-  }, [flash])
-
-  useEffect(() => {
-    if (active) void refresh()
-  }, [active, refresh])
-
-  useEffect(() => {
-    if (!active) return
-    const onFocus = () => void refresh()
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [active, refresh])
-
-  useVisiblePoll(refresh, active)
-
-  const mutate = useCallback(async (call: () => Promise<unknown>, done: string): Promise<SaveResult> => {
-    try {
-      await call()
-      flash(done)
-      await refresh()
-      return 'saved'
-    } catch (error) {
-      flash(errorMessage(error), true)
-      if (!isConflict(error)) return 'failed'
-      await refresh()
-      return 'reloaded'
-    }
-  }, [flash, refresh])
 
   const counts = useMemo(() => Object.fromEntries(TABS.map(({ status }) =>
     [status, facts.filter((fact) => fact.status === status).length])) as Record<FactStatus, number>, [facts])
@@ -95,7 +55,7 @@ export function FactsView({ active }: { active: boolean }) {
   const current = TABS.find((item) => item.status === tab)!
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-6">
       <p className="text-sm text-muted-foreground">
         Atomic facts about your work, proposed by your agent. Your CV is written only from the ones you accept.
       </p>

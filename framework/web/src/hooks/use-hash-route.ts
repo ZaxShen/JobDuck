@@ -1,27 +1,31 @@
 import { useCallback, useEffect, useState } from 'react'
-import { viewFromHash, type View } from '@/lib/routing'
+import { hashFor, routeFromHash, type Route, type View } from '@/lib/routing'
 
-export type { View } from '@/lib/routing'
+export type { Route, View } from '@/lib/routing'
 
-const current = (): View => viewFromHash(window.location.hash)
+const current = (): Route => routeFromHash(window.location.hash)
 
 export function useHashRoute() {
-  const [view, setView] = useState<View>(current)
+  const [route, setRoute] = useState<Route>(current)
+
+  const replace = useCallback((next: Route) => {
+    window.history.replaceState(null, '', hashFor(next))
+    setRoute(next)
+  }, [])
 
   useEffect(() => {
-    const onChange = () => setView(current())
+    const onChange = () => {
+      const next = current()
+      if (window.location.hash === hashFor(next)) setRoute(next)
+      else replace(next)
+    }
     window.addEventListener('hashchange', onChange)
     return () => window.removeEventListener('hashchange', onChange)
-  }, [])
+  }, [replace])
 
-  const replace = useCallback((next: View) => {
-    window.history.replaceState(null, '', `#${next}`)
-    setView(next)
-  }, [])
-
-  return { view, replace }
+  return { route, replace }
 }
 
-export const go = (view: View) => {
-  window.location.hash = view
+export const go = (view: View, section: string | null = null) => {
+  window.location.hash = hashFor({ view, section })
 }
