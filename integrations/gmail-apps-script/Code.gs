@@ -628,7 +628,7 @@ var INTERVIEW_SIGNALS = [
   ['interview invite', /\binterview (invitation|invite|request|kick-?off|confirmation|details|slot|loop)\b/i],
   ['interview kickoff', /\bkick(s|ing|ed)?[ -]?off (the|your|our) (interview|hiring|recruiting) process\b/i],
   ['schedule interview', /\b(schedul\w*|book\w*|set(ting)? up|arrang\w*|coordinat\w*|confirm\w*)\b[^.]{0,40}\b(interview|phone screen|screening call|technical screen|on-?site)\b/i],
-  ['book a time', /\b(schedule|book|find|pick|choose|select|grab|set up) (a |some )?(time|slot|call|chat|meeting|conversation)\b/i],
+  ['book a time', /\b(schedule|book|find|pick|choose|select|grab|set up) (a |an |some )?([\w-]+ ){0,2}?(time|slot|call|chat|meeting|conversation)\b(?![ -]?zones?\b)/i],
   ['availability', /\b(share|send|provide|let (me|us) know|reply with|what is|what's) (me |us )?(your |some )?(availability|available times|times that work)\b|\byour availability\b/i],
   ['screen', /\b(phone|technical|recruiter|initial|intro(ductory)?|video|virtual|hiring manager)[ -](screen|screening|interview|call)s?\b/i],
   ['next round', /\bnext (round|stage)\b|\b(final|second|third)[ -]round\b/i],
@@ -642,26 +642,51 @@ var INTERVIEW_SIGNALS = [
 var ASSESSMENT_WORD = /\b(assessment|coding (challenge|exercise|test|assignment)|take[- ]home|hackerrank|codesignal|codility|coderpad|online test|skills test|work sample)\b/i;
 var ASSESSMENT_ACTION = /\b(complete|completing|take|finish|start|begin|submit|attempt|access|link|within \d+|due|deadline|invit\w*)\b/i;
 var INTERVIEW_LINK = /https?:\/\/[^\s<>"')\]]*\b(calendly\.com|goodtime\.io|hackerrank\.com|codesignal\.com|codility\.com|coderpad\.io|testgorilla\.com)\b/i;
-// Sentences that only promise a possible future step ("If your experience matches, we will reach out to schedule an
-// interview", "Our team will review your application", "Selected candidates will be invited") are not interview mail.
-// A courtesy clause about the candidate's own interest or reply ("If you are still interested,", "Should you wish to
-// proceed,", "Once you confirm,") does not make an invite hypothetical, so it is dropped before that check.
-var COURTESY_CLAUSE = /\b(if|should|once|when|whenever|as soon as)\s+(you|you're|you've|you'd)\s+(are\s+|were\s+|have\s+|would\s+|still\s+)*(interested|available|free|open|keen|happy|comfortable|ready|wish\w*|want\w*|like|prefer|confirm\w*|accept\w*|agree\w*|repl(y|ied)|respond\w*|get back|let us know|decide to (proceed|move forward|continue)|choose to (proceed|move forward|continue)|any questions|questions)\b[^,.;:!?]*[,;:]?|\bif (interested|so|convenient|possible|this works|that works|it works)\b[^,.;:!?]*[,;:]?/gi;
-var MAYBE_CONDITIONAL = /\bshould (you|your|there|we|it|the)\b/i;
-var MAYBE_PROMISE = /\b(will|we'?ll|would|may|might|can)\b[^.]{0,60}\b(reach out|contact|be in touch|get in touch|follow up|get back|let you know|notify|invite|schedule|be invited|be asked)\b/i;
-var MAYBE_SENTENCE = /\b(may|might|could) (also )?(be )?(asked|invited|required|contacted|requested)\b|\b(selected|qualified|shortlisted|successful|top) (candidates|applicants)\b|\b(candidates|applicants) (who are )?(selected|shortlisted|chosen)\b|\b(will|we'?ll) (review|be reviewing|carefully review)\b|\bcurrently reviewing\b|\bunder review\b/i;
+// Each sentence is judged by what the employer commits to, not by the condition in front of it.
+// A direct offer to the candidate is an invite whatever condition precedes it ("If you have time this week, we would
+// like to schedule a phone interview", "Would you be available for a call?", "Please share a few times that work").
+var DIRECT_OFFERS = [
+  /\b(we|i)((['’]d| would) (like|love)( for you)?|(['’]re|['’]m| are| am)( very| so)? (happy|pleased|excited|delighted|thrilled|keen|eager|glad)| (want|wish|hope)) to( \w+)?? ((schedule|set up|arrange|book|invite you|have you|move you|advance you|bring you)\b[^.?!]{0,40}?\b(interview|call|chat|meeting|conversation|screen(ing)?|on-?site|time|slot|discussion|assessment|round|next (step|round|stage))s?\b|(meet|chat|speak|talk|connect) (with )?you\b)/i,
+  /\b(would|will|are|were) you (be )?(available|free|open)( for (a |an |the )?([\w-]+ ){0,3}?(interview|call|chat|meeting|conversation|screen(ing)?|on-?site|discussion|zoom|video)s?\b| to (talk|chat|speak|meet|connect|interview|jump on|hop on)\b| (this|next|on|tomorrow|today|at|between|sometime|any ?time|later)\b)/i,
+  /\bwhen (are|would|will) you (be )?(available|free)\b|\bdo you have (some |any )?(time|availability) (this|next|on|for|to|in)\b/i,
+  /\b(times?|slots?|days?|dates?|windows?)( that| which)? (work|works|suit|suits|fit|fits)( best)? (for|with) you\b|\bwhat (times?|days?|dates?) (work|works|would work|suit)\b/i,
+  /\bplease (\w+ )?(share|send|provide|reply with|let (me|us) know|tell (me|us))\b[^.?!]{0,30}?\b(availability|(a|some|few|preferred|convenient|good|suitable|available) (times?|slots?|dates?|days?))\b/i,
+  /\bplease (\w+ )?(book|schedule|select|pick|choose|grab)\b[^.?!]{0,30}?\b(interview|call|chat|meeting|screen|time|slot)s?\b(?![ -]?zones?\b)/i,
+  /\binvit(e|ing) you (to|for)\b[^.?!]{0,40}?\b(interview|call|chat|meeting|conversation|screen(ing)?|on-?site|discussion|assessment|next (step|round|stage))s?\b/i
+];
+// A plain statement that the candidate has advanced, unless a condition comes before it.
+var ADVANCED = /\b(you(['’]ve| have) been (selected|chosen|shortlisted|invited|advanced|moved)|we(['’]re| are|['’]ve| have)( \w+)? (moving|advancing|moved|advanced|inviting|selected|shortlisted) you)\b[^.?!]{0,40}?\b(interview|next (step|round|stage)|round|on-?site|screen)/i;
+// A promise of future contact ("we will reach out", "you will receive an email", "candidates who move forward will be
+// contacted") or review boilerplate is not an invite.
+var FUTURE_CONTACT = /\b(will|['’]ll|would|shall|may|might|can)( \w+){0,2}? (reach out|be reaching out|contact you|be contacted|be in touch|get in touch|hear from us|hear back|be notified|notify you|let you know|follow up|get back to you|receive (an? |further |more |another )?(e-?mail|message|call|invitation|invite|notification|update|follow-up))\b|\bhear from us\b|\bbe in touch\b/i;
+var MAYBE_SENTENCE = /\b(may|might|could) (also )?(be )?(asked|invited|required|contacted|requested)\b|\b(selected|qualified|shortlisted|successful|top) (candidates|applicants)\b|\b(candidates|applicants)( who| that| moving| advancing| progressing| selected| shortlisted| chosen)\b|\b(will|we'?ll) (review|be reviewing|carefully review)\b|\bcurrently reviewing\b|\bunder review\b/i;
+// A step the employer only takes once it picks the candidate ("If your experience matches, we will schedule an
+// interview", "If selected, you will be invited") is not an invite either.
+var EMPLOYER_CONDITION = /\b(if|when|once|should|in case|in the event( that)?|provided( that)?|assuming)\s+(we\b|our\b|the (team|hiring|recruit)|there(['’]s| is| are)\b|your (\w+ )?(experience|background|qualifications?|skills?|profile|application|resume|candidacy)\b|(you(['’]re| are| were| have been| get| are being) )?(selected|chosen|shortlisted|qualified|successful)\b|you (meet|match|fit|move forward|advance|progress|pass)\b|you(['’]re| are) (a )?(good |strong )?(match|fit)\b|(it['’]?s |this is )?a (good |strong )?(match|fit)\b)/i;
+var EMPLOYER_STEP = /\b(will|['’]ll|would|may|might|can|could)\b[^.?!]{0,60}?\b(schedul\w*|invit\w*|arrang\w*|set up|book|ask(ed)?|move|advance)\b/i;
 
-function hypotheticalSentence_(sentence) {
-  if (MAYBE_SENTENCE.test(sentence)) return true;
-  sentence = sentence.replace(COURTESY_CLAUSE, ' ');
-  return (CONDITIONAL.test(sentence) || MAYBE_CONDITIONAL.test(sentence)) && MAYBE_PROMISE.test(sentence);
+function directOffer_(sentence) {
+  if (DIRECT_OFFERS.some(function (re) { return re.test(sentence); })) return 'direct offer';
+  var m = ADVANCED.exec(sentence);
+  if (m && !CONDITIONAL.test(sentence.slice(0, m.index))) return 'moved forward';
+  return null;
+}
+
+function promiseOnly_(sentence) {
+  return FUTURE_CONTACT.test(sentence) || MAYBE_SENTENCE.test(sentence) ||
+    (EMPLOYER_CONDITION.test(sentence) && EMPLOYER_STEP.test(sentence));
 }
 
 /** Interview score over the body only: { interview, reasons[], evidence } */
 function interviewScore(body) {
   var why = [], evidence = null;
   splitSentences(body).forEach(function (sentence) {
-    if (hypotheticalSentence_(sentence)) return;
+    var offer = directOffer_(sentence);
+    if (!offer && promiseOnly_(sentence)) return;
+    if (offer && why.indexOf(offer) < 0) {
+      why.push(offer);
+      if (!evidence) evidence = sentence;
+    }
     INTERVIEW_SIGNALS.forEach(function (sig) {
       if (why.indexOf(sig[0]) >= 0 || !sig[1].test(sentence)) return;
       why.push(sig[0]);

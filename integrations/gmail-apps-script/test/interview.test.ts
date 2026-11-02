@@ -178,6 +178,36 @@ describe('isInterview reads invites in the body', () => {
   ])('an employer-side conditional promise is not interview mail: %s', (sentence) => {
     expect(api.isInterview(sentence)).toBe(false);
   });
+
+  test.each([
+    'Applicants who move forward to the interview stage will be contacted by a recruiter.',
+    'If you are selected for the interview stage, you will receive an email from our team.',
+    'Candidates moving forward in the interview process will be contacted within two weeks.',
+    'If you are interested and your experience matches, we will reach out to schedule an interview.',
+    'If you have any questions or if your background is a fit, we will reach out to schedule an interview.',
+    'If your experience matches, we will schedule an interview.',
+    'If we decide to move forward, we will schedule a phone screen.',
+    'If selected, you will be invited to an onsite interview.',
+    'You will hear from us about the interview stage soon.',
+    'Please select the time zone you are located in.',
+  ])('a future-contact promise or employer-side condition is not interview mail: %s', (sentence) => {
+    expect(api.isInterview(sentence)).toBe(false);
+  });
+
+  test.each([
+    'If you have time this week, we would like to schedule a phone interview.',
+    'If it suits you, we would like to schedule an interview for Thursday.',
+    'If you can make it, we would like to schedule your onsite for Friday.',
+    'Would you be available for a 30-minute call next week?',
+    'Are you available for a quick call this week?',
+    'If you would like to move forward, we would love to schedule a 30 minute chat with the team.',
+    'Please let me know a few times that work for you this week for a call.',
+    'We are pleased to invite you to the next step of our hiring process.',
+    "If your background is a fit, we'd love to set up a call with the team.",
+    'You have been selected for the next round, and our coordinator will reach out with times.',
+  ])('a direct offer is interview mail whatever condition precedes it: %s', (sentence) => {
+    expect(api.isInterview(sentence)).toBe(true);
+  });
 });
 
 describe('reaudit restores archived interview mail', () => {

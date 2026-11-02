@@ -360,5 +360,61 @@
     "subject": "Your application to Soylent",
     "body": "Hi Danlin,\n\nThank you for applying to the Frontend Engineer role at Soylent. Your interview is confirmed for Tuesday at 2pm PT.\n\nSoylent Recruiting",
     "expect": "interview"
+  },
+  {
+    "name": "Massive Dynamic confirmation: applicants who move forward will be contacted",
+    "from": "Massive Dynamic Recruiting <no-reply@greenhouse.io>",
+    "subject": "Thank you for applying to Massive Dynamic",
+    "body": "Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Massive Dynamic. Applicants who move forward to the interview stage will be contacted by a recruiter.\n\nMassive Dynamic Recruiting",
+    "expect": "job"
+  },
+  {
+    "name": "Oscorp confirmation: if selected for the interview stage you will receive an email",
+    "from": "Oscorp Recruiting <no-reply@greenhouse.io>",
+    "subject": "Thank you for applying to Oscorp",
+    "body": "Hi Danlin,\n\nThank you for applying to the Data Engineer role at Oscorp. If you are selected for the interview stage, you will receive an email from our team. Candidates moving forward in the interview process will be contacted within two weeks.\n\nOscorp Recruiting",
+    "expect": "job"
+  },
+  {
+    "name": "Vandelay confirmation: courtesy clause then employer condition then reach out",
+    "from": "Vandelay Recruiting <no-reply@greenhouse.io>",
+    "subject": "Thank you for applying to Vandelay",
+    "body": "Hi Danlin,\n\nThank you for applying to the Platform Engineer role at Vandelay. If you are interested and your experience matches, we will reach out to schedule an interview. If you have any questions or if your background is a fit, we will reach out to schedule an interview.\n\nVandelay Recruiting",
+    "expect": "job"
+  },
+  {
+    "name": "Gringotts phone interview after if-you-have-time",
+    "from": "Gringotts Recruiting <no-reply@greenhouse.io>",
+    "subject": "Your application to Gringotts",
+    "body": "Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Gringotts. If you have time this week, we would like to schedule a phone interview.\n\nGringotts Recruiting",
+    "expect": "interview"
+  },
+  {
+    "name": "Monarch onsite after if-you-can-make-it",
+    "from": "Monarch Recruiting <no-reply@greenhouse.io>",
+    "subject": "Your application to Monarch",
+    "body": "Hi Danlin,\n\nThank you for applying to the ML Engineer role at Monarch. If it suits you, we would like to schedule an interview for Thursday. If you can make it, we would like to schedule your onsite for Friday.\n\nMonarch Recruiting",
+    "expect": "interview"
+  },
+  {
+    "name": "Nakatomi availability question for a 30-minute call",
+    "from": "Nakatomi Recruiting <no-reply@greenhouse.io>",
+    "subject": "Your application to Nakatomi",
+    "body": "Hi Danlin,\n\nThank you for applying to the Site Reliability Engineer role at Nakatomi. Would you be available for a 30-minute call next week? Are you available for a quick call this week?\n\nNakatomi Recruiting",
+    "expect": "interview"
+  },
+  {
+    "name": "Pied Piper 30 minute chat and times that work",
+    "from": "Pied Piper Recruiting <no-reply@greenhouse.io>",
+    "subject": "Your application to Pied Piper",
+    "body": "Hi Danlin,\n\nThank you for applying to the Frontend Engineer role at Pied Piper. If you would like to move forward, we would love to schedule a 30 minute chat with the team. Please let me know a few times that work for you this week for a call.\n\nPied Piper Recruiting",
+    "expect": "interview"
+  },
+  {
+    "name": "Aperture invited to the next step of the hiring process",
+    "from": "Aperture Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Danlin,\n\nThank you for applying to the Data Engineer role at Aperture. We are pleased to invite you to the next step of our hiring process.\n\nAperture Recruiting",
+    "expect": "interview"
   }
 ]
