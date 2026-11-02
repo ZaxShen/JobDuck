@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppShell } from '@/components/layout/app-shell'
 import { Main } from '@/components/layout/main'
-import { SaveBar } from '@/components/save-bar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDocForm } from '@/hooks/use-doc-form'
 import { useFlash } from '@/hooks/use-flash'
@@ -93,11 +92,6 @@ export function App() {
               <SettingsView form={settings} active={view === 'settings'} />
             </div>
           </Main>
-          {form?.dirty && (
-            <div className="sticky bottom-0 z-30 px-4 pb-4">
-              <SaveBar onSave={() => void form.save()} onDiscard={() => void form.load()} />
-            </div>
-          )}
         </AppShell>
       </div>
       <div hidden={view !== 'welcome'}>

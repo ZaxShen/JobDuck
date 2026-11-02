@@ -3,7 +3,6 @@ import type { PermissionsView, ProfileView } from '@/lib/types'
 
 export const PROFILE_DOC = {
   url: '/api/profile',
-  saved: 'Profile saved.',
   fromView: (view: ProfileView): Draft => ({
     front_matter: view.front_matter,
     sections: Object.fromEntries(view.sections.map((section) => [section.title, section.content])),
@@ -18,7 +17,6 @@ export const PROFILE_DOC = {
 
 export const SETTINGS_DOC = {
   url: '/api/permissions',
-  saved: 'Settings saved.',
   fromView: (view: PermissionsView): Draft => view.permissions,
   body: (draft: Draft, _original: Draft, view: PermissionsView) => ({ permissions: draft, revision: view.revision }),
 }

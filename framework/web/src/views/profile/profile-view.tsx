@@ -1,17 +1,18 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { PlusIcon } from 'lucide-react'
 import { SectionCard } from '@/components/composed/section-card'
-import { FormGroups } from '@/components/form-groups'
+import { FieldControl } from '@/components/fields/field-control'
+import { LoadError, LoadSkeleton } from '@/components/load-states'
+import { SaveBar } from '@/components/save-bar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 import type { DocForm } from '@/hooks/use-doc-form'
 import { go } from '@/hooks/use-hash-route'
 import { profileEmpty } from '@/lib/docs'
-import { CV_FILES, type Draft } from '@/lib/forms'
+import { CV_FILES, type Draft, type Group, visibleFields, withField } from '@/lib/forms'
+import { getPath } from '@/lib/paths'
 import { hashFor, profileSection } from '@/lib/routing'
 import type { ProfileView as ProfileDoc } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -35,48 +36,84 @@ function Intake() {
   )
 }
 
+const sectionsOf = (draft: Draft) => draft.sections as Record<string, string>
+const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+
+function sectionDirty(body: SectionBody, draft: Draft, original: Draft): boolean {
+  switch (body.kind) {
+    case 'fields':
+      return body.group.fields.some((field) => !same(getPath(draft, field.key), getPath(original, field.key)))
+    case 'markdown':
+      return (sectionsOf(draft)[body.name] ?? '') !== (sectionsOf(original)[body.name] ?? '')
+    case 'documents':
+      return CV_FILES.fields.some((field) => !same(getPath(draft, field.key), getPath(original, field.key)))
+    default:
+      return false
+  }
+}
+
 interface NavProps {
   groups: SectionGroup[]
   active: string
   proposed: number
+  dirty: Set<string>
 }
 
-function ProposedBadge({ count }: { count: number }) {
-  if (count === 0) return null
+function DirtyDot({ className }: { className: string }) {
   return (
-    <Badge variant="secondary" className="tabular-nums">
-      {count}<span className="sr-only"> proposed</span>
-    </Badge>
+    <>
+      <span aria-hidden="true" className={cn('inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/70 align-middle', className)} />
+      <span className="sr-only">, unsaved changes</span>
+    </>
   )
 }
 
-function SectionLink({ item, active, proposed, className }: { item: SectionItem; active: boolean; proposed: number; className: string }) {
+function SectionLink({ item, active, proposed, dirty, className, dotClassName }: {
+  item: SectionItem
+  active: boolean
+  proposed: number
+  dirty: boolean
+  className: string
+  dotClassName: string
+}) {
   return (
     <a
       href={hashFor({ view: 'profile', section: item.slug })}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'flex items-center gap-2 rounded-md text-sm outline-none transition-colors duration-150 focus-visible:ring-[3px] focus-visible:ring-ring/50',
+        'rounded-md text-sm outline-none transition-colors duration-150 focus-visible:ring-[3px] focus-visible:ring-ring/50',
         className,
         active ? 'bg-accent font-medium text-foreground' : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
       )}
     >
-      <span className="truncate">{item.label}</span>
-      {item.slug === FACTS_SLUG && <ProposedBadge count={proposed} />}
+      {item.label}
+      {dirty && <DirtyDot className={dotClassName} />}
+      {item.slug === FACTS_SLUG && proposed > 0 && (
+        <Badge variant="secondary" className="ml-1.5 align-middle tabular-nums">
+          {proposed}<span className="sr-only"> proposed</span>
+        </Badge>
+      )}
     </a>
   )
 }
 
-function SectionNav({ groups, active, proposed }: NavProps) {
+function SectionNav({ groups, active, proposed, dirty }: NavProps) {
   return (
-    <nav aria-label="Profile sections" className="hidden w-48 shrink-0 flex-col gap-4 lg:sticky lg:top-6 lg:flex lg:self-start">
+    <nav aria-label="Profile sections" className="hidden lg:block w-48 shrink-0 space-y-4 lg:sticky lg:top-6 lg:self-start">
       {groups.map((group) => (
         <div key={group.label}>
           <p className="mb-1.5 px-2 text-[11px] font-medium uppercase tracking-widest text-muted-foreground/50">{group.label}</p>
-          <ul className="flex flex-col gap-0.5">
+          <ul className="space-y-0.5">
             {group.items.map((item) => (
               <li key={item.slug}>
-                <SectionLink item={item} active={item.slug === active} proposed={proposed} className="w-full justify-between px-2 py-1.5" />
+                <SectionLink
+                  item={item}
+                  active={item.slug === active}
+                  proposed={proposed}
+                  dirty={dirty.has(item.slug)}
+                  className="block w-full px-2 py-1.5 text-left"
+                  dotClassName="ml-1.5"
+                />
               </li>
             ))}
           </ul>
@@ -86,15 +123,23 @@ function SectionNav({ groups, active, proposed }: NavProps) {
   )
 }
 
-function SectionPills({ groups, active, proposed }: NavProps) {
+function SectionPills({ groups, active, proposed, dirty }: NavProps) {
   return (
     <nav aria-label="Profile sections" className="relative overflow-x-auto lg:hidden">
       <div className="flex min-w-max items-center gap-1 pb-2">
         {groups.map((group, index) => (
           <Fragment key={group.label}>
-            {index > 0 && <Separator orientation="vertical" className="mx-1 data-vertical:h-4 data-vertical:self-center" />}
+            {index > 0 && <div aria-hidden="true" className="mx-1 h-4 w-px shrink-0 bg-border" />}
             {group.items.map((item) => (
-              <SectionLink key={item.slug} item={item} active={item.slug === active} proposed={proposed} className="shrink-0 px-2.5 py-1" />
+              <SectionLink
+                key={item.slug}
+                item={item}
+                active={item.slug === active}
+                proposed={proposed}
+                dirty={dirty.has(item.slug)}
+                className="shrink-0 px-2.5 py-1"
+                dotClassName="ml-1"
+              />
             ))}
           </Fragment>
         ))}
@@ -103,13 +148,42 @@ function SectionPills({ groups, active, proposed }: NavProps) {
   )
 }
 
+function Section({ title, help, children }: { title: ReactNode; help?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="space-y-2">
+      <h2 className="text-sm font-medium">{title}</h2>
+      {help && <p className="text-xs text-muted-foreground">{help}</p>}
+      {children}
+    </section>
+  )
+}
+
+function FieldsSection({ group, draft, onChange }: { group: Group; draft: Draft; onChange: (draft: Draft) => void }) {
+  return (
+    <Section title={group.title} help={group.help}>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {visibleFields(group, draft).map((field) => (
+          <FieldControl
+            key={field.key}
+            formName="profile"
+            size="compact"
+            field={field}
+            value={getPath(draft, field.key)}
+            onChange={(value) => onChange(withField(draft, field, value))}
+          />
+        ))}
+      </div>
+    </Section>
+  )
+}
+
 function MarkdownSection({ name, hint, draft, onChange }: { name: string; hint: string; draft: Draft; onChange: (draft: Draft) => void }) {
-  const sections = draft.sections as Record<string, string>
+  const sections = sectionsOf(draft)
   const id = `profile-section-${name.replace(/[^A-Za-z0-9]+/g, '-')}`
   return (
-    <SectionCard
-      title={<Label htmlFor={id}>{name}</Label>}
-      description="CVs, cover letters and answers are written only from what you put here. Real numbers beat adjectives."
+    <Section
+      title={<label htmlFor={id}>{name}</label>}
+      help="CVs, cover letters and answers are written only from what you put here. Real numbers beat adjectives."
     >
       <Textarea
         id={id}
@@ -118,13 +192,13 @@ function MarkdownSection({ name, hint, draft, onChange }: { name: string; hint: 
         value={sections[name] ?? ''}
         onChange={(event) => onChange({ ...draft, sections: { ...sections, [name]: event.target.value } })}
       />
-    </SectionCard>
+    </Section>
   )
 }
 
 function AddSection({ draft, onChange }: { draft: Draft; onChange: (draft: Draft) => void }) {
   const [title, setTitle] = useState('')
-  const sections = draft.sections as Record<string, string>
+  const sections = sectionsOf(draft)
 
   const add = () => {
     const name = title.trim().replace(/^#+\s*/, '')
@@ -138,23 +212,25 @@ function AddSection({ draft, onChange }: { draft: Draft; onChange: (draft: Draft
   }
 
   return (
-    <SectionCard title="Add section" description="Add a section of your own to profile.md, e.g. Publications or Awards.">
+    <Section title={<label htmlFor="profile-new-section">Add section</label>} help="Add a section of your own to profile.md, e.g. Publications or Awards.">
       <form
-        className="flex flex-col gap-2 sm:flex-row"
+        className="flex gap-2"
         onSubmit={(event) => {
           event.preventDefault()
           add()
         }}
       >
         <Input
-          placeholder="New section title, e.g. Publications"
-          aria-label="New section title"
+          id="profile-new-section"
+          placeholder="e.g. Publications…"
+          autoComplete="off"
+          className="max-w-xs"
           value={title}
           onChange={(event) => setTitle(event.target.value)}
         />
-        <Button type="submit" variant="outline"><PlusIcon data-icon="inline-start" />Add section</Button>
+        <Button type="submit" variant="outline" size="sm" className="shrink-0 gap-1.5"><PlusIcon data-icon="inline-start" aria-hidden="true" />Add</Button>
       </form>
-    </SectionCard>
+    </Section>
   )
 }
 
@@ -169,7 +245,7 @@ interface BodyProps {
 function SectionContent({ body, view, draft, onChange, facts }: BodyProps) {
   switch (body.kind) {
     case 'fields':
-      return <FormGroups name="profile" groups={[body.group]} draft={draft} onChange={onChange} />
+      return <FieldsSection group={body.group} draft={draft} onChange={onChange} />
     case 'markdown':
       return (
         <MarkdownSection
@@ -184,12 +260,12 @@ function SectionContent({ body, view, draft, onChange, facts }: BodyProps) {
     case 'facts':
       return <FactsView {...facts} />
     case 'documents':
-      return <FormGroups name="profile" groups={[CV_FILES]} draft={draft} onChange={onChange} />
+      return <FieldsSection group={CV_FILES} draft={draft} onChange={onChange} />
   }
 }
 
 export function ProfileView({ form, active, section }: { form: DocForm<ProfileDoc>; active: boolean; section: string | null }) {
-  const { loaded, load, view, draft, version, setDraft } = form
+  const { loaded, load, view, draft, original, version, setDraft, loadError } = form
 
   useEffect(() => {
     if (active && !loaded) void load()
@@ -200,21 +276,33 @@ export function ProfileView({ form, active, section }: { form: DocForm<ProfileDo
   const items = useMemo(() => groups.flatMap((group) => group.items), [groups])
   const current = profileSection(section, items.map((item) => item.slug))
   const item = items.find((candidate) => candidate.slug === current)!
+  const dirty = useMemo(
+    () => new Set(draft && original ? items.filter((entry) => sectionDirty(entry.body, draft, original)).map((entry) => entry.slug) : []),
+    [items, draft, original],
+  )
 
   const facts = useProfileFacts(active, active && current === FACTS_SLUG)
   const proposed = facts.facts.filter((fact) => fact.status === 'proposed').length
 
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in duration-500">
-      <p className="text-sm text-muted-foreground">Who you are and what you want. Every skill reads this first.</p>
-      {view && draft && (
-        <div key={version} className="flex flex-col gap-6">
+    <div className="space-y-4 animate-in fade-in duration-500">
+      <p className="max-w-2xl text-sm text-muted-foreground">
+        Your career ground truth. Every skill reads this first, and your agent writes CVs and applications from it.
+      </p>
+
+      {loadError && <LoadError message={loadError} onRetry={() => void load()} />}
+
+      {!view || !draft ? (!loadError && <LoadSkeleton />) : (
+        <div key={version} className="space-y-4">
           {profileEmpty(view) && <Intake />}
           <div className="flex flex-col gap-6 lg:flex-row">
-            <SectionNav groups={groups} active={current} proposed={proposed} />
-            <SectionPills groups={groups} active={current} proposed={proposed} />
-            <div className="flex min-w-0 flex-1 flex-col gap-6">
+            <SectionNav groups={groups} active={current} proposed={proposed} dirty={dirty} />
+            <SectionPills groups={groups} active={current} proposed={proposed} dirty={dirty} />
+            <div className="min-w-0 flex-1 space-y-4">
               <SectionContent body={item.body} view={view} draft={draft} onChange={setDraft} facts={facts} />
+              {item.body.kind !== 'facts' && (
+                <SaveBar {...form} onSave={() => void form.save()} onDiscard={() => void load()} />
+              )}
             </div>
           </div>
           <p className="text-xs text-muted-foreground">Stored in {view.path}</p>
