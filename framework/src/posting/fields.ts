@@ -65,10 +65,11 @@ export const STATE_COUNTRIES = ['US', 'CA']
 export function missingCore(fields: PostingFields): CoreField[] {
   const missing: CoreField[] = []
   if (fields.country === undefined) missing.push('country')
-  if (fields.country !== undefined && STATE_COUNTRIES.includes(fields.country) && fields.state === undefined) {
+  const remote = fields.work_mode === 'remote'
+  if (!remote && fields.country !== undefined && STATE_COUNTRIES.includes(fields.country) && fields.state === undefined) {
     missing.push('state')
   }
-  if (fields.city === undefined) missing.push('city')
+  if (!remote && fields.city === undefined) missing.push('city')
   if (fields.work_mode === undefined) missing.push('work_mode')
   if (fields.pay_min === undefined && fields.pay_max === undefined) missing.push('pay')
   return missing
