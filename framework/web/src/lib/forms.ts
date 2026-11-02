@@ -1,4 +1,4 @@
-import { setPath } from '@/lib/paths'
+import { setPath } from './paths'
 
 export type Draft = Record<string, unknown>
 export type Choice = readonly [value: string, label: string]
@@ -36,7 +36,7 @@ export interface Group {
 
 const fm = (key: string, label: string, extra: Partial<Field> = {}): Field => ({ key: `front_matter.${key}`, label, ...extra })
 
-export const SENIORITY = ['intern', 'junior', 'mid', 'senior', 'staff', 'principal', 'lead', 'manager', 'director'] as const
+export const SENIORITY = ['intern', 'entry', 'mid', 'senior', 'staff', 'principal', 'lead', 'manager', 'director', 'executive'] as const
 export const COMPANY_STAGES = ['seed', 'series_a', 'series_b', 'series_c', 'growth', 'public'] as const
 
 export const PROFILE_GROUPS: Group[] = [

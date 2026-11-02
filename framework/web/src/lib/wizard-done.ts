@@ -32,7 +32,7 @@ export function doneSummary({ uploaded, saved, modulesOn }: DoneInput): DoneSumm
 
   if (items.length === 0) {
     return {
-      title: 'Nothing saved yet.',
+      title: 'Nothing Saved Yet.',
       body: 'You skipped every step. You can fill in your profile any time.',
       nextStep,
     }
@@ -42,7 +42,7 @@ export function doneSummary({ uploaded, saved, modulesOn }: DoneInput): DoneSumm
     ? " Nothing is turned on, so Job Duck won't do anything yet. Turn things on in Settings."
     : ''
   return {
-    title: "You're set up.",
+    title: "You're Set Up.",
     body: `Saved ${listOf(items)}.${nothingOn} Change anything later in Profile or Settings.`,
     nextStep,
   }

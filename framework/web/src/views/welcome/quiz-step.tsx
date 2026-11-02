@@ -1,6 +1,6 @@
 import { isToggle, QUIZ, type Question, type Quiz } from '@/lib/wizard'
 import { cn } from '@/lib/utils'
-import { StepActions, StepIntro, stepMotion } from '@/views/welcome/step-parts'
+import { SegmentedToggle, StepActions, StepIntro, stepMotion } from '@/views/welcome/step-parts'
 
 interface QuizStepProps {
   quiz: Quiz
@@ -20,7 +20,7 @@ function QuestionHead({ question }: { question: Question }) {
 export function QuizStep({ quiz, onChange, onContinue }: QuizStepProps) {
   return (
     <div className={cn('flex flex-col gap-10', stepMotion)}>
-      <StepIntro className="space-y-2" title="Your Career DNA">Five questions. Thirty seconds. No wrong answers.</StepIntro>
+      <StepIntro className="space-y-2" title="Your Career DNA">Five Questions. Thirty Seconds. No Wrong Answers.</StepIntro>
 
       <div className="space-y-8">
         {QUIZ.map((question, index) => (
@@ -31,26 +31,12 @@ export function QuizStep({ quiz, onChange, onContinue }: QuizStepProps) {
           >
             <QuestionHead question={question} />
             {isToggle(question) ? (
-              <div role="radiogroup" aria-label={question.title} className="flex gap-1.5 rounded-lg bg-muted p-1">
-                {question.options.map(([value, label]) => {
-                  const on = quiz[question.key] === value
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      role="radio"
-                      aria-checked={on}
-                      onClick={() => onChange({ ...quiz, [question.key]: value })}
-                      className={cn(
-                        'flex-1 rounded-md px-3 py-2 text-xs font-medium transition-all duration-200',
-                        on ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
-                      )}
-                    >
-                      {label}
-                    </button>
-                  )
-                })}
-              </div>
+              <SegmentedToggle
+                label={question.title}
+                options={question.options}
+                value={quiz[question.key]}
+                onChange={(value) => onChange({ ...quiz, [question.key]: value })}
+              />
             ) : (
               <div className="space-y-2.5">
                 <div className="relative flex h-10 items-center">

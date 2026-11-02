@@ -3,14 +3,14 @@ import { doneSummary, NOTHING_SAVED } from '../web/src/lib/wizard-done'
 
 test('skipping every step claims nothing was saved', () => {
   const summary = doneSummary({ uploaded: false, saved: NOTHING_SAVED, modulesOn: 2 })
-  expect(summary.title).toBe('Nothing saved yet.')
+  expect(summary.title).toBe('Nothing Saved Yet.')
   expect(summary.body).not.toMatch(/saved/i)
   expect(summary.body).toContain('skipped every step')
 })
 
 test('a partial save names only what was saved', () => {
   const summary = doneSummary({ uploaded: false, saved: { quiz: true, targets: false, modules: false }, modulesOn: 0 })
-  expect(summary.title).toBe("You're set up.")
+  expect(summary.title).toBe("You're Set Up.")
   expect(summary.body).toContain('Saved your Career DNA answers.')
   expect(summary.body).not.toContain('resume')
   expect(summary.body).not.toContain("what you're looking for")
@@ -27,7 +27,7 @@ test('every step saved lists each one in plain words', () => {
 
 test('saving modules with none on says so and points to Settings', () => {
   const summary = doneSummary({ uploaded: false, saved: { quiz: false, targets: false, modules: true }, modulesOn: 0 })
-  expect(summary.title).toBe("You're set up.")
+  expect(summary.title).toBe("You're Set Up.")
   expect(summary.body).toContain("Nothing is turned on, so Job Duck won't do anything yet.")
   expect(summary.body).toContain('Settings')
 })

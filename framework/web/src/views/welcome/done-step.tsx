@@ -13,7 +13,7 @@ export function DoneStep({ uploaded, summary }: { uploaded: InboxUpload | null; 
       <StepIntro className="space-y-3" title={summary.title}>{summary.body}</StepIntro>
       <SectionCard
         className="w-full"
-        title={<span className="flex items-center gap-2"><MessageSquareIcon className="size-4" aria-hidden="true" />Back in your agent, say: {summary.nextStep}</span>}
+        title={<span className="flex items-center gap-2"><MessageSquareIcon className="size-4" aria-hidden="true" />Back In Your Agent, Say: {summary.nextStep}</span>}
         description={uploaded
           ? `It reads inbox/${uploaded.name} and fills in your profile for you to review.`
           : 'It reads your own LinkedIn profile, read-only, and fills in your profile for you to review.'}

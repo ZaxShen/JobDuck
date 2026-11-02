@@ -4,7 +4,8 @@ import { errorMessage, fetchJSON, isConflict, postJSON, putJSON } from '@/lib/ap
 import { MODULES } from '@/lib/forms'
 import { clone } from '@/lib/paths'
 import type { FrontMatter, InboxUpload, PermissionsView, ProfileView } from '@/lib/types'
-import { base64Of, careerDna, companyStages, DEFAULT_QUIZ, WIZARD_STEPS, WORK_MODES, type Quiz } from '@/lib/wizard'
+import { base64Of } from '@/lib/base64'
+import { careerDna, companyStages, DEFAULT_QUIZ, modeOf, WIZARD_STEPS, workModesOf, type Quiz } from '@/lib/wizard'
 import { doneSummary, NOTHING_SAVED, type SavedSteps } from '@/lib/wizard-done'
 import { cn } from '@/lib/utils'
 import { DoneStep } from '@/views/welcome/done-step'
@@ -82,8 +83,8 @@ export function WelcomeView({ active, onProfileSaved, onSettingsSaved }: Welcome
         setUploaded(null)
         setSaved(NOTHING_SAVED)
       }
-      const mode = list(profile.front_matter.work_modes)[0]
-      if ((WORK_MODES as readonly string[]).includes(mode ?? '')) setQuiz((prev) => ({ ...prev, mode: mode! }))
+      const mode = modeOf(list(profile.front_matter.work_modes))
+      if (mode) setQuiz((prev) => ({ ...prev, mode }))
       setReady(true)
     } catch (error) {
       flash(errorMessage(error), true)
@@ -126,7 +127,7 @@ export function WelcomeView({ active, onProfileSaved, onSettingsSaved }: Welcome
 
   const saveQuiz = () => guarded(async () => {
     const profile = await saveProfile(
-      { work_modes: [quiz.mode], company_stages: companyStages(quiz.risk) },
+      { work_modes: workModesOf(quiz.mode), company_stages: companyStages(quiz.risk) },
       { 'Career DNA': careerDna(quiz) },
     )
     setTargets(targetsOf(profile.front_matter))

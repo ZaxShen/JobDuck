@@ -1,9 +1,12 @@
+import { useState } from 'react'
 import { NumberInput } from '@/components/fields/number-input'
 import { TagInput } from '@/components/fields/tag-input'
 import { Label } from '@/components/ui/label'
-import { SENIORITY } from '@/lib/forms'
+import { inferTrack, pruneToTrack, TRACKS, type Track } from '@/lib/seniority'
 import { cn } from '@/lib/utils'
-import { StepActions, StepIntro, stepMotion } from '@/views/welcome/step-parts'
+import { LocationPicker } from '@/views/welcome/location-picker'
+import { SeniorityPicker } from '@/views/welcome/seniority-picker'
+import { SegmentedToggle, StepActions, StepIntro, stepMotion } from '@/views/welcome/step-parts'
 
 export interface Targets {
   target_titles: string[]
@@ -19,19 +22,20 @@ interface TargetsStepProps {
   onContinue: () => Promise<void>
 }
 
-const TAGS = [
-  ['target_titles', 'Target titles', 'e.g. Software Engineer', undefined],
-  ['locations', 'Cities or regions', 'e.g. Remote, New York', undefined],
-  ['seniority', 'Seniority', undefined, SENIORITY],
-] as const
-
 export function TargetsStep({ targets, onChange, onSkip, onContinue }: TargetsStepProps) {
+  const [track, setTrack] = useState<Track>(() => inferTrack(targets.seniority))
   const count = targets.target_titles.length
-  const label = count > 0 ? `Continue with ${count} role${count > 1 ? 's' : ''}` : 'Continue'
+  const label = count > 0 ? `Continue With ${count} Role${count > 1 ? 's' : ''}` : 'Continue'
+
+  const switchTrack = (next: Track) => {
+    setTrack(next)
+    onChange({ ...targets, seniority: pruneToTrack(targets.seniority, next) })
+  }
+
   return (
     <div className={cn('flex flex-col items-center gap-6', stepMotion)}>
-      <StepIntro className="space-y-2" title="What are you looking for?">
-        Job Duck only suggests postings that match these. Press Enter after each one.{' '}
+      <StepIntro className="space-y-2" title="What Are You Looking For?">
+        Job Duck only suggests postings that match these. Press Enter after each title.{' '}
         {count > 0 && (
           <>
             <span className="font-medium text-foreground">{count}</span> selected
@@ -48,20 +52,38 @@ export function TargetsStep({ targets, onChange, onSkip, onContinue }: TargetsSt
       </StepIntro>
 
       <div className="w-full space-y-5">
-        {TAGS.map(([key, label, placeholder, suggest]) => (
-          <div key={key} className="space-y-1.5">
-            <Label htmlFor={`wizard-${key}`}>{label}</Label>
-            <TagInput
-              id={`wizard-${key}`}
-              value={targets[key]}
-              placeholder={placeholder}
-              suggest={suggest}
-              onChange={(next) => onChange({ ...targets, [key]: next })}
-            />
-          </div>
-        ))}
         <div className="space-y-1.5">
-          <Label htmlFor="wizard-pay_floor">Minimum yearly pay</Label>
+          <Label htmlFor="wizard-target_titles">Target Titles</Label>
+          <TagInput
+            id="wizard-target_titles"
+            value={targets.target_titles}
+            placeholder="e.g. Software Engineer"
+            onChange={(target_titles) => onChange({ ...targets, target_titles })}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="wizard-locations">Cities Or Regions</Label>
+          <LocationPicker
+            id="wizard-locations"
+            value={targets.locations}
+            onChange={(locations) => onChange({ ...targets, locations })}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <p className="text-sm leading-none font-medium">Career Track</p>
+          <SegmentedToggle label="Career Track" options={TRACKS} value={track} onChange={switchTrack} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="wizard-seniority">Seniority</Label>
+          <SeniorityPicker
+            id="wizard-seniority"
+            track={track}
+            value={targets.seniority}
+            onChange={(seniority) => onChange({ ...targets, seniority })}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="wizard-pay_floor">Minimum Annual Salary (Base)</Label>
           <NumberInput
             id="wizard-pay_floor"
             value={targets.pay_floor}
