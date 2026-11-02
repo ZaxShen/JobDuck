@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { request } from 'node:http'
 import { join } from 'node:path'
 import { type Sandbox, migratedDb, sandbox } from './helpers'
 import { INBOX_EXTENSIONS, INBOX_MAX_FILE_BYTES, handleApi } from '../src/dashboard/api'
@@ -639,4 +640,29 @@ test('fact skills and tools are capped at 20 entries of at most 60 characters', 
   expect((await mutate('PATCH', `/api/profile-facts/${first!.id}`, { tools: ['a'.repeat(61)] })).res.status).toBe(400)
   expect((await mutate('PATCH', `/api/profile-facts/${first!.id}`, { skills: many.slice(0, 20), tools: ['a'.repeat(60)] })).res.status)
     .toBe(200)
+})
+
+const rawPatch = (host: string, origin: string, path: string, body: unknown) => new Promise<{ status: number, body: any }>((resolve, reject) => {
+  const payload = JSON.stringify(body)
+  const req = request({
+    host: '127.0.0.1', port: dash.port, path, method: 'PATCH',
+    headers: { Host: host, Origin: origin, 'X-JobDuck-Dashboard': '1', 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+  }, res => {
+    let data = ''
+    res.on('data', chunk => { data += chunk })
+    res.on('end', () => resolve({ status: res.statusCode ?? 0, body: JSON.parse(data) }))
+  })
+  req.on('error', reject)
+  req.end(payload)
+})
+
+test('a page served from localhost:<port> can mutate', async () => {
+  const local = `localhost:${dash.port}`
+  const ok = await rawPatch(local, `http://${local}`, `/api/applications/${ids.acme}`, { status: 'interviewing' })
+  expect(ok.status).toBe(200)
+  for (const origin of ['http://evil.example', 'https://evil.example', `http://localhost:${dash.port + 1}`]) {
+    const refused = await rawPatch(local, origin, `/api/applications/${ids.acme}`, { status: 'offered' })
+    expect(refused.status).toBe(403)
+    expect(refused.body.error).toBe('cross-origin request refused')
+  }
 })

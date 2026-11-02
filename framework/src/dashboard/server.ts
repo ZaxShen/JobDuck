@@ -126,6 +126,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
 
   let origin = ''
   let allowedHosts = new Set<string>()
+  let allowedOrigins = new Set<string>()
 
   const server = createServer(async (req, res) => {
     try {
@@ -144,7 +145,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
       if (MUTATIONS.has(method)) {
         if (req.headers[DASHBOARD_HEADER] !== '1') return sendJson(res, 403, { error: 'missing X-JobDuck-Dashboard header' })
         const requestOrigin = req.headers.origin
-        if (requestOrigin !== undefined && requestOrigin !== origin) return sendJson(res, 403, { error: 'cross-origin request refused' })
+        if (requestOrigin !== undefined && !allowedOrigins.has(requestOrigin)) return sendJson(res, 403, { error: 'cross-origin request refused' })
       }
       const limit = url.pathname === INBOX_PATH ? INBOX_MAX_BODY_BYTES : MAX_BODY_BYTES
       const body = MUTATIONS.has(method) ? parseJson(await readBody(req, limit)) : undefined
@@ -172,6 +173,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
   const address = server.address() as AddressInfo
   origin = `http://${DASHBOARD_HOST}:${address.port}`
   allowedHosts = new Set([`${DASHBOARD_HOST}:${address.port}`, `localhost:${address.port}`])
+  allowedOrigins = new Set([...allowedHosts].map(host => `http://${host}`))
   const page = pageUrl(origin, options.view)
   if (options.open ?? true) openBrowser(page, () => out(`Could not open a browser; visit ${page}`))
 
