@@ -9,12 +9,21 @@ archive, and everything else stays in the Inbox. Only message bodies are read fo
 it. Missing an invite is the defect to avoid, so keeping an extra email in the Inbox is the accepted cost.
 
 A **plain application confirmation** is a job email whose body confirms the application ("thank you for applying",
-"we have received your application"), is not a rejection, is written by nobody in the first person, and carries no
-scheduling word at all: interview, call, chat, Zoom, Calendly, schedule, availability, onsite, screen, next step,
-assessment, meet, talk, speak, phone, round, slot, book, invite, offer, a HackerRank or CodeSignal test, a
-questionnaire, a question to you, and similar. Boilerplate counts too: "if your experience matches, we will reach out
-to schedule an interview" or "applicants who move forward to the interview stage will be contacted" keeps the
-thread in the Inbox.
+"we have received your application"), is not a rejection, is written by nobody in the first person, and in which
+every sentence is a known acknowledgement. Only the greeting line ("Hi Alex,"), the sign-off with the signature
+under it ("Best, Acme Recruiting") and standard footer lines (unsubscribe, privacy policy, equal opportunity, do not
+reply, mailing address, copyright, "powered by" an ATS) are set aside. Every other sentence must be one of: thanks for
+applying or for your interest (in a role at a company); we have received your application; we or our team will
+review your application, qualifications or background; we will be in touch, contact you or get back to you (if your
+experience matches, in the coming weeks); you can view or track your application status in the candidate portal;
+we appreciate your interest; we wish you luck. Role and company names in them are at most 60 characters with no
+digit and no action, time or deadline word. Any other sentence ("Please complete your HireVue by Friday", "Your
+Karat session link is below", "Reply with your free times", a question to you, a bare link) keeps the thread in the
+Inbox. As an extra veto, a scheduling word anywhere keeps it too: interview, call, chat, Zoom, Teams, Calendly,
+schedule, availability, onsite, screen, next step, assessment, meet, talk, phone, round, slot, book, invite, offer,
+an assessment or video-interview vendor (HackerRank, CodeSignal, Codility, TestGorilla, HireVue, Pymetrics, Karat,
+Spark Hire, Modern Hire, Harver, Wonderlic, SHL, CCAT), a questionnaire, and similar. Boilerplate counts too: "if your
+experience matches, we will reach out to schedule an interview" keeps the thread in the Inbox.
 
 1. **Records rejections.** A rejection gets `Job Duck/Rejections`, is archived and is queued for `jobduck sync` only
    when it is the latest job email in the thread and every other message is a plain application confirmation (a
@@ -177,7 +186,13 @@ trigger are kept.
   `interview`), an interview subject over a plain confirmation (`job`) and a rejection after an interview. Nine
   earlier `job` fixtures now expect `interview` because they are not plain confirmations: Cisco, Green Dot, Courtesy
   only, Globex courtesy-only, Initech conditional interview promise, Massive Dynamic, Oscorp, Vandelay and Dunder.
-  `bun test` runs `test/interview.test.ts` against fake threads.
+  A plain confirmation is now a sentence allowlist, not a word list: every sentence outside the greeting, sign-off,
+  signature and footer must be a known acknowledgement, so a confirmation that also asks you to take a HireVue,
+  CCAT, Pymetrics, Karat or Spark Hire step, join a Teams link at a set time, or reply with your free times stays in
+  the Inbox. The allowlist moves no existing fixture: all 7 remaining `job` fixtures stay `job` and none flips to
+  `interview`. `bun test` runs `test/interview.test.ts` against fake threads, including 55 action sentences that
+  must stay in the Inbox and Greenhouse, Lever, Workday, Ashby, iCIMS and SmartRecruiters acknowledgements that are
+  still archived.
 
 - **v5.1**: A rejection whose only signal is one explicit decision sentence ("we have decided not to move forward
   with your application") is now recognized: the rejection threshold drops from 3 to 2, and an explicit decision

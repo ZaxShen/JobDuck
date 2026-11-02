@@ -453,3 +453,128 @@ describe('reaudit restores archived interview mail', () => {
     expect(Object.keys(scriptStore.data).filter((k) => k.startsWith('outcome:'))).toHaveLength(0);
   });
 });
+
+describe('a plain confirmation is an allowlist of acknowledgement sentences (F35-12)', () => {
+  const sandbox: Record<string, unknown> = { Logger: { log() {} }, PropertiesService: {}, Session: {}, GmailApp: {}, Gmail: {} };
+  vm.createContext(sandbox);
+  vm.runInContext(readFileSync(join(import.meta.dir, '..', 'Code.gs'), 'utf8') + '\nthis.__a = { classifyThread_, unacknowledged_ };', sandbox);
+  const { classifyThread_, unacknowledged_ } = sandbox.__a as {
+    classifyThread_(messages: unknown[], rules: { excludedDomains: string[] }, me: string): { action: string };
+    unacknowledged_(body: string, verification: boolean): string | null;
+  };
+  const wrapped = (sentence: string) =>
+    'Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Acme. ' + sentence + '\n\nBest,\nAcme Recruiting';
+  const classify = (body: string, from = 'Acme Recruiting <no-reply@greenhouse.io>', subject = 'Your application to Acme') =>
+    classifyThread_([{ getFrom: () => from, getSubject: () => subject, getPlainBody: () => body }], { excludedDomains: [] }, 'me@example.com').action;
+  const ACTION_SENTENCES = [
+    // probe12
+    'Please complete your HireVue by Friday using the link below.',
+    'As part of our process, please complete the Criteria Cognitive Aptitude Test (CCAT) within 48 hours.',
+    'Please complete the Pymetrics games at the link below.',
+    'Your Karat technical session link is below.',
+    'Please record your answers on Spark Hire by Monday.',
+    'Join the Microsoft Teams link below on Thursday at 3pm.',
+    'We would love to get you in front of the team. Reply to this email with your free times.',
+    // assessment vendors
+    'Your Codility test is ready and must be finished within 3 days.',
+    'You will receive a CodeSignal General Coding Framework link shortly.',
+    'Please take the HackerRank challenge before Wednesday.',
+    'Your TestGorilla evaluation is waiting for you.',
+    'Criteria Corp will email you a link to the aptitude test.',
+    'Harver will send you a short set of exercises to finish.',
+    'The Wonderlic Select test takes about thirty minutes.',
+    'Please take the SHL Verify numerical reasoning test.',
+    'Your HireVue one-way recording is due Sunday night.',
+    'Modern Hire will send your virtual job tryout.',
+    // meeting tools and links
+    'Here is the Google Meet link for Tuesday: https://meet.google.com/abc-defg-hij',
+    'Webex details: https://acme.webex.com/join/xyz',
+    'Use this link to join: https://zoom.us/j/123456789',
+    'https://app.example.com/a/7f3c9',
+    'Click here to begin.',
+    'Our BlueJeans room opens at 10am PT.',
+    // deadlines, dates and clock times
+    'The deadline to submit is November 14.',
+    'Kindly send it back by end of day Wednesday.',
+    'We need this back by 5pm EST tomorrow.',
+    'It is due on 11/14.',
+    'You have until Sunday to finish.',
+    // please / kindly / reply / confirm / complete / join / select / book / upload / sign
+    'Please confirm receipt of this email.',
+    'Kindly upload your portfolio to the portal.',
+    'Reply YES to confirm your spot.',
+    'Please select a time from the options below.',
+    'Book a time with the team here.',
+    'Please sign the attached NDA and return it.',
+    'Upload your transcript at your earliest convenience.',
+    'Please fill out the short form linked below.',
+    'Complete the work sample at your convenience.',
+    'Please join us for a virtual information session.',
+    // moving forward, next stage, offer, congratulations
+    "We'd like to move you forward in our process.",
+    'You have advanced to the next stage.',
+    'We are excited to extend you an offer.',
+    'Congratulations, you made it to the final round!',
+    'The team was impressed and wants to proceed with you.',
+    // questions to the candidate
+    'What is your expected salary range?',
+    'Are you open to relocating to Austin?',
+    'When could you start?',
+    'Do you require visa sponsorship?',
+    'Could you send over your updated resume?',
+    // other requests, including requests hidden inside acknowledgement wording
+    'Let us know your earliest start date.',
+    'Feel free to grab any time on the team calendar.',
+    'Please verify your identity using the attached instructions.',
+    'Thank you for applying to Acme and please complete your work sample by Friday.',
+    'We will review your application and get back to you once you finish the coding exercise.',
+    'We have received your application and need your references.',
+    'You can track the status of your application in the candidate portal, where a task is waiting.',
+  ];
+
+  test.each(ACTION_SENTENCES)('a confirmation that also asks you to act is kept: %s', (sentence) => {
+    expect(classify(wrapped(sentence))).toBe('interview');
+  });
+
+  test.each(ACTION_SENTENCES)('the sentence allowlist alone rejects it, without the scheduling-word veto: %s', (sentence) => {
+    expect(unacknowledged_(wrapped(sentence), false)).not.toBeNull();
+  });
+
+  test.each([
+    ['an action after the sign-off', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nBest,\nAcme Recruiting\n\nP.S. Upload your portfolio by Friday.'],
+    ['an action as a title-case line', 'Thank you for applying to Acme.\n\nAction Required\n\nAcme Recruiting'],
+    ['an action in the signature', 'Thank you for applying to Acme.\n\nBest,\nPlease Reply By Friday'],
+    ['an action inside a footer sentence', 'Thank you for applying to Acme.\n\nPlease do not reply to this email; instead, upload your portfolio by Friday.'],
+    ['an action in the greeting line', 'Hi Danlin, please upload your portfolio.\n\nThank you for applying to Acme.'],
+    ['a bare link line', 'Thank you for applying to Acme.\nhttps://acme.example.com/start\n\nAcme Recruiting'],
+    ['a request in a footer sentence', 'Thank you for applying to Acme.\n\nThis email was sent by Greenhouse; respond with your portfolio.'],
+    ['a title-case reminder at the end', 'Thank you for applying to Acme.\n\nAcme Recruiting\nFinal Step Reminder'],
+  ])('%s is kept', (_name, body) => {
+    expect(classify(body)).toBe('interview');
+    expect(unacknowledged_(body, false)).not.toBeNull();
+  });
+
+  const ATS_CONFIRMATIONS: [string, string, string][] = [
+    ['Greenhouse', 'Acme Recruiting <no-reply@greenhouse.io>',
+      'Hi Danlin,\n\nThanks for applying to Acme. Your application has been received and we will review it right away.\n\nIf your application seems like a good fit for the position we will contact you soon.\n\nRegards,\nAcme\n\n** Please note: Do not reply to this email. This email is sent from an unattended mailbox. Replies will not be read.'],
+    ['Lever', 'Acme <no-reply@hire.lever.co>',
+      'Hi Danlin,\n\nThank you for your interest in Acme! We wanted to let you know we received your application for Senior Backend Engineer, and we are delighted that you would consider joining our team.\n\nOur team will review your application and will be in touch if your qualifications match our needs for the role.\n\nBest,\nThe Acme Team\n\nSent with Lever'],
+    ['Workday', 'Acme Careers <acme@myworkday.com>',
+      'Dear Danlin Shen,\n\nThank you for your interest in a career with Acme Corporation. We have received your application for the Backend Engineer position.\n\nOur recruiting team will carefully review your qualifications. If your background matches the requirements of the position, a member of our recruiting team will contact you.\n\nYou can track the status of your application at any time by logging in to your candidate home.\n\nSincerely,\nAcme Talent Acquisition\n\nAcme Corporation is an Equal Opportunity Employer. All qualified applicants will receive consideration for employment without regard to race, color, religion, sex, national origin, disability or protected veteran status.'],
+    ['Ashby', 'Acme Recruiting <no-reply@ashbyhq.com>',
+      "Hi Danlin,\n\nThanks for applying to the Backend Engineer role at Acme! We're excited that you're interested in joining our team.\n\nOur hiring team is reviewing your application and will get back to you in the coming weeks.\n\nBest,\nAcme Recruiting\n\nPowered by Ashby"],
+    ['iCIMS', 'Acme Talent <acme@talent.icims.com>',
+      'Dear Danlin,\n\nThank you for submitting your application for the Backend Engineer position at Acme. This email confirms that we have received your application.\n\nWe will review your background and qualifications carefully and contact you if there is a match.\n\nAgain, we appreciate your interest in Acme and wish you luck in your job search.\n\nKind regards,\nAcme Talent Acquisition Team\n\nThis message was sent by iCIMS on behalf of Acme. Please do not reply to this email.'],
+    ['SmartRecruiters', 'Acme Hiring Team <noreply@smartrecruiters.com>',
+      'Hi Danlin,\n\nThank you for applying to the Backend Engineer position at Acme. We have received your application and will review it shortly.\n\nIf your profile matches our requirements, we will get in touch with you.\n\nBest regards,\nAcme Hiring Team\n\nPrivacy Policy | Unsubscribe\nPowered by SmartRecruiters'],
+  ];
+
+  test.each(ATS_CONFIRMATIONS)('a %s acknowledgement with greeting, signature and footer is archived', (_ats, from, body) => {
+    expect(classify(body, from, 'Thank you for applying to Acme')).toBe('job');
+    expect(unacknowledged_(body, false)).toBeNull();
+  });
+
+  test('a plain review-and-get-back confirmation is still archived', () => {
+    expect(classify(wrapped('We will review your application and get back to you.'))).toBe('job');
+  });
+});

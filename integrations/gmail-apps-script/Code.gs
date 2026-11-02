@@ -4,11 +4,11 @@
  * as a web app. Nothing is pushed anywhere.
  *
  * Archives by allowlist, reading message bodies only. A thread whose every message is a plain application
- * confirmation (no scheduling word, no personal note) gets "Job Duck/Applications" and is archived. A rejection gets
- * "Job Duck/Rejections" and is archived only when it is the latest job message and every other message is a plain
- * confirmation. Everything else gets "Job Duck/Interviews" and stays in the Inbox; a thread with that label is never
- * archived. Each rejection that stands becomes an outcome (header fields and a job link/ID only; the email body never
- * leaves Gmail) queued for the web app.
+ * confirmation (only acknowledgement sentences, no scheduling word, no personal note) gets "Job Duck/Applications"
+ * and is archived. A rejection gets "Job Duck/Rejections" and is archived only when it is the latest job message and
+ * every other message is a plain confirmation. Everything else gets "Job Duck/Interviews" and stays in the Inbox; a
+ * thread with that label is never archived. Each rejection that stands becomes an outcome (header fields and a job
+ * link/ID only; the email body never leaves Gmail) queued for the web app.
  *
  * Scope: the script only ever searches the Inbox (in:inbox), plus the "Job Duck/Applications" label when you run
  * previewReaudit/reauditApplications. A "Job Duck/Rejections" thread that is back in the Inbox because a new message
@@ -206,7 +206,8 @@ function keptFor_(note, why) {
   if (iv.interview) reasons = reasons.concat(iv.reasons);
   else if (word) reasons.push('scheduling word: ' + word[0]);
   else if (!why) reasons.push('not a plain application confirmation');
-  return { action: 'interview', reasons: reasons, evidence: iv.evidence || note.subject, message: note.message };
+  var odd = iv.evidence || word ? null : unacknowledged_(note.body, VERIFICATION_SUBJECT.test(note.subject));
+  return { action: 'interview', reasons: reasons, evidence: iv.evidence || odd || note.subject, message: note.message };
 }
 
 function rules_() {
@@ -771,15 +772,166 @@ function interviewScore(body) {
 
 // The archive allowlist. A message is plain application mail only when its body confirms an application (or its
 // subject is a verification code), it is not a rejection, it is not interview mail, it carries no scheduling word at
-// all (boilerplate included) and nobody writes in the first person. Anything else keeps its thread in the Inbox.
+// all (boilerplate included), nobody writes in the first person, and every sentence left once the greeting, the
+// sign-off with its signature and the standard footer are set aside is a known acknowledgement. Any other sentence
+// ("Please complete your HireVue by Friday", "Reply with your free times") keeps its thread in the Inbox.
 var CONFIRMATION = /\bthank(s| you)\b[^.!?]{0,60}\bfor (applying|submitting|your (application|interest|submission))\b|\b(received|receipt of) your application\b|\byour application\b[^.!?]{0,80}\b(has been|was|is|been) (successfully )?(received|submitted)\b|\bapplication (received|submitted|confirmation)\b/i;
-var SCHEDULING_WORDS = /\b(interview\w*|calls?|called|calling|chat\w*|zoom|calendly|goodtime|calendar\w*|(re)?schedul\w*|availab(le|ility)|on-?site|screen\w*|next steps?|assessments?|meet|meeting|meetings|talk|talks|talking|speak\w*|conversations?|phone|video|rounds?|slots?|book|booked|booking|invit\w*|hackerrank|codesignal|codility|coderpad|testgorilla|take-?home|coding (challenge|exercise|test|assignment)|questionnaire|offers?|congratulat\w*|super ?day|hiring manager|background check|reference check|times? that works?|works? for you)\b|\b(can|could|would|will|are|do) you\b[^.!?]*\?/i;
+var SCHEDULING_WORDS = /\b(interview\w*|calls?|called|calling|chat\w*|zoom|calendly|goodtime|calendar\w*|(re)?schedul\w*|availab(le|ility)|on-?site|screen\w*|next steps?|assessments?|meet|meeting|meetings|talk|talks|talking|speak\w*|conversations?|phone|video|rounds?|slots?|book|booked|booking|invit\w*|hackerrank|codesignal|codility|coderpad|testgorilla|hirevue|pymetrics|karat|spark ?hire|modern ?hire|harver|wonderlic|shl|ccat|criteria (corp|cognitive)|microsoft teams|teams (link|meeting|call|invite)|webex|bluejeans|gotomeeting|google meet|skype|whereby|take-?home|coding (challenge|exercise|test|assignment)|questionnaire|offers?|congratulat\w*|super ?day|hiring manager|background check|reference check|times? that works?|works? for you)\b|\b(can|could|would|will|are|do) you\b[^.!?]*\?/i;
 var FIRST_PERSON = /\bI\b|\bI['’](m|ve|ll|d)\b|\b(me|my)\b|(^|[.!?]\s+)My\b/;
 
 function plainConfirmation_(subject, body) {
   var text = String(body || '');
-  if (!CONFIRMATION.test(text) && !VERIFICATION_SUBJECT.test(subject)) return false;
-  return !SCHEDULING_WORDS.test(text) && !FIRST_PERSON.test(text) && !isInterview(text);
+  var verification = VERIFICATION_SUBJECT.test(subject);
+  if (!CONFIRMATION.test(text) && !verification) return false;
+  if (SCHEDULING_WORDS.test(text) || FIRST_PERSON.test(text) || isInterview(text)) return false;
+  return unacknowledged_(text, verification) === null;
+}
+
+// Words that never belong to a role or company name, a greeting name or a signature line: an action, a time or a
+// deadline, a pronoun, a conjunction or a task. A name holding one ("Acme and please complete your HireVue") is no
+// name, so the sentence matches no acknowledgement.
+var ACK_VETO = "please|kindly|complete\\w*|finish\\w*|start\\w*|begin\\w*|join\\w*|click\\w*|tap|repl\\w*|respond\\w*|submit\\w*|confirm\\w*|select\\w*|choose|pick|book\\w*|upload\\w*|sign\\w*|record\\w*|take|taking|attend\\w*|send|share|provide|fill|follow|log|login|verify|accept|decline|rsvp|review\\w*|continue|access|open|go|get|use|visit|check|view|track|download|install|prepare|practice|need\\w*|requir\\w*|action|must|should|can|could|would|will|may|might|shall|is|are|was|were|be|been|has|have|had|do|does|did|links?|below|above|attached|here|there|now|deadline|due|by|before|within|until|after|asap|urgent|today|tomorrow|tonight|mon|monday|tue|tues|tuesday|wed|wednesday|thu|thur|thurs|thursday|fri|friday|sat|saturday|sun|sunday|jan|january|feb|february|mar|march|apr|april|june?|july?|aug|august|sept?|september|oct|october|nov|november|dec|december|am|pm|noon|midnight|morning|afternoon|evening|weeks?|weekend|days?|hours?|minutes?|times?|dates?|you|your|yours|we|us|our|i|me|my|tests?|games?|sessions?|tasks?|exercises?|challenges?|quiz|survey|form|questionnaire|portal|answers?|questions?|free|and|or|but|so|then|also|to|if|when|once|while|not|no|yes|thanks?|congrats|reminder|important|ready|pending|waiting|steps?|stages?|requested|expir\\w*|last|final|chance|immediately";
+// A role or company name ("the Backend Engineer role at Acme"): up to ten words with no digit and no veto word,
+// captured so its length (at most 60) is checked.
+var ACK_NAME = "((?:(?!(?:" + ACK_VETO + ")\\b)[a-z&'()/+#.-]+(?![a-z&'()/+#.-])(?: (?=[a-z&'()/+#.-]))?){1,10})";
+var ACK_ROLE = '(?:the |our |a |an |this )?' + ACK_NAME;
+var ACK_FOR_ROLE = '(?: (?:to|for|with|at|on|in) ' + ACK_ROLE + ')?';
+var ACK_TEAM = '(?:(?:the|our) )?(?:(?:recruiting|recruitment|hiring|talent(?: acquisition)?|people|hr|human resources|selection|search) )?team';
+var ACK_WHO = '(?:we|' + ACK_TEAM + '(?: members?)?|(?:our|the|a) (?:recruiters?|talent acquisition specialists?)|(?:a |one of the |one of our )?members? of ' + ACK_TEAM + '|someone (?:from|on) ' + ACK_TEAM + ')';
+var ACK_DOCS = '(?:application|qualifications|background|experience|profile|resume|cv|submission|materials|candidacy|skills)';
+var ACK_WHEN = '(?:soon|shortly|directly|again|either way|accordingly|carefully|thoroughly|closely|promptly|now|right away|with care|in detail|as soon as possible|in the (?:coming|next few|near) (?:days|weeks|future)|over the (?:coming|next few) (?:days|weeks)|within (?:the next )?(?:a few|two|three|several) (?:days|weeks)|as soon as (?:we can|we have an update|a decision (?:has been|is) made)|once (?:we(?:\'ve| have) (?:reviewed|completed|finished)(?: (?:our|the|your) (?:review|application)(?: process)?)?|our review is complete|a decision (?:has been|is) made)|after (?:we review|reviewing|our review of) (?:your application|it))';
+var ACK_TAIL = '(?:,? ' + ACK_WHEN + '){0,2}';
+var ACK_IF = '(?:if|should|when|in case|once)(?: (?:there is|there\'s|we (?:find|see|identify|have)) (?:a |an )?(?:(?:good|strong|potential|mutual|suitable) )?(?:match|fit|opening)' +
+  '| your ' + ACK_DOCS + '(?:,? (?:and|or) (?:your )?' + ACK_DOCS + ')? (?:match(?:es)?|aligns?(?: with)?|fits?|meets?|(?:is|are|seems?|looks?)(?: like)? (?:a )?(?:(?:good|strong|great) )?(?:match|fit))(?: (?:for|with|to))?(?: (?:our|the|this) (?:needs|requirements|role|position|opening|team|qualifications)(?: (?:for|of) (?:the|this|our) (?:role|position|opening|team))?)?' +
+  '| you(?:\'re| are)(?: not)? (?:selected|chosen|shortlisted|a (?:good |strong )?(?:fit|match))' +
+  '| we (?:decide|choose|wish|want) (?:not )?to (?:move forward|proceed)(?: with your (?:application|candidacy))?' +
+  '| (?:it\'s|it is) a (?:good |strong )?(?:fit|match)| a decision (?:has been|is) made| we have (?:an update|any updates|news))';
+var ACK_PORTAL = '(?:your|our|the) (?:candidate |applicant |careers? |job seeker )?(?:portal|account|profile|dashboard|home|site)';
+var ACK_STATUS = '(?:the status of your application|your application(?:\'s)?(?: status)?|the progress of your application)';
+var ACK_CLAUSES = [
+  // Thank you for applying to the Backend Engineer role at Acme / for your interest in a career with Acme
+  '(?:thank you|thanks|many thanks)(?: so much| very much)?(?: again)?,? for (?:(?:applying|your (?:recent |online |job )?(?:application|submission)|submitting (?:your|an|the) application|taking the time to apply|the time to apply)' + ACK_FOR_ROLE +
+    '|your interest(?: in (?:joining |working (?:at|with|for) |(?:a career|a position|a role|employment|opportunities|career opportunities) (?:at|with) )?(?:us|our team|' + ACK_ROLE + '))?)',
+  // We have received your application for the Backend Engineer role / This email confirms receipt of your application
+  '(?:(?:this (?:e-?mail|message|note) (?:is to )?)?confirms? (?:that )?|(?:this is to )?confirm(?:ing)? (?:that )?|we(?:\'d| would)? (?:(?:just )?(?:want|wanted|like|are writing)(?: to)? )?(?:let you know|confirm|acknowledge)(?: that)? )?(?:we(?:\'ve| have)?(?: successfully| now| already| just)? received|we are in receipt of|(?:the )?receipt of) (?:your|the) (?:job |online |recent )?(?:application|submission|resume|cv|materials)' + ACK_FOR_ROLE,
+  // Your application for the Backend Engineer role has been received
+  'your (?:job |online |recent )?(?:application|submission|resume|cv)' + ACK_FOR_ROLE + ' (?:has been|was|is|have been)(?: successfully)? (?:received|submitted)(?: successfully)?(?: (?:to|by) ' + ACK_ROLE + ')?',
+  '(?:your )?application (?:received|submitted|confirmation|confirmed)',
+  // Our team will review your application carefully / the team is reviewing it now
+  '(?:' + ACK_WHO + ' )?(?:(?:will|\'ll|shall|are going to|is going to)(?: now)?(?: carefully| thoroughly| closely| personally)? (?:review|be reviewing|consider|assess|evaluate|look (?:over|at|through)|read)|(?:is|are)(?: now| currently)?(?: carefully)? (?:reviewing|considering|evaluating|looking (?:over|at|through)|reading)) (?:it|them|your ' + ACK_DOCS + '(?:(?:,|,? and) (?:your )?' + ACK_DOCS + '){0,3})(?: (?:for|against) ' + ACK_ROLE + ')?' + ACK_TAIL,
+  // Your application will be reviewed by our recruiting team
+  'your (?:application|resume|profile|submission|candidacy)' + ACK_FOR_ROLE + ' (?:will be|is being|is (?:now |currently )?being|is (?:now |currently )?under|has been (?:forwarded|passed|sent) to ' + ACK_TEAM + ' for)(?: carefully)? (?:reviewed|considered|review|consideration|evaluated)(?: by ' + ACK_TEAM + ')?' + ACK_TAIL,
+  // (If your experience matches,) we will be in touch / contact you / get back to you (if there is a match)
+  '(?:' + ACK_IF + ',? )?(?:(?:' + ACK_WHO + ' )?(?:will|\'ll|shall)(?: be sure to| certainly| definitely)? )?(?:be in touch|get in touch|be in contact|contact you|reach out(?: to you)?|be reaching out(?: to you)?|get back to you|follow up(?: with you)?|let you know|notify you|update you|be contacting you|be back in touch)(?: with you)?(?: (?:with|about|regarding|on) (?:an update|any updates|updates|the outcome|our decision|a decision|the status of your application|your application(?: status)?))?' + ACK_TAIL + '(?:,? ' + ACK_IF + ')?',
+  // You will hear from us (if there is a match)
+  '(?:' + ACK_IF + ',? )?you(?:\'ll| will)(?: be sure to)? (?:hear (?:back )?from us|hear back|be contacted|be notified|receive (?:an update|a response|a decision|further information))(?: (?:by|from) (?:a member of )?' + ACK_TEAM + ')?' + ACK_TAIL + '(?:,? ' + ACK_IF + ')?',
+  // You can track the status of your application in your candidate portal
+  'you (?:can|may)(?: also)? (?:view|track|check|monitor|see|follow) ' + ACK_STATUS + '(?: at any time| anytime)?(?:,? (?:by (?:logging|signing) in(?:to| to)?|in|on|through|via|from|at) ' + ACK_PORTAL + ')?(?: at any time| anytime)?(?:(?::| here:?| at:?) URL)?',
+  'to (?:view|track|check|monitor|see) ' + ACK_STATUS + ',? (?:please )?(?:log|sign) in(?:to| to)? ' + ACK_PORTAL + '(?:(?::| here:?| at:?) URL)?',
+  // We appreciate your interest / are excited that you applied / wish you luck
+  '(?:we )?(?:truly |really |sincerely |greatly |do )?appreciate (?:your interest(?: in (?:joining |working (?:at|with|for) |(?:a career|employment|opportunities) (?:at|with) )?(?:us|our team|' + ACK_ROLE + '))?|(?:you |your )?taking the time to apply' + ACK_FOR_ROLE + '|the time you (?:took|have taken|spent) (?:to apply|applying|on your application))',
+  'we(?:\'re| are) (?:so |very |really )?(?:excited|thrilled|delighted|glad|happy|pleased)(?: that)? (?:you(?:\'re| are) interested in|you(?: would)? (?:consider(?:ed)?|are considering)|you (?:applied|chose to apply)(?: (?:to|for))?|to (?:learn of|hear about|see|receive|have received) your (?:interest|application)(?: in| for| to)?)(?: (?:joining|working (?:at|with|for)))?(?: (?:us|our team|' + ACK_ROLE + '))?',
+  '(?:we )?(?:wish(?:ing)? you|good luck|best of luck)(?: (?:the (?:very )?best(?: of luck)?|all the best|good luck|luck|success|the best of success|every success))?(?: (?:in|with|on) your (?:job |career )?(?:search|career|future endeavou?rs))?',
+  '(?:thank you|thanks)(?: again)?(?: for your (?:time|patience|interest))?',
+  // We can't respond to every applicant individually, so please know that we read each one
+  '(?:(?:unfortunately|please note(?: that)?|due to (?:the )?(?:high|large) (?:volume|number) of (?:applications|applicants|candidates)(?: we receive)?),? )?(?:we )?(?:can\'t|cannot|can not|are unable to|aren\'t able to|are not able to|may not be able to|won\'t be able to|do not|don\'t) (?:respond|reply) (?:individually |personally )?to (?:every|each|all)(?: (?:applicant|application|candidate|submission)s?)?(?: (?:individually|personally))?',
+  '(?:please know|rest assured) (?:that )?we (?:read|review|consider|look at) (?:each|every|all)(?: (?:one|application|applicant|submission)s?)?(?: (?:carefully|personally|we receive))?',
+  '(?:only )?(?:shortlisted|selected|successful) (?:candidates|applicants) will be (?:contacted|notified)',
+  'if you have (?:any )?(?:questions|concerns)(?: (?:about|regarding) (?:your application|the process|this (?:e-?mail|message)))?(?: in the meantime)?,? (?:please )?(?:feel free to )?(?:contact|e-?mail|reach out to|write to) (?:us|' + ACK_TEAM + ')(?: at EMAIL)?'
+];
+// Verification-code mail (subject "Your verification code") may also say what the code is for.
+var ACK_VERIFY_CLAUSES = [
+  '(?:your|the|here is your|here\'s your|use this|use the following) (?:verification|security|one[- ]time|confirmation|access) (?:code|passcode|pin)(?: is)?:? [a-z0-9-]{4,12}',
+  '[a-z0-9-]{4,12} is your (?:verification|security|one[- ]time) (?:code|passcode)',
+  'enter (?:it|this code|the code(?: above)?)(?: (?:on|in) the (?:verification|sign[- ]in|login) (?:page|screen))? to (?:continue|verify(?: your (?:e-?mail|account|identity))?|confirm your e-?mail|finish signing in|sign in|log in|proceed)(?: (?:with )?your application' + ACK_FOR_ROLE + ')?',
+  '(?:this|the) code (?:will )?expires? in [a-z0-9]{1,3} (?:minutes|hours)',
+  'if you did(?:n\'t| not) request (?:this|a)(?: (?:code|e-?mail))?,? (?:please )?(?:ignore|disregard) this (?:e-?mail|message)'
+];
+function ackSentence_(clauses) {
+  var clause = '(?:' + clauses.join('|') + ')';
+  var lead = '(?:(?:again|once again|also|additionally|in addition|in the meantime|meanwhile|unfortunately|please note(?: that)?),? )?';
+  return new RegExp('^' + lead + clause + '(?:(?:,? and|,? but|,? so|;|,) ' + lead + clause + '){0,3}$', 'i');
+}
+var ACKNOWLEDGEMENT = ackSentence_(ACK_CLAUSES);
+var VERIFICATION_ACKNOWLEDGEMENT = ackSentence_(ACK_CLAUSES.concat(ACK_VERIFY_CLAUSES));
+
+var GREETING_NAME = "(?: (?:[A-Z][A-Za-z'.-]*|there|all|team|candidate|applicant)){0,4}";
+var GREETING_LINE = new RegExp('^(?:[Hh]i|[Hh]ello|[Hh]ey|[Dd]ear|[Gg]reetings|HI|HELLO|DEAR)' + GREETING_NAME + ' ?[,!:.]?$');
+var GREETING_PREFIX = new RegExp('^(?:[Hh]i|[Hh]ello|[Hh]ey|[Dd]ear|[Gg]reetings)' + GREETING_NAME + ', ');
+var SIGN_OFF = /^(?:best|best regards|kind regards|warm regards|warmest regards|regards|warmly|sincerely|sincerely yours|yours sincerely|yours truly|respectfully|cheers|all the best|best wishes|many thanks|thanks|thank you|thanks again|thank you again|with appreciation|with gratitude)(?:\s*[,.!]\s*|\s*$)/i;
+var SIGNATURE_LINE = /^(?:[Tt]he )?[A-Z][A-Za-z'&.()-]*(?:(?: | ?[|,\/–—-] ?)(?:[A-Z][A-Za-z'&.()-]*|of|the|at|for|&)){0,7}\.?$/;
+var ACK_VETO_WORD = new RegExp('\\b(?:' + ACK_VETO + ')\\b', 'i');
+// Standard footer sentences, set aside unless they also ask for something.
+var ACK_FOOTER = /\bunsubscribe\b|\bprivacy (policy|notice|statement)\b|\bterms of (use|service)\b|\bequal (employment )?opportunit(y|ies)\b|\bEEO\b|\baffirmative action\b|\bwithout regard to\b|\breceive consideration for employment\b|\b(do not|don't|please do not) (reply|respond)\b|\bno-?reply\b|\b(not monitored|unmonitored|unattended)\b|\breplies (to this (e-?mail|message) )?(will|are) not\b|\bautomated (message|e-?mail|notification|response)\b|\bautomatically generated\b|\bthis (e-?mail|message|notification) (was|is|has been) (sent|generated|delivered)\b|\b(sent|powered|delivered) (by|via|with|through|using)\b|\bon behalf of\b|©|\(c\)|\bcopyright\b|\ball rights reserved\b|\bmanage (your )?(e-?mail |notification )?(preferences|notifications|subscriptions|settings)\b|\be-?mail preferences\b|\bconfidential\b|\bintended (only )?for the (named )?recipient\b|^\d{1,6} [\w .,'#-]{2,80}\b(street|st|avenue|ave|road|rd|boulevard|blvd|drive|dr|lane|ln|way|suite|ste|floor|fl|plaza|parkway|pkwy|court|ct|place|pl|square|sq)\b[\w .,'#-]*$|^[A-Za-z .'-]+, [A-Z]{2} \d{5}(-\d{4})?(,? (USA|United States))?$/i;
+var FOOTER_ACTION = /\b(complete|join|upload|submit|record|book|select|choose|confirm|sign|schedule|deadline|due|instead|however|but|before|until|within|link below|send|provide|fill|attach|share|let us know|must|need to|required to|take (the|your|a|our|this|it))\b|(?<!(\bnot|n't|\bnever) )\b(reply|respond)\b|\bclick (?!(here )?to (unsubscribe|manage|update))|\bplease (?!(do not|don't|note)\b)|\bby (monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|tonight|end of|eod|noon|\d)|\?/i;
+
+function ackFooter_(sentence) { return ACK_FOOTER.test(sentence) && !FOOTER_ACTION.test(sentence); }
+
+function greetingName_(greeting) {
+  return !ACK_VETO_WORD.test(greeting.replace(/^\w+|\b(there|all|team|candidate|applicant)\b/gi, ''));
+}
+
+function signatureLine_(line) { return SIGNATURE_LINE.test(line) && !ACK_VETO_WORD.test(line) && !/\b(URL|EMAIL)\b/.test(line); }
+
+/** The first body sentence that is not a known acknowledgement once the greeting, the sign-off with its signature
+ *  and the footer are set aside, or null when every sentence is one. */
+function unacknowledged_(body, verification) {
+  var text = String(body || '').replace(/\r/g, '').replace(/&nbsp;| /g, ' ').replace(/[‘’]/g, "'").replace(/[“”]/g, '"')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1 URL')
+    .replace(/<?(?:https?:\/\/|www\.)[^\s>]*[^\s>.,;:!?)]>?/gi, ' URL ')
+    .replace(/<?[\w.+-]+@[\w-]+(?:\.[\w-]+)+>?/g, ' EMAIL ');
+  var lines = text.split('\n').map(function (l) { return l.replace(/\s+/g, ' ').replace(/^(?:[*•·>-]+ ?)+/, '').trim(); });
+  var drop = lines.map(function () { return false; });
+  var i, signedOff = false, greeted = false;
+  for (i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    if (!line) continue;
+    if (!greeted) {
+      greeted = true;
+      if (GREETING_LINE.test(line) && greetingName_(line)) { drop[i] = true; continue; }
+    }
+    var off = SIGN_OFF.exec(line);
+    if (off && (off[0].length === line.length || signatureLine_(line.slice(off[0].length)))) { signedOff = true; drop[i] = true; continue; }
+    if (signedOff && signatureLine_(line)) drop[i] = true;
+  }
+  for (i = lines.length - 1; i >= 0; i--) {
+    if (!lines[i] || drop[i] || lineSentences_(lines[i]).every(ackFooter_)) continue;
+    if (!signatureLine_(lines[i])) break;
+    drop[i] = true;
+  }
+  var paragraphs = [], current = [];
+  lines.forEach(function (l, k) {
+    if (!l || drop[k]) { if (current.length) paragraphs.push(current.join(' ')); current = []; return; }
+    current.push(l);
+  });
+  if (current.length) paragraphs.push(current.join(' '));
+  var re = verification ? VERIFICATION_ACKNOWLEDGEMENT : ACKNOWLEDGEMENT;
+  for (var p = 0; p < paragraphs.length; p++) {
+    var sentences = lineSentences_(paragraphs[p]);
+    for (var s = 0; s < sentences.length; s++) {
+      if (!ackFooter_(sentences[s]) && !acknowledges_(re, sentences[s])) return sentences[s];
+    }
+  }
+  return null;
+}
+
+function lineSentences_(text) {
+  var out = [];
+  String(text).split(/(?<=[.!?])\s+(?=\S)/).forEach(function (piece) {
+    if (out.length && /\b(mr|mrs|ms|dr|sr|jr|st|prof|e\.g|i\.e|vs)\.$/i.test(out[out.length - 1])) out[out.length - 1] += ' ' + piece;
+    else out.push(piece);
+  });
+  return out.map(function (x) { return x.trim(); }).filter(Boolean);
+}
+
+function acknowledges_(re, sentence) {
+  var greeting = GREETING_PREFIX.exec(sentence);
+  var s = (greeting && greetingName_(greeting[0]) ? sentence.slice(greeting[0].length) : sentence)
+    .replace(/\s+/g, ' ').replace(/[.!]+$/, '').trim();
+  if (!s) return true;
+  if (s.length > 300) return false;
+  var m = re.exec(s);
+  return !!m && m.slice(1).every(function (g) { return !g || g.length <= 60; });
 }
 
 // Text from the first of these onward is hypothetical ("If you are not selected...") and is ignored.
