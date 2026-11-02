@@ -11,7 +11,8 @@ it. Missing an invite is the defect to avoid, so keeping an extra email in the I
 A **plain application confirmation** is a job email whose body confirms the application ("thank you for applying",
 "we have received your application"), is not a rejection, is written by nobody in the first person, and in which
 every sentence is a known acknowledgement. Only the greeting line ("Hi Alex,"), the sign-off with the signature
-lines directly under it ("Best, Acme Recruiting"), an unsigned signature that is the one unbroken block ending the
+lines directly under it ("Best, Acme Recruiting"; only a name directly under the sign-off, then job title, team,
+company and contact lines), an unsigned signature that is the one unbroken block ending the
 body, and sentences that are a standard footer in their entirety are set aside. A footer sentence is one of: do not
 reply or an unattended mailbox; sent by, sent via or powered by a named ATS (Greenhouse, Lever, Workday, Ashby,
 iCIMS, SmartRecruiters and others); unsubscribe or manage email preferences; privacy policy; the equal opportunity
@@ -196,11 +197,13 @@ trigger are kept.
   CCAT, Pymetrics, Karat or Spark Hire step, join a Teams link at a set time, or reply with your free times stays in
   the Inbox. Footer sentences are set aside only when the whole sentence is a standard footer, so an action wrapped
   in footer wording ("This automated email is a reminder that your work sample is still outstanding") stays in the
-  Inbox too, and an unsigned signature is set aside only as the unbroken block that ends the body. The allowlist
-  moves no existing fixture: all 7 remaining `job` fixtures stay `job` and none flips to `interview`. `bun test`
-  runs `test/interview.test.ts` against fake threads, including 55 action sentences and 45 actions in footer
-  wording that must stay in the Inbox, and Greenhouse, Lever, Workday, Ashby, iCIMS, SmartRecruiters and
-  equal-opportunity footers on acknowledgements that are still archived.
+  Inbox too. Signature lines are an allowlist as well: a line under the sign-off ("Technical Project Instructions",
+  "Let's Connect Soon") is set aside only when it is a name, job title, team, company or contact line, and an
+  unsigned signature only as the unbroken block that ends the body. The allowlist moves no existing fixture: all 7
+  remaining `job` fixtures stay `job` and none flips to `interview`. `bun test` runs `test/interview.test.ts`
+  against fake threads, including 55 action sentences, 45 actions in footer wording and 12 action lines under a
+  signature that must stay in the Inbox, and Greenhouse, Lever, Workday, Ashby, iCIMS, SmartRecruiters and
+  equal-opportunity footers and realistic signatures on acknowledgements that are still archived.
 
 - **v5.1**: A rejection whose only signal is one explicit decision sentence ("we have decided not to move forward
   with your application") is now recognized: the rejection threshold drops from 3 to 2, and an explicit decision

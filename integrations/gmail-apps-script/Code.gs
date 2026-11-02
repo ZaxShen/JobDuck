@@ -859,7 +859,6 @@ var GREETING_NAME = "(?: (?:[A-Z][A-Za-z'.-]*|there|all|team|candidate|applicant
 var GREETING_LINE = new RegExp('^(?:[Hh]i|[Hh]ello|[Hh]ey|[Dd]ear|[Gg]reetings|HI|HELLO|DEAR)' + GREETING_NAME + ' ?[,!:.]?$');
 var GREETING_PREFIX = new RegExp('^(?:[Hh]i|[Hh]ello|[Hh]ey|[Dd]ear|[Gg]reetings)' + GREETING_NAME + ', ');
 var SIGN_OFF = /^(?:best|best regards|kind regards|warm regards|warmest regards|regards|warmly|sincerely|sincerely yours|yours sincerely|yours truly|respectfully|cheers|all the best|best wishes|many thanks|thanks|thank you|thanks again|thank you again|with appreciation|with gratitude)(?:\s*[,.!]\s*|\s*$)/i;
-var SIGNATURE_LINE = /^(?:[Tt]he )?[A-Z][A-Za-z'&.()-]*(?:(?: | ?[|,\/–—-] ?)(?:[A-Z][A-Za-z'&.()-]*|of|the|at|for|&)){0,7}\.?$/;
 var ACK_VETO_WORD = new RegExp('\\b(?:' + ACK_VETO + ')\\b', 'i');
 // Standard footer clauses. A sentence is set aside as footer only when the whole of it is one of these clauses, or a
 // few of them joined by a comma, semicolon or "and"/"as"/"so": anything else in it ("This message was sent by the
@@ -939,7 +938,44 @@ function greetingName_(greeting) {
   return !ACK_VETO_WORD.test(greeting.replace(/^\w+|\b(there|all|team|candidate|applicant)\b/gi, ''));
 }
 
-function signatureLine_(line) { return SIGNATURE_LINE.test(line) && !ACK_VETO_WORD.test(line) && !/\b(URL|EMAIL)\b/.test(line); }
+// Signature lines, an allowlist: a line is set aside only when the whole line is one of these shapes. A person's name
+// counts only directly under the sign-off (or above a job title when there is none), so "Technical Project
+// Instructions" or "Let's Connect Soon" under a signature is body text. Names and companies hold no action word.
+var SIG_COMPANY = "([A-Z][A-Za-z'&.-]*(?: (?:[A-Z][A-Za-z'&.-]*|&|of)){0,3})";
+var SIG_NAME_WORD = "(?:[A-Z][a-z]+(?:[A-Z][a-z]+)?|[A-Z](?=[-']))(?:[-'][A-Z][a-z]+)*";
+var SIG_NAME = new RegExp('^' + SIG_NAME_WORD + '(?: [A-Z]\\.)?(?: ' + SIG_NAME_WORD + '){1,2}$');
+var SIG_DEPT = '(?:Recruiting|Recruitment|Talent Acquisition|Talent|People|People Operations|Hiring|HR|Human Resources|Careers)';
+var SIG_TITLE_NOUN = '(?:Recruiter|(?:Recruiting|Recruitment) (?:Coordinator|Manager|Lead|Partner)|Sourcer|Talent Acquisition (?:Partner|Specialist|Manager|Lead|Coordinator)|Talent Partner|People Partner|HR (?:Manager|Generalist|Business Partner|Coordinator)|Hiring Manager|Engineering Manager|Founder|Co-[Ff]ounder|CEO|CTO|Head of (?:Talent|People|Recruiting))';
+var SIG_TITLE_LINE = new RegExp('^(?:([A-Z][A-Za-z.-]*(?: [A-Z][A-Za-z.-]*){0,2}) )?' + SIG_TITLE_NOUN + '(?: (?:&|and) ' + SIG_TITLE_NOUN + ')?(?:(?: at|,| \\||| -| –| —| @) ' + SIG_COMPANY + ')?$');
+var SIG_SHAPES = [
+  new RegExp('^(?:The )?(?:' + SIG_COMPANY + ' )?(?:' + SIG_DEPT + '(?: Team)?|Team)$'),
+  new RegExp('^' + SIG_COMPANY + ',? (?:Inc|LLC|Ltd|Corp|Co|GmbH|Labs|Technologies|AI)\\.?$'),
+  /^(?:(?:(?:Phone|Tel|Mobile|Cell|[MPTO])[:.]? ?)?\+?[\d(][\d ().-]{6,18}\d|EMAIL|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|io|co|ai|org|net|dev|app|jobs))(?: ?[|·•,\/] ?(?:(?:(?:Phone|Tel|Mobile|Cell|[MPTO])[:.]? ?)?\+?[\d(][\d ().-]{6,18}\d|EMAIL|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|io|co|ai|org|net|dev|app|jobs))){0,3}$/
+];
+
+function sigWords_(m) {
+  return !!m && m.slice(1).every(function (g) { return !g || !ACK_VETO_WORD.test(g); });
+}
+
+/** A signature line other than a person's name: a job title, a team, a company, or contact details. A bare company
+ *  name of one to four capitalised words counts only when the body above already names it. */
+function signatureLine_(line, above) {
+  var s = line.replace(/\.$/, '');
+  if (sigWords_(SIG_TITLE_LINE.exec(s)) || SIG_SHAPES.some(function (re) { return sigWords_(re.exec(s)); })) return true;
+  var company = new RegExp('^' + SIG_COMPANY + '$').exec(s);
+  return sigWords_(company) && new RegExp("(?:^|[^A-Za-z'&-])" + s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "(?![A-Za-z'&-])").test(above);
+}
+
+function signatureName_(line) { return SIG_NAME.test(line.replace(/\.$/, '')) && !ACK_VETO_WORD.test(line); }
+
+/** Marks the signature lines from index `from` on: an optional name first, then title, team, company and contact
+ *  lines, stopping at the first line that is none of these or at a blank line. */
+function dropSignature_(lines, drop, from, nameAllowed, above) {
+  for (var j = from; j < lines.length && lines[j]; j++) {
+    if (!drop[j] && !signatureLine_(lines[j], above) && !(nameAllowed && j === from && signatureName_(lines[j]))) return;
+    drop[j] = true;
+  }
+}
 
 /** The first body sentence that is not a known acknowledgement once the greeting, the sign-off with its signature
  *  and the footer are set aside, or null when every sentence is one. */
@@ -960,19 +996,22 @@ function unacknowledged_(body, verification) {
       if (GREETING_LINE.test(line) && greetingName_(line)) { drop[i] = true; continue; }
     }
     var off = SIGN_OFF.exec(line);
-    if (off && (off[0].length === line.length || signatureLine_(line.slice(off[0].length)))) {
-      signedOff = true;
-      drop[i] = true;
-      for (j = i + 1; j < lines.length && !lines[j]; j++);
-      for (; j < lines.length && lines[j] && signatureLine_(lines[j]); j++) drop[j] = true;
-    }
+    if (!off) continue;
+    var above = lines.slice(0, i).join('\n'), rest = line.slice(off[0].length);
+    if (rest && !signatureLine_(rest, above) && !signatureName_(rest)) continue;
+    signedOff = true;
+    drop[i] = true;
+    for (j = i + 1; j < lines.length && !lines[j]; j++);
+    dropSignature_(lines, drop, j, !rest, above);
   }
-  // Without a sign-off, only the one unbroken block of signature lines that ends the body is a signature.
+  // Without a sign-off, only the one unbroken block of signature lines that ends the body is a signature; a name in it
+  // counts only directly above a job title.
   for (i = lines.length - 1; i >= 0 && !lines[i]; i--);
   for (; !signedOff && i >= 0 && lines[i]; i--) {
     if (footerLine[i]) continue;
-    if (!signatureLine_(lines[i])) break;
-    drop[i] = true;
+    if (signatureLine_(lines[i], lines.slice(0, i).join('\n'))) { drop[i] = true; continue; }
+    if (signatureName_(lines[i]) && SIG_TITLE_LINE.test(lines[i + 1] || '')) drop[i] = true;
+    break;
   }
   var paragraphs = [], current = [];
   lines.forEach(function (l, k) {

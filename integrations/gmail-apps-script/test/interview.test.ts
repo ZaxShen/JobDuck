@@ -716,3 +716,57 @@ describe('a footer is set aside only when the whole sentence is a standard foote
     expect(footer_(sentence)).toBe(true);
   });
 });
+
+describe('after a sign-off only allowlisted signature lines are set aside', () => {
+  const sandbox: Record<string, unknown> = { Logger: { log() {} }, PropertiesService: {}, Session: {}, GmailApp: {}, Gmail: {} };
+  vm.createContext(sandbox);
+  vm.runInContext(readFileSync(join(import.meta.dir, '..', 'Code.gs'), 'utf8') + '\nthis.__a = { classifyThread_, unacknowledged_ };', sandbox);
+  const { classifyThread_, unacknowledged_ } = sandbox.__a as {
+    classifyThread_(messages: unknown[], rules: { excludedDomains: string[] }, me: string): { action: string };
+    unacknowledged_(body: string, verification: boolean): string | null;
+  };
+  const classify = (body: string) =>
+    classifyThread_([{ getFrom: () => 'Acme Recruiting <no-reply@greenhouse.io>', getSubject: () => 'Your application to Acme', getPlainBody: () => body }], { excludedDomains: [] }, 'me@example.com').action;
+  const signed = (signature: string) => 'Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Acme.\n\nBest,\n' + signature;
+
+  test.each([
+    'Acme Recruiting\nTechnical Project Instructions',
+    "Jane Doe\nEngineering Manager\nLet's Connect Soon",
+    'Acme Recruiting\nCoding Challenge Details',
+    'Acme Recruiting\nPortfolio Review Request',
+    'The Acme Team\nCase Study Attached',
+    'Jane Doe\nWork Sample Instructions',
+    'Jane Doe\nRecruiter, Acme\nTake Home Project Brief',
+    'Acme Talent Acquisition\nWriting Sample Needed',
+    'Acme Hiring Team\nSecond Round Details',
+    'Jane Doe\nSenior Technical Recruiter\nFinal Presentation Prep',
+    'Acme Recruiting\nDesign Exercise Overview',
+    'Acme Recruiting\njane@acme.com\nReference Details Requested',
+  ])('an action line under the signature is kept: %s', (signature) => {
+    expect(classify(signed(signature))).toBe('interview');
+    expect(unacknowledged_(signed(signature), false)).not.toBeNull();
+  });
+
+  test('an unsigned title line inside the closing block is kept', () => {
+    const body = 'Hi Danlin,\n\nThank you for applying to Acme.\n\nCoding Project Instructions\nAcme Recruiting';
+    expect(classify(body)).toBe('interview');
+  });
+
+  test.each([
+    'Acme',
+    'Acme Recruiting',
+    'The Acme Team',
+    'The Acme Recruiting Team',
+    'Acme Talent Acquisition Team',
+    'Jane Doe\nSenior Technical Recruiter | Acme\njane@acme.com | (555) 123-4567',
+    "Mary-Jane O'Neil\nTalent Acquisition Partner at Acme\nacme.com",
+    'Jane Q. Doe\nHead of Talent, Acme Inc.',
+    'Sam Lee\nFounder & CEO\nAcme Labs',
+  ])('a realistic signature is set aside: %s', (signature) => {
+    expect(classify(signed(signature))).toBe('job');
+  });
+
+  test('an unsigned name above a job title closing the body is set aside', () => {
+    expect(classify('Hi Danlin,\n\nThank you for applying to Acme.\n\nJane Doe\nRecruiter, Acme')).toBe('job');
+  });
+});
