@@ -1,15 +1,17 @@
 /**
- * Job Duck — Gmail Rejection Sync v5.1
- * Script v5.1 — serve-only: rejections are queued in the script and served to `jobduck sync` by the script deployed
+ * Job Duck — Gmail Rejection Sync v5.2
+ * Script v5.2 — serve-only: rejections are queued in the script and served to `jobduck sync` by the script deployed
  * as a web app. Nothing is pushed anywhere.
  *
  * Moves job-application mail out of the Inbox into the nested label "Job Duck/Applications" and rejections
- * into "Job Duck/Rejections". Each rejection becomes an outcome (header fields and a job link/ID only; the email
- * body never leaves Gmail) queued for the web app.
+ * into "Job Duck/Rejections". Interview, assessment, scheduling and offer mail, detected from the message body, gets
+ * "Job Duck/Interviews" and is never archived. Each rejection becomes an outcome (header fields and a job link/ID
+ * only; the email body never leaves Gmail) queued for the web app.
  *
  * Scope: the script only ever searches the Inbox (in:inbox), plus the "Job Duck/Applications" label when you run
  * previewReaudit/reauditApplications. Threads already labeled "Job Duck/Rejections" are never re-read or re-labeled;
- * a thread that is back in the Inbox because a new message arrived is re-archived only.
+ * a thread that is back in the Inbox because a new message arrived is re-archived only, unless it also carries
+ * "Job Duck/Interviews".
  *
  * Setup:
  *   1. Run generateSyncToken and copy the logged token.
@@ -19,13 +21,15 @@
  * Optional properties: PROTECTED_LABELS and EXCLUDED_DOMAINS (comma-separated), KEEP_ACTION_MAIL_IN_INBOX=true.
  */
 
-var SCRIPT_VERSION = '5.1';
+var SCRIPT_VERSION = '5.2';
 
 var LABEL_PARENT = 'Job Duck';
 
 var CONFIG = {
   JOB_LABEL: LABEL_PARENT + '/Applications',
   DENY_LABEL: LABEL_PARENT + '/Rejections',
+  // Interview, assessment, scheduling and offer mail; threads carrying it are never archived.
+  INTERVIEW_LABEL: LABEL_PARENT + '/Interviews',
   // Labels from earlier versions, renamed by install() so existing threads keep their history.
   LEGACY_JOB_LABELS: ['Job Applications', 'JD - Job Applications'],
   LEGACY_DENY_LABELS: ['Deny Letters', 'JD - Deny Letters'],
@@ -36,7 +40,7 @@ var CONFIG = {
   // Senders from these domains are never sorted, e.g. ['lawfirm.example.com'].
   // Also read from the script property EXCLUDED_DOMAINS (comma-separated).
   EXCLUDED_DOMAINS: [],
-  // Interview, assessment and verification-code emails are labeled but stay in the Inbox when true.
+  // Verification and security-code emails are labeled but stay in the Inbox when true. Interview mail always stays.
   // Also read from the script property KEEP_ACTION_MAIL_IN_INBOX ('true').
   KEEP_ACTION_MAIL_IN_INBOX: false,
   // Only rejections on/after this date are queued for jobduck sync.
@@ -73,10 +77,10 @@ function uninstall() {
 }
 
 function run() {
-  var stats = { job: 0, deny: 0, kept: 0, skipped: 0 };
+  var stats = { job: 0, deny: 0, interview: 0, kept: 0, skipped: 0 };
   var threads = GmailApp.search(CONFIG.RUN_QUERY, 0, CONFIG.MAX_THREADS_PER_RUN);
   threads.forEach(function (t) { tally_(stats, processThread_(t)); });
-  if (stats.job || stats.deny) Logger.log(JSON.stringify(stats));
+  if (stats.job || stats.deny || stats.interview) Logger.log(JSON.stringify(stats));
 }
 
 function checkConnection() {
@@ -93,7 +97,7 @@ function backfill() {
   var props = PropertiesService.getUserProperties();
   var start = Number(props.getProperty('backfillOffset') || 0);
   var began = Date.now();
-  var stats = { job: 0, deny: 0, kept: 0, skipped: 0 };
+  var stats = { job: 0, deny: 0, interview: 0, kept: 0, skipped: 0 };
   while (Date.now() - began < CONFIG.TIME_BUDGET_MS) {
     var threads = GmailApp.search('in:inbox', start, 100);
     if (!threads.length) {
@@ -119,8 +123,9 @@ function processThread_(thread) {
   var userLabels = thread.getLabels().map(function (l) { return l.getName(); });
   if (userLabels.some(function (n) { return rules.protectedLabels.indexOf(n) >= 0; })) return 'skipped';
   var hasJob = userLabels.indexOf(CONFIG.JOB_LABEL) >= 0;
+  var hasInterview = userLabels.indexOf(CONFIG.INTERVIEW_LABEL) >= 0;
   if (userLabels.indexOf(CONFIG.DENY_LABEL) >= 0) {
-    thread.moveToArchive();
+    if (!hasInterview) thread.moveToArchive();
     return 'skipped';
   }
 
@@ -149,12 +154,18 @@ function processThread_(thread) {
     if (hasJob) thread.removeLabel(L.job);
     var latestDeny = denyMsgs[denyMsgs.length - 1];
     if (latestDeny.getDate() >= CONFIG.SYNC_SINCE) recordRejection_(latestDeny);
-    thread.moveToArchive();
+    if (!hasInterview) thread.moveToArchive();
     return 'deny';
   }
 
+  if (hasInterview || isInterview(jobMsgs[jobMsgs.length - 1].getPlainBody())) {
+    if (!hasInterview) thread.addLabel(L.interview);
+    if (hasJob) thread.removeLabel(L.job);
+    return 'interview';
+  }
+
   if (!hasJob) thread.addLabel(L.job);
-  if (rules.keepActionMail && ACTION_SUBJECT.test(last.getSubject())) return 'kept';
+  if (rules.keepActionMail && VERIFICATION_SUBJECT.test(last.getSubject())) return 'kept';
   thread.moveToArchive();
   return 'job';
 }
@@ -173,7 +184,7 @@ function rules_() {
 }
 
 function labels_() {
-  return { job: label_(CONFIG.JOB_LABEL), deny: label_(CONFIG.DENY_LABEL) };
+  return { job: label_(CONFIG.JOB_LABEL), deny: label_(CONFIG.DENY_LABEL), interview: label_(CONFIG.INTERVIEW_LABEL) };
 }
 
 /** Gmail creates the "Job Duck" parent on its own when a nested name is created or a label is renamed into it;
@@ -236,7 +247,7 @@ function clearPushQueue_() {
 function tally_(stats, r) { stats[r] = (stats[r] || 0) + 1; }
 
 function preview() {
-  var jobs = 0, denies = 0, start = 0, began = Date.now();
+  var jobs = 0, denies = 0, interviews = 0, start = 0, began = Date.now();
   while (Date.now() - began < 4 * 60 * 1000) {
     var threads = GmailApp.search('in:inbox', start, 100);
     if (!threads.length) break;
@@ -251,11 +262,18 @@ function preview() {
         denies++;
         Logger.log('DENY [' + d.score + '] ' + last.getDate().toISOString().slice(0, 10) + ' | ' + subj + '  <=  ' + d.reasons.join(' ') + ' | "' + String(d.evidence || '').slice(0, 90) + '"');
         Logger.log('  would queue: ' + JSON.stringify(buildOutcome_(last)));
+        return;
       }
-      else jobs++;
+      var iv = interviewScore(body);
+      if (iv.interview) {
+        interviews++;
+        Logger.log('INTERVIEW ' + last.getDate().toISOString().slice(0, 10) + ' | ' + subj + '  <=  ' + iv.reasons.join(' ') + ' | "' + String(iv.evidence || '').slice(0, 90) + '"');
+        return;
+      }
+      jobs++;
     });
   }
-  Logger.log('Scanned ' + start + ' inbox threads: ' + denies + ' rejections, ' + jobs + ' other job emails.');
+  Logger.log('Scanned ' + start + ' inbox threads: ' + denies + ' rejections, ' + interviews + ' interview emails, ' + jobs + ' other job emails.');
 }
 
 function previewReaudit() { reaudit_(false); }
@@ -271,7 +289,8 @@ function resetReaudit() {
 function reauditCursorKey_(apply) { return apply ? 'reauditOffset' : 'previewReauditOffset'; }
 
 /** Re-classifies the latest message of every "Job Duck/Applications" thread, newest first, within the time budget.
- *  apply=false only logs; apply=true relabels rejections (and queues them) and drops non-application mail. */
+ *  apply=false only logs; apply=true relabels rejections (and queues them), moves interview mail to
+ *  "Job Duck/Interviews" and back to the Inbox, and drops non-application mail. */
 function reaudit_(apply) {
   var name = apply ? 'reauditApplications' : 'previewReaudit';
   var props = PropertiesService.getUserProperties();
@@ -281,7 +300,7 @@ function reaudit_(apply) {
   var L = apply ? labels_() : null;
   var rules = rules_();
   var me = Session.getActiveUser().getEmail().toLowerCase();
-  var stats = { rejection: 0, notJob: 0, kept: 0 };
+  var stats = { rejection: 0, interview: 0, notJob: 0, kept: 0 };
   while (Date.now() - began < CONFIG.TIME_BUDGET_MS) {
     var threads = GmailApp.search(APPLICATIONS_QUERY, start, REAUDIT_PAGE);
     if (!threads.length) {
@@ -300,6 +319,10 @@ function reaudit_(apply) {
         t.addLabel(L.deny);
         t.removeLabel(L.job);
         recordRejection_(d.message);
+      } else if (d.action === 'interview') {
+        t.addLabel(L.interview);
+        t.removeLabel(L.job);
+        t.moveToInbox();
       } else {
         t.removeLabel(L.job);
       }
@@ -332,6 +355,12 @@ function reauditDecision_(thread, rules, me) {
   if (d.score >= DENY_THRESHOLD && d.strong) {
     info.action = 'rejection';
     info.reasons = d.reasons;
+    return info;
+  }
+  var iv = interviewScore(body);
+  if (iv.interview) {
+    info.action = 'interview';
+    info.reasons = iv.reasons;
     return info;
   }
   return kept;
@@ -589,8 +618,58 @@ var JOB_SENDER_LOCAL = /^(no-?reply[-_.]?(recruiting|careers)?|careers?|jobs?|re
 var JOB_SUBJECT = /(thank(s| you)( so much)? for (applying|your (application|interest|submission))|thanks for applying|your application|application (update|status|received|confirmation|submitted|to )|we('ve| have) received your application|candidacy|following up on your .*application|update (on|regarding|about) (your|the) .*(application|role|position)|^update from \w|application confirmation|interest in (career|joining|working))/i;
 var JOB_BODY = /(thank(s| you)[^.]{0,60}for (applying|your application|submitting your application|your interest in)|(received|reviewed|reviewing) your application|your application (for|to|as)\b|apply(ing)? (for|to) the [^.]{3,120} (role|position)|for the [^.]{3,120} (role|position)\b)/i;
 
-// Kept in the inbox (still labeled) because they need action now.
-var ACTION_SUBJECT = /(security code|verification code|verify your (email|account)|one[- ]time (code|pass)|confirm your email|interview|schedul|availability|assessment|coding (challenge|exercise)|hackerrank|codesignal|take[- ]home|next steps|offer letter|background check)/i;
+// Kept in the inbox (still labeled) when KEEP_ACTION_MAIL_IN_INBOX is set, because a code expires.
+var VERIFICATION_SUBJECT = /(security code|verification code|verify your (email|account)|one[- ]time (code|pass)|confirm your email)/i;
+
+// Interview, assessment, scheduling and offer mail, read from the body only (the subject is never a signal).
+// [reason, pattern] — any match in a sentence that is not hypothetical makes the email interview mail.
+var INTERVIEW_SIGNALS = [
+  ['interview invite', /\binvit(e|ed|es|ing|ation)\b[^.]{0,60}\binterview/i],
+  ['interview invite', /\binterview (invitation|invite|request|kick-?off|confirmation|details|slot|loop)\b/i],
+  ['interview kickoff', /\bkick(s|ing|ed)?[ -]?off (the|your|our) (interview|hiring|recruiting) process\b/i],
+  ['schedule interview', /\b(schedul\w*|book\w*|set(ting)? up|arrang\w*|coordinat\w*|confirm\w*)\b[^.]{0,40}\b(interview|phone screen|screening call|technical screen|on-?site)\b/i],
+  ['book a time', /\b(schedule|book|find|pick|choose|select|grab|set up) (a |some )?(time|slot|call|chat|meeting|conversation)\b/i],
+  ['availability', /\b(share|send|provide|let (me|us) know|reply with|what is|what's) (me |us )?(your |some )?(availability|available times|times that work)\b|\byour availability\b/i],
+  ['screen', /\b(phone|technical|recruiter|initial|intro(ductory)?|video|virtual|hiring manager)[ -](screen|screening|interview|call)s?\b/i],
+  ['next round', /\bnext (round|stage)\b|\b(final|second|third)[ -]round\b/i],
+  ['onsite', /\b(virtual )?on-?site (interview|visit|round|loop|day)s?\b|\bvirtual on-?site\b|\bsuper ?day\b/i],
+  ['offer', /\boffer letter\b|\b(pleased|happy|excited|delighted|thrilled) to (extend (you )?(an? |the )?(formal |verbal |written )?offer|offer you)\b|\b(verbal|formal|written) offer\b/i],
+  ['questionnaire', /\bpre-?interview (questionnaire|survey|form)\b|\b(fill out|fill in|complete|answer|submit)\b[^.]{0,30}\bquestionnaire\b/i],
+  ['background check', /\b(complete|authorize|consent to|start|initiate)\b[^.]{0,30}\bbackground (check|screening)\b/i]
+];
+var ASSESSMENT_WORD = /\b(assessment|coding (challenge|exercise|test|assignment)|take[- ]home|hackerrank|codesignal|codility|coderpad|online test|skills test|work sample)\b/i;
+var ASSESSMENT_ACTION = /\b(complete|completing|take|finish|start|begin|submit|attempt|access|link|within \d+|due|deadline|invit\w*)\b/i;
+var INTERVIEW_LINK = /https?:\/\/[^\s<>"')\]]*\b(calendly\.com|goodtime\.io|hackerrank\.com|codesignal\.com|codility\.com|coderpad\.io|testgorilla\.com)\b/i;
+// Sentences that only promise a possible future step ("If your experience matches, we will reach out to schedule an
+// interview", "Our team will review your application", "Selected candidates will be invited") are not interview mail.
+var MAYBE_CONDITIONAL = /\bshould (you|your|there|we|it|the)\b/i;
+var MAYBE_PROMISE = /\b(will|we'?ll|would|may|might|can)\b[^.]{0,60}\b(reach out|contact|be in touch|get in touch|follow up|get back|let you know|notify|invite|schedule|be invited|be asked)\b/i;
+var MAYBE_SENTENCE = /\b(may|might|could) (also )?(be )?(asked|invited|required|contacted|requested)\b|\b(selected|qualified|shortlisted|successful|top) (candidates|applicants)\b|\b(candidates|applicants) (who are )?(selected|shortlisted|chosen)\b|\b(will|we'?ll) (review|be reviewing|carefully review)\b|\bcurrently reviewing\b|\bunder review\b/i;
+
+function hypotheticalSentence_(sentence) {
+  if (MAYBE_SENTENCE.test(sentence)) return true;
+  return (CONDITIONAL.test(sentence) || MAYBE_CONDITIONAL.test(sentence)) && MAYBE_PROMISE.test(sentence);
+}
+
+/** Interview score over the body only: { interview, reasons[], evidence } */
+function interviewScore(body) {
+  var why = [], evidence = null;
+  splitSentences(body).forEach(function (sentence) {
+    if (hypotheticalSentence_(sentence)) return;
+    INTERVIEW_SIGNALS.forEach(function (sig) {
+      if (why.indexOf(sig[0]) >= 0 || !sig[1].test(sentence)) return;
+      why.push(sig[0]);
+      if (!evidence) evidence = sentence;
+    });
+    if (why.indexOf('assessment') < 0 && ASSESSMENT_WORD.test(sentence) && ASSESSMENT_ACTION.test(sentence)) {
+      why.push('assessment');
+      if (!evidence) evidence = sentence;
+    }
+  });
+  var link = String(body || '').match(INTERVIEW_LINK);
+  if (link) why.push('link: ' + link[1]);
+  return { interview: why.length > 0, reasons: why, evidence: evidence };
+}
 
 // Text from the first of these onward is hypothetical ("If you are not selected...") and is ignored.
 var CONDITIONAL = /\b(if|when|whenever|once|before|until|should (you|things)|in case|whether|unless|in the event)\b/i;
@@ -719,3 +798,4 @@ function isRejection(subject, body) {
   var d = denyScore(subject, body);
   return d.score >= DENY_THRESHOLD && d.strong;
 }
+function isInterview(body) { return interviewScore(body).interview; }

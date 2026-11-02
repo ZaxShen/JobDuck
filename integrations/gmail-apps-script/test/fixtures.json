@@ -276,5 +276,47 @@
     "subject": "Your application to Globex",
     "body": "We wish you the best in your search and will keep your resume on file.",
     "expect": "job"
+  },
+  {
+    "name": "Salient Ashby interview kickoff",
+    "from": "The Salient Hiring Team <no-reply@ashbyhq.com>",
+    "subject": "Salient | A few things to know before your interview...",
+    "body": "Hi Danlin,\n\nExcited to kick off the interview process with you - before we schedule anything, I'd love for you to fill out a quick questionnaire so we can tailor the conversations to you.\n\nIt takes about 10 minutes. Thanks for your interest in Salient!\n\nThe Salient Hiring Team",
+    "expect": "interview"
+  },
+  {
+    "name": "Aios Medical availability for hiring manager call (neutral subject)",
+    "from": "Maya Chen <maya@aiosmedical.com>",
+    "subject": "Danlin Shen <> Aios Medical",
+    "body": "Hi Danlin,\n\nThanks for applying to the Senior Software Engineer role at Aios Medical. Could you share your availability this week for a 30-minute call with our hiring manager?\n\nBest,\nMaya\nTalent Partner, Aios Medical",
+    "expect": "interview"
+  },
+  {
+    "name": "Acme Greenhouse HackerRank assessment (neutral subject)",
+    "from": "Acme Recruiting <no-reply@greenhouse.io>",
+    "subject": "Next step with Acme",
+    "body": "Hi Danlin,\n\nThank you for your interest in the Backend Engineer role at Acme. As a next step, we'd like you to complete a HackerRank coding assessment within 7 days using the link below.\n\nhttps://www.hackerrank.com/test/abc123/login\n\nGood luck!\nAcme Recruiting",
+    "expect": "interview"
+  },
+  {
+    "name": "Initech confirmation with conditional interview promise",
+    "from": "Initech Recruiting <no-reply@greenhouse.io>",
+    "subject": "Thank you for applying to Initech",
+    "body": "Hi Danlin,\n\nThank you for applying to the Data Engineer role at Initech. Our team will review your application and next steps.\n\nIf your experience matches, we will reach out to schedule an interview.\n\nInitech Recruiting",
+    "expect": "job"
+  },
+  {
+    "name": "Hooli rejection after interview",
+    "from": "Hooli Recruiting <no-reply@greenhouse.io>",
+    "subject": "Your interview with Hooli",
+    "body": "Hi Danlin,\n\nThank you for taking the time to interview with us. Unfortunately, we have decided not to move forward.\n\nHooli Recruiting",
+    "expect": "rejection"
+  },
+  {
+    "name": "Interview-ish subject over a plain confirmation body",
+    "from": "Globex Careers <no-reply@greenhouse.io>",
+    "subject": "Interview Scheduling Team: application received",
+    "body": "Hi Danlin,\n\nThank you for applying to the Platform Engineer position at Globex. We have received your application.\n\nGlobex Careers",
+    "expect": "job"
   }
 ]

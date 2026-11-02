@@ -12,12 +12,13 @@ const sandbox = {
   Gmail: {},
 };
 vm.createContext(sandbox);
-vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'Code.gs'), 'utf8') + '\nthis.__api = { jobScore, denyScore, isRejection, JOB_THRESHOLD };', sandbox);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'Code.gs'), 'utf8') + '\nthis.__api = { jobScore, denyScore, isRejection, isInterview, JOB_THRESHOLD };', sandbox);
 const api = sandbox.__api;
 
 function classify(f) {
   if (api.jobScore(f.from, f.subject, f.body).score < api.JOB_THRESHOLD) return 'skip';
-  return api.isRejection(f.subject, f.body) ? 'rejection' : 'job';
+  if (api.isRejection(f.subject, f.body)) return 'rejection';
+  return api.isInterview(f.body) ? 'interview' : 'job';
 }
 
 const fixtures = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures.json'), 'utf8'));
@@ -42,7 +43,7 @@ fixtures.filter((f) => f.negative).forEach((f) => {
   const reasons = api.jobScore(f.from, f.subject, f.body).reasons;
   if (!reasons.includes('not application mail: ' + f.negative)) { failures++; console.log(f.name + ' expected reason "not application mail: ' + f.negative + '", got', reasons); }
 });
-if (!/SCRIPT_VERSION = '5\.1'/.test(fs.readFileSync(path.join(__dirname, '..', 'Code.gs'), 'utf8'))) { failures++; console.log('SCRIPT_VERSION is not 5.1'); }
+if (!/SCRIPT_VERSION = '5\.2'/.test(fs.readFileSync(path.join(__dirname, '..', 'Code.gs'), 'utf8'))) { failures++; console.log('SCRIPT_VERSION is not 5.2'); }
 
 console.log(failures ? failures + ' failure(s)' : 'all ' + rows.length + ' fixtures pass');
 process.exit(failures ? 1 : 0);
