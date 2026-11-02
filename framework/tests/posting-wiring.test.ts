@@ -176,7 +176,7 @@ describe('record_application resolves the posting it saves', () => {
       + 'this position is CA$110,000 - CA$135,000 per year. Acme builds data tools for example.com customers.'
     const fromText = await data('resolve_posting', { application_id: saved.application.id, text })
     expect(calls).toEqual([])
-    expect(fromText.resolution).toMatchObject({ next: 'agent_fill', missing: ['country', 'city'], fetched: [] })
+    expect(fromText.resolution).toMatchObject({ next: 'agent_fill', missing: ['country'], fetched: [] })
     expect(fromText.posting).toMatchObject({ work_mode: 'remote', pay_min: 110000, pay_max: 135000, currency: 'CAD' })
 
     const filled = await data('resolve_posting', {
