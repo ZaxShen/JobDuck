@@ -16,16 +16,6 @@ import {
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { ExternalLinkIcon, GripVerticalIcon } from 'lucide-react'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import {
   type StageColumn,
@@ -38,7 +28,7 @@ import {
   stageMove,
   stageOf,
 } from '@/lib/board'
-import { safeUrl, statusLabel } from '@/lib/format'
+import { safeUrl } from '@/lib/format'
 import type { ApplicationRow } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { StatusActionsMenu } from '@/views/applications/status-actions-menu'
@@ -52,11 +42,7 @@ interface CardActions {
 interface ApplicationBoardProps extends CardActions {
   rows: ApplicationRow[]
   terminal: string[]
-  onMove: (row: ApplicationRow, status: string) => void
-}
-
-interface PendingMove extends StageMove {
-  row: ApplicationRow
+  onMove: (row: ApplicationRow, move: StageMove) => void
 }
 
 const KEYBOARD_CODES = { start: ['Space'], cancel: ['Escape'], end: ['Space'] }
@@ -68,7 +54,6 @@ const INSTRUCTIONS = {
 
 export function ApplicationBoard({ rows, terminal, onMove, ...actions }: ApplicationBoardProps) {
   const [activeId, setActiveId] = useState<number | null>(null)
-  const [pending, setPending] = useState<PendingMove | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -105,64 +90,35 @@ export function ApplicationBoard({ rows, terminal, onMove, ...actions }: Applica
     const to = columnOf(over)
     if (!row || !to) return
     const move = stageMove(row.status, to, terminal)
-    if (!move) return
-    if (move.confirm) setPending({ ...move, row })
-    else onMove(row, move.target)
+    if (move) onMove(row, move)
   }
 
   return (
-    <>
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        onDragCancel={() => setActiveId(null)}
-        accessibility={{
-          screenReaderInstructions: INSTRUCTIONS,
-          announcements: {
-            onDragStart: ({ active }) => `Picked up ${company(active)}.`,
-            onDragOver: ({ active, over }) => `${company(active)} is over ${columnLabel(over)}.`,
-            onDragEnd: ({ active, over }) => `${company(active)} was dropped in ${columnLabel(over)}.`,
-            onDragCancel: ({ active }) => `Moving ${company(active)} was cancelled.`,
-          },
-        }}
-      >
-        <div className="relative flex gap-4 overflow-x-auto pb-4">
-          {columns.map((column) => (
-            <BoardColumn key={column.key} column={column} rows={grouped.get(column.key) ?? []} {...actions} />
-          ))}
-        </div>
-        <DragOverlay>
-          {activeRow ? <CardBody row={activeRow} dragging /> : null}
-        </DragOverlay>
-      </DndContext>
-
-      <AlertDialog open={pending !== null} onOpenChange={(open) => { if (!open) setPending(null) }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {pending?.confirm === 'back' ? 'Move back' : 'Move'} to {pending ? labels[pending.to] : ''}?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This will set the status of {pending?.row.company} to {pending ? statusLabel(pending.target) : ''}.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant={pending?.confirm === 'close' ? 'destructive' : 'default'}
-              onClick={() => {
-                if (pending) onMove(pending.row, pending.target)
-                setPending(null)
-              }}
-            >
-              {pending?.confirm === 'back' ? 'Move back' : 'Move'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => setActiveId(null)}
+      accessibility={{
+        screenReaderInstructions: INSTRUCTIONS,
+        announcements: {
+          onDragStart: ({ active }) => `Picked up ${company(active)}.`,
+          onDragOver: ({ active, over }) => `${company(active)} is over ${columnLabel(over)}.`,
+          onDragEnd: ({ active, over }) => `${company(active)} was dropped in ${columnLabel(over)}.`,
+          onDragCancel: ({ active }) => `Moving ${company(active)} was cancelled.`,
+        },
+      }}
+    >
+      <div className="relative flex gap-4 overflow-x-auto pb-4">
+        {columns.map((column) => (
+          <BoardColumn key={column.key} column={column} rows={grouped.get(column.key) ?? []} {...actions} />
+        ))}
+      </div>
+      <DragOverlay>
+        {activeRow ? <CardBody row={activeRow} dragging /> : null}
+      </DragOverlay>
+    </DndContext>
   )
 }
 

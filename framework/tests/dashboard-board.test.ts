@@ -38,8 +38,18 @@ describe('statusActions', () => {
     for (const status of ['saved', 'pending']) {
       const { advance } = statusActions(status)
       expect(advance).toHaveLength(1)
-      expect(advance[0]).toMatchObject({ label: 'Mark applied', target: 'applied', hint: 'Records today as the date you applied.' })
+      expect(advance[0]).toMatchObject({ label: 'Mark applied', target: 'applied', hint: 'You pick the date you applied.' })
       expect(targets(status).close).toEqual(allClose)
+    }
+  })
+
+  test('every hint says you pick the date and none implies today', () => {
+    for (const status of APPLICATION_STATUSES) {
+      const { advance, close } = statusActions(status)
+      for (const action of [...advance, ...close]) {
+        expect(action.hint).toContain('pick')
+        expect(action.hint.toLowerCase()).not.toContain('today')
+      }
     }
   })
 

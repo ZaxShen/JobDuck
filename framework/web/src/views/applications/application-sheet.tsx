@@ -7,19 +7,23 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
+import { StatusBadge } from '@/components/status-badge'
 import { useFlash } from '@/hooks/use-flash'
 import { POLL_MS, isVisible } from '@/hooks/use-visible-poll'
 import { type SaveResult, deleteJSON, errorMessage, fetchJSON, isConflict, patchJSON, postJSON } from '@/lib/api'
-import { postingPay, safeUrl, stamp, statusLabel } from '@/lib/format'
+import { postingPay, safeUrl, statusLabel } from '@/lib/format'
 import { kindLabel, outcomeLabel, stageTypeLabel } from '@/lib/stages'
+import { type DialogScope, type StatusEntry, statusRequest, timelineOrder, undoableEntryId } from '@/lib/status-entries'
 import type { ApplicationEvent, ApplicationRow, Stage, StageKind, StageTypes } from '@/lib/types'
 import { AddStageForm } from '@/views/applications/add-stage-form'
 import { PAY_FIELDS, type PayKey, PaySection } from '@/views/applications/pay-section'
 import { StageCard } from '@/views/applications/stage-card'
+import { StatusActionsMenu } from '@/views/applications/status-actions-menu'
+import { StatusDialog, type StatusDialogRequest, sendStatus } from '@/views/applications/status-dialog'
+import { TimelineEntry } from '@/views/applications/timeline-entry'
 
 const OVERRIDES = [
   ['title', 'Title'],
@@ -74,13 +78,12 @@ interface Detail {
 
 interface ApplicationSheetProps {
   id: number | null
-  statuses: string[]
   terminal: string[]
   onClose: () => void
   onChanged: () => Promise<void>
 }
 
-export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }: ApplicationSheetProps) {
+export function ApplicationSheet({ id, terminal, onClose, onChanged }: ApplicationSheetProps) {
   const flash = useFlash()
   const [detail, setDetail] = useState<Detail | null>(null)
   const [form, setForm] = useState<Form>(() => formOf(null))
@@ -88,6 +91,7 @@ export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }:
   const [types, setTypes] = useState<StageTypes | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [reason, setReason] = useState<string | null>(null)
+  const [statusDialog, setStatusDialog] = useState<StatusDialogRequest | null>(null)
   const shown = useRef<number | null>(null)
   const version = useRef('')
   const latest = useRef('')
@@ -125,6 +129,7 @@ export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }:
     dirty.current.clear()
     setPayErrors({})
     setReason(null)
+    setStatusDialog(null)
     if (id === null) return
     void enqueue(() => load(id, 'reload')).catch((error: unknown) => {
       flash(errorMessage(error), true)
@@ -136,23 +141,28 @@ export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }:
     return () => clearInterval(timer)
   }, [id, flash, onClose, enqueue, load])
 
-  const run = (action: () => Promise<unknown>, message: string, done?: () => void): Promise<SaveResult> =>
+  const attempt = (action: () => Promise<unknown>, message: string, done?: () => void): Promise<void> =>
     enqueue(async () => {
-      if (id === null) return 'failed'
+      if (id === null) throw new Error('No application is open.')
       try {
         await action()
       } catch (error) {
-        flash(errorMessage(error), true)
-        if (!isConflict(error)) return 'failed'
-        await load(id, 'reload').catch((reloadError: unknown) => flash(errorMessage(reloadError), true))
-        await onChanged()
-        return 'reloaded'
+        if (isConflict(error)) {
+          await load(id, 'reload').catch((reloadError: unknown) => flash(errorMessage(reloadError), true))
+          await onChanged()
+        }
+        throw error
       }
       flash(message)
       if (done) done()
       else await load(id, 'saved').catch((error: unknown) => flash(errorMessage(error), true))
       await onChanged()
-      return 'saved'
+    })
+
+  const run = (action: () => Promise<unknown>, message: string, done?: () => void): Promise<SaveResult> =>
+    attempt(action, message, done).then((): SaveResult => 'saved', (error: unknown): SaveResult => {
+      flash(errorMessage(error), true)
+      return isConflict(error) ? 'reloaded' : 'failed'
     })
 
   const expected = () => ({ expected_updated_at: version.current })
@@ -193,10 +203,10 @@ export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }:
     if (result !== 'failed') setReason(null)
   }
 
-  const chooseStatus = (status: string | null) => {
-    if (!app || !status || status === app.status) return
-    if (status === 'pending') setReason('')
-    else void patch({ status }, 'Status updated.')
+  const submitStatus = async (scope: DialogScope, entry: StatusEntry) => {
+    if (id === null || !statusDialog) return
+    await attempt(() => sendStatus(statusRequest(id, scope, entry, version.current)), `${statusDialog.title}.`)
+    setStatusDialog(null)
   }
 
   const remove = async () => {
@@ -205,10 +215,7 @@ export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }:
   }
 
   const app = detail?.application.id === id ? detail.application : null
-  const items = statuses.map((status) => ({
-    value: status,
-    label: terminal.includes(status) ? `${statusLabel(status)} (closed)` : statusLabel(status),
-  }))
+  const undoable = detail ? undoableEntryId(detail.events) : null
 
   return (
     <Sheet open={id !== null} onOpenChange={(open) => { if (!open) onClose() }}>
@@ -243,15 +250,28 @@ export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }:
                 <p className="whitespace-pre-wrap">{app.pending_reason}</p>
               </div>
             )}
-            <div className="space-y-1.5">
-              <Label htmlFor="f-status">Status</Label>
-              <Select items={items} value={app.status} onValueChange={chooseStatus}>
-                <SelectTrigger id="f-status" className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {items.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+            <section className="space-y-1.5" aria-labelledby="f-status">
+              <h3 id="f-status" className="text-sm font-medium">Status</h3>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <StatusBadge status={app.status} />
+                <div className="flex items-center gap-2">
+                  {app.status === 'saved' && (
+                    <Button type="button" variant="outline" size="xs" className="text-muted-foreground" onClick={() => setReason('')}>
+                      <HourglassIcon data-icon="inline-start" />
+                      Mark pending
+                    </Button>
+                  )}
+                  <StatusActionsMenu
+                    row={app}
+                    busy={false}
+                    onAction={(_row, action) => setStatusDialog({ target: action.target, title: action.label, subject: app.company })}
+                  />
+                </div>
+              </div>
+              {terminal.includes(app.status) && (
+                <p className="text-xs text-muted-foreground">Closed. To reopen it, Undo its latest entry in the Timeline.</p>
+              )}
+            </section>
             <div className="space-y-1.5">
               <Label htmlFor="f-note">Note</Label>
               <Textarea
@@ -320,12 +340,16 @@ export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }:
             <div className="space-y-3">
               <h3 className="text-sm font-medium">Timeline</h3>
               <ol className="space-y-3 border-l pl-4">
-                {detail.events.slice().reverse().map((event) => (
-                  <li key={event.id} className="space-y-0.5">
-                    <p className={isStageEvent(event) ? undefined : 'capitalize'}>{eventLabel(event)}</p>
-                    {event.note && <p className="whitespace-pre-wrap text-muted-foreground">{event.note}</p>}
-                    <p className="text-xs text-muted-foreground">{stamp(event.created_at)} · {event.source}</p>
-                  </li>
+                {timelineOrder(detail.events).map((event) => (
+                  <TimelineEntry
+                    key={event.id}
+                    event={event}
+                    label={eventLabel(event)}
+                    undoable={event.id === undoable}
+                    openVersion={openVersion}
+                    onSave={(body) => run(() => patchJSON(`/api/events/${event.id}`, body), 'Entry saved.')}
+                    onUndo={() => run(() => deleteJSON(`/api/events/${event.id}`, expected()), 'Entry undone.')}
+                  />
                 ))}
               </ol>
             </div>
@@ -363,6 +387,7 @@ export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }:
           </form>
         </AlertDialogContent>
       </AlertDialog>
+      <StatusDialog request={statusDialog} types={types} onClose={() => setStatusDialog(null)} onSubmit={submitStatus} />
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent>
           <AlertDialogHeader>
