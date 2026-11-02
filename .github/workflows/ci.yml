@@ -20,6 +20,7 @@ jobs:
       framework: ${{ steps.classify.outputs.framework }}
       installer: ${{ steps.classify.outputs.installer }}
       web: ${{ steps.classify.outputs.web }}
+      gmail: ${{ steps.classify.outputs.gmail }}
     steps:
       - name: Classify the pull request's files
         id: classify
@@ -28,7 +29,7 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: |
           if [ -z "$PR" ]; then
-            printf 'framework=true\ninstaller=true\nweb=true\n' >> "$GITHUB_OUTPUT"
+            printf 'framework=true\ninstaller=true\nweb=true\ngmail=true\n' >> "$GITHUB_OUTPUT"
             exit 0
           fi
           files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename')
@@ -37,6 +38,7 @@ jobs:
           echo "framework=$(has '^(framework/|\.github/workflows/ci\.yml$)')" >> "$GITHUB_OUTPUT"
           echo "installer=$(has '^(framework/scripts/install\.ts|\.github/workflows/ci\.yml)$')" >> "$GITHUB_OUTPUT"
           echo "web=$(has '^(framework/web/|framework/src/dashboard/public/|\.github/workflows/ci\.yml$)')" >> "$GITHUB_OUTPUT"
+          echo "gmail=$(has '^(integrations/gmail-apps-script/|\.github/workflows/ci\.yml$)')" >> "$GITHUB_OUTPUT"
 
   framework:
     name: framework (typecheck, test, build)
@@ -116,10 +118,30 @@ jobs:
           JOBDUCK_CHANNEL=rc JOBDUCK_INSTALL_DIR="$RUNNER_TEMP/rc" bun run - < framework/scripts/install.ts
           "$RUNNER_TEMP/rc/$JOBDUCK_EXE" --version
 
+  gmail-apps-script:
+    name: gmail apps script (tests)
+    needs: changes
+    if: needs.changes.outputs.gmail == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integrations/gmail-apps-script
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.4
+      - run: node test/run.js
+      - run: node test/webapp.js
+      - run: bun test test/interview.test.ts
+
   ci:
     name: ci
     if: always()
-    needs: [changes, framework, smoke, installer]
+    needs: [changes, framework, smoke, installer, gmail-apps-script]
     runs-on: ubuntu-latest
     steps:
       - name: Every job succeeded
