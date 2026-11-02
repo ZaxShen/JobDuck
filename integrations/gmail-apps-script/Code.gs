@@ -149,16 +149,21 @@ function processThread_(thread) {
   if (!jobMsgs.length) return 'skipped';
 
   var last = messages[messages.length - 1];
+  var overruled = false;
   if (denyMsgs.length) {
-    thread.addLabel(L.deny);
-    if (hasJob) thread.removeLabel(L.job);
     var latestDeny = denyMsgs[denyMsgs.length - 1];
-    if (latestDeny.getDate() >= CONFIG.SYNC_SINCE) recordRejection_(latestDeny);
-    if (!hasInterview) thread.moveToArchive();
-    return 'deny';
+    overruled = !rejectionStands_(latestDeny.getPlainBody()) ||
+      jobMsgs.slice(jobMsgs.indexOf(latestDeny) + 1).some(function (m) { return isInterview(m.getPlainBody()); });
+    if (!overruled) {
+      thread.addLabel(L.deny);
+      if (hasJob) thread.removeLabel(L.job);
+      if (latestDeny.getDate() >= CONFIG.SYNC_SINCE) recordRejection_(latestDeny);
+      if (!hasInterview) thread.moveToArchive();
+      return 'deny';
+    }
   }
 
-  if (hasInterview || isInterview(jobMsgs[jobMsgs.length - 1].getPlainBody())) {
+  if (overruled || hasInterview || isInterview(jobMsgs[jobMsgs.length - 1].getPlainBody())) {
     if (!hasInterview) thread.addLabel(L.interview);
     if (hasJob) thread.removeLabel(L.job);
     return 'interview';
@@ -258,7 +263,7 @@ function preview() {
       var j = jobScore(last.getFrom(), subj, body);
       if (j.score < JOB_THRESHOLD) return;
       var d = denyScore(subj, body);
-      if (d.score >= DENY_THRESHOLD && d.strong) {
+      if (d.score >= DENY_THRESHOLD && d.strong && rejectionStands_(body)) {
         denies++;
         Logger.log('DENY [' + d.score + '] ' + last.getDate().toISOString().slice(0, 10) + ' | ' + subj + '  <=  ' + d.reasons.join(' ') + ' | "' + String(d.evidence || '').slice(0, 90) + '"');
         Logger.log('  would queue: ' + JSON.stringify(buildOutcome_(last)));
@@ -352,7 +357,7 @@ function reauditDecision_(thread, rules, me) {
     return info;
   }
   var d = denyScore(subject, body);
-  if (d.score >= DENY_THRESHOLD && d.strong) {
+  if (d.score >= DENY_THRESHOLD && d.strong && rejectionStands_(body)) {
     info.action = 'rejection';
     info.reasons = d.reasons;
     return info;
@@ -734,7 +739,7 @@ var DENY_SIGNALS = [
   [2, /\b(decided|decision|chosen|chose|elected|opted|aligned|determined)\b[^.]{0,80}\b(move|moving|proceed|proceeding|go|going|pursue|pursuing|continue|continuing|advance)\b[^.]{0,40}\b(other|another|different|a smaller|alternative|a finalist)\b/i],
   [2, /\b(mov(e|ed|ing)|proceed(ed|ing)?|go(ing)?) (forward |ahead )?with (other|another|a smaller|different|a different)\b/i],
   [2, /\b(regret|sorry|unfortunate) to (inform|say|let you know|share|tell|advise)/i],
-  [2, /\b(you |application )?(have|has|were|was|are) not (been )?(selected|chosen|successful|shortlisted)\b|\bdid not select you\b/i],
+  [2, /\b(you |application )?(have|has|were|was|are) not (been )?(selected|chosen|successful|shortlisted)\b(?! (a|an|the|any|your|one)\b)|\bdid not select you\b/i],
   [2, /\b(considering|identified|selected|pursuing|chosen|prioritiz(e|ed|ing)) (other|another|different) candidates?\b/i],
   [2, /\b(candidates?|applicants?|profiles?|backgrounds?|qualifications?|experience)\b[^.]{0,80}\b(more closely|better) (align(s|ed)?|match(es|ed)?|fit(s)?)\b|\b(more closely|better) (align(s|ed)?|match(es|ed)?|fit(s)?)\b[^.]{0,80}\b(candidates?|applicants?|profiles?|backgrounds?|qualifications?|experience)\b/i],
   [2, /\b(isn'?t|is not|aren'?t|are not|wasn'?t|was not) (quite |currently |the right |a strong |a good |an ideal )?(a )?(match|fit)\b/i],
@@ -747,7 +752,7 @@ var DENY_SIGNALS = [
   [2, /\b(chosen|decided|elected|opted|going) to (move|proceed|go) (forward |ahead )?with (other |another |different |the |a )?candidates?\b/i],
   [2, /\bunable to (move forward|proceed|offer|advance)|\b(will not|won'?t|cannot|can'?t) (be )?(moving|proceeding|progressing|move forward|advance|pursue)/i],
   // definitive closure (+2)
-  [2, /\b(position|role|opening|opportunity|requisition|req|job|seat)\b[^.]{0,100}\b(has been|have been|was|is|been|recently|has|is now|now been) (filled|closed|cancel+ed|put on hold)\b|\b(we'?ve|we have|we) (now |recently |already |just )?(filled|closed|hired someone for) (the|this|that) (position|role|opening|req)|\bno longer (available|hiring|accepting|considering|open|recruiting|being considered)\b|\bdecided not to fill\b/i],
+  [2, /\b(position|role|opening|opportunity|requisition|req|job|seat)\b[^.]{0,100}\b(has been|have been|was|is|been|recently|has|is now|now been) (filled|closed|cancel+ed|put on hold)\b|\b(we'?ve|we have|we) (now |recently |already |just )?(filled|closed|hired someone for) (the|this|that) (position|role|opening|req)|\b(position|role|opening|opportunity|requisition|req|job)\b[^.]{0,60}\bno longer (available|open)\b|\bno longer (hiring|accepting|considering|recruiting|being considered)\b|\bdecided not to fill\b/i],
   // medium (+1)
   [1, /\bunfortunately\b/i],
   [1, /\b(not|isn'?t|aren'?t) (a|the right|the best|an?|an ideal) (strong )?(match|fit)\b|\bdon'?t have a match\b|\bdidn'?t align\b/i],
@@ -823,9 +828,13 @@ function notApplicationMail_(subject, body) {
   return null;
 }
 
+// Scheduling news, not a decision: "we regret to inform you that we need to reschedule your interview", "you cannot
+// move forward to the onsite until you complete the assessment".
+var NOT_A_DECISION = /\b(reschedul\w*|postpon\w*)\b|\b(cannot|can['’]?t|unable to|will not be able to|won['’]t be able to)\b[^.?!]{0,60}\b(until|unless|without|before)\b/i;
+
 /** Deny score over the unconditional part of each sentence: { score, reasons[], evidence, strong } */
 function denyScore(subject, body) {
-  var sentences = splitSentences(body).map(function (x) {
+  var sentences = splitSentences(body).filter(function (x) { return !NOT_A_DECISION.test(x); }).map(function (x) {
     var m = CONDITIONAL.exec(x);
     return m ? x.slice(0, m.index) : x;
   }).filter(function (x) { return x.length >= MIN_PREFIX_LENGTH; });
@@ -852,3 +861,13 @@ function isRejection(subject, body) {
   return d.score >= DENY_THRESHOLD && d.strong;
 }
 function isInterview(body) { return interviewScore(body).interview; }
+
+// A rejection that also offers a forward-looking conversation ("we're not moving forward for this role, but we'd like
+// to schedule a call about another team") is interview mail. Only a direct offer counts, never the broad interview
+// wording, so "thank you for taking the time to interview with us" stays a rejection, and so does a courtesy offer
+// to keep in touch about the future.
+var FUTURE_ONLY = /\b(in the future|future (opportunities|roles|openings|positions)|(keep|stay) (in touch|connected)|talent (community|network|pool)|down the (road|line))\b/i;
+
+function rejectionStands_(body) {
+  return !splitSentences(body).some(function (sentence) { return directOffer_(sentence) && !FUTURE_ONLY.test(sentence); });
+}

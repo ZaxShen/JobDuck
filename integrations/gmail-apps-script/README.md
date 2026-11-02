@@ -8,7 +8,8 @@ of precedence per thread:
 
 1. **Records rejections.** Rejections get `Job Duck/Rejections` (archived) and each one is queued for
    `jobduck sync`. A rejection that mentions an interview ("thank you for taking the time to interview with us")
-   is still a rejection.
+   is still a rejection. A rejection followed by interview mail in the same thread, or one that also offers a call
+   ("but we'd like to schedule a call about another role"), is kept as interview mail.
 2. **Keeps interview mail in the Inbox.** When the body of the latest job email invites you to act (an interview
    invite or kickoff, a request to share your availability or book a time, a phone or technical screen, a next
    round or onsite, moving forward to the interview stage, a confirmed interview time, an assessment, coding
@@ -157,7 +158,14 @@ trigger are kept.
   onsite, round, next step or your availability that is aimed at you keeps the thread in the Inbox, and only
   applicant-pool, employer-conditional ("if selected", "if your experience matches, we will reach out"), vague
   future-contact and process-description boilerplate is archived; a plain confirmation kept in the Inbox is the
-  accepted cost. `KEEP_ACTION_MAIL_IN_INBOX` now affects only verification-code mail. `preview`
+  accepted cost. Both archiving filters favour precision: if unsure, keep in the Inbox. A rejection no longer wins
+  when a later job email in the thread is interview mail, or when the rejection itself offers a forward-looking call
+  ("we're not moving forward for this role, but we'd like to schedule a call about another"); a retrospective
+  "thank you for taking the time to interview with us" or an offer to keep in touch about future roles stays a
+  rejection. Scheduling news no longer counts as a rejection: "you have not selected a time yet", "the time you
+  selected is no longer available", "we regret to inform you that we need to reschedule your interview" and "you
+  cannot move forward to the onsite until you complete the assessment". `KEEP_ACTION_MAIL_IN_INBOX` now affects only
+  verification-code mail. `preview`
   logs interview mail on its own `INTERVIEW` line, and `previewReaudit` / `reauditApplications` move interview mail
   from Applications to Interviews and back to the Inbox. **Existing users: after updating, run
   `reauditApplications` once (again until it says `complete`) to restore interview invites that earlier versions

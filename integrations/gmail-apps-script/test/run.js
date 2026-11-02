@@ -12,12 +12,12 @@ const sandbox = {
   Gmail: {},
 };
 vm.createContext(sandbox);
-vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'Code.gs'), 'utf8') + '\nthis.__api = { jobScore, denyScore, isRejection, isInterview, JOB_THRESHOLD };', sandbox);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'Code.gs'), 'utf8') + '\nthis.__api = { jobScore, denyScore, isRejection, rejectionStands_, isInterview, JOB_THRESHOLD };', sandbox);
 const api = sandbox.__api;
 
 function classify(f) {
   if (api.jobScore(f.from, f.subject, f.body).score < api.JOB_THRESHOLD) return 'skip';
-  if (api.isRejection(f.subject, f.body)) return 'rejection';
+  if (api.isRejection(f.subject, f.body) && api.rejectionStands_(f.body)) return 'rejection';
   return api.isInterview(f.body) ? 'interview' : 'job';
 }
 

@@ -144,6 +144,42 @@ describe('processThread_ keeps interview mail in the Inbox', () => {
     expect(Object.keys(scriptStore.data).filter((k) => k.startsWith('outcome:'))).toHaveLength(2);
   });
 
+  test('an invite after the latest rejection makes the thread interview, not deny', () => {
+    const t = thread([APPLICATIONS], [message('Your interview with Hooli', REJECTION_BODY), message('Next step with Hooli', INVITE_BODY)]);
+    const { api, scriptStore } = load([t]);
+    expect(api.processThread_(t)).toBe('interview');
+    expect(t.calls).toEqual(['add ' + INTERVIEWS, 'remove ' + APPLICATIONS]);
+    expect(t.inInbox).toBe(true);
+    expect(Object.keys(scriptStore.data).filter((k) => k.startsWith('outcome:'))).toHaveLength(0);
+  });
+
+  test('a rejection that offers a call about another role is interview, not deny', () => {
+    const body =
+      "Hi Danlin,\n\nWe have decided not to move forward with your application for the Senior role, but we'd like to schedule a call about our Staff role.\n\nHooli Recruiting";
+    const t = thread([], [message('Your application to Hooli', body)]);
+    const { api, scriptStore } = load([t]);
+    expect(api.processThread_(t)).toBe('interview');
+    expect(t.calls).toEqual(['add ' + INTERVIEWS]);
+    expect(Object.keys(scriptStore.data).filter((k) => k.startsWith('outcome:'))).toHaveLength(0);
+  });
+
+  test('a rejection that only thanks you for interviewing, or offers to keep in touch, stays deny', () => {
+    const keepInTouch =
+      "Hi Danlin,\n\nUnfortunately, we have decided not to move forward. We'd love to connect with you about future opportunities.\n\nHooli Recruiting";
+    const plain = thread([], [message('Your interview with Hooli', REJECTION_BODY)]);
+    const courtesy = thread([], [message('Your interview with Hooli', keepInTouch)]);
+    const { api } = load([plain, courtesy]);
+    expect(api.processThread_(plain)).toBe('deny');
+    expect(api.processThread_(courtesy)).toBe('deny');
+    expect(courtesy.calls).toEqual(['add ' + REJECTIONS, 'archive']);
+  });
+
+  test('a plain update after the latest rejection does not overrule it', () => {
+    const t = thread([], [message('Your interview with Hooli', REJECTION_BODY), message('Your application', CONFIRMATION_BODY)]);
+    const { api } = load([t]);
+    expect(api.processThread_(t)).toBe('deny');
+  });
+
   test('a thread labeled Rejections and Interviews is left in the Inbox', () => {
     const t = thread([REJECTIONS, INTERVIEWS], [message('Your interview with Hooli', REJECTION_BODY)]);
     const { api } = load([t]);
