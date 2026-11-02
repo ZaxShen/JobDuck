@@ -731,7 +731,7 @@ const rawPatch = (host: string, origin: string, path: string, body: unknown) => 
 
 test('a page served from localhost:<port> can mutate', async () => {
   const local = `localhost:${dash.port}`
-  const ok = await rawPatch(local, `http://${local}`, `/api/applications/${ids.acme}`, { status: 'interviewing' })
+  const ok = await rawPatch(local, `http://${local}`, `/api/applications/${ids.acme}`, { status: 'interviewing', occurred_at: '2026-04-02' })
   expect(ok.status).toBe(200)
   for (const origin of ['http://evil.example', 'https://evil.example', `http://localhost:${dash.port + 1}`]) {
     const refused = await rawPatch(local, origin, `/api/applications/${ids.acme}`, { status: 'offered' })
