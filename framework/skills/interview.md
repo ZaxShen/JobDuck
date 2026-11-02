@@ -39,7 +39,7 @@ Build a prep pack for one real interview from the posting and the profile, offer
    1. **A round**, scheduled or done: `record_interview` with `application_id`, `stage_type` (`information`, `phone_screen`, `online_assessment`, `hiring_manager`, `technical`, `behavioral`, `system_design`, `onsite`, `take_home`, `other`), `scheduled_at` as an ISO date or timestamp, a `note` with format and feedback, and `contacts` (`name`, `title`, `email`, `phone`, `linkedin`) only as the user gives them. It moves the status to `interviewing` when it is behind.
    2. **A round's result**: `update_interview` with its `event_id` and `outcome` (`advanced`, `rejected`, `ghosted`, `cancelled`; new rounds start `pending`), plus any feedback in `note`.
    3. **An offer**: `record_interview` with `kind: "offered"` and `stage_type` `verbal` or `written`, then `update_application` with the pay the user states (`salary_offered`, `salary_min`, `salary_max`, `rsu`, `options`, `bonus`, `sign_on`, `relocation_fee` as whole amounts, and `currency`).
-   4. **The end**: `update_status` with accepted → `accepted`; rejected → `deny_by_employer`; withdrew or declined → `deny_by_candidate`.
+   4. **The end**: `update_status` with accepted → `accepted`; rejected → `deny_by_employer`; withdrew or declined → `deny_by_candidate`, with `date` when it happened on another day than today. A closed application takes no further status.
 
 ## Never
 

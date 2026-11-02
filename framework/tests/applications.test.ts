@@ -79,16 +79,11 @@ test('setStatus records events and closes terminal statuses', () => {
   expect(denied.closed_at).not.toBeNull()
   expect(denied.closed_by).toBe('rejection_sync')
 
-  const reopened = setStatus(db, app.id, 'offered')
-  expect(reopened.closed_at).toBeNull()
-  expect(reopened.closed_by).toBeNull()
-
   const events = listEvents(db, app.id).map((e) => [e.from_status, e.to_status, e.source])
   expect(events).toEqual([
     [null, 'saved', 'agent'],
     ['saved', 'interviewing', 'user'],
     ['interviewing', 'deny_by_employer', 'sync'],
-    ['deny_by_employer', 'offered', 'agent'],
   ])
   expect(JSON.parse(listEvents(db, app.id)[1]!.metadata ?? '{}')).toEqual({ stage: 'phone_screen' })
 })

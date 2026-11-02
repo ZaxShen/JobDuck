@@ -138,12 +138,44 @@ test('updateStage and deleteStage refuse non-stage events', () => {
   expect(listEvents(db, app.id)).toHaveLength(3)
 })
 
-test('deleteStage removes the stage and leaves the application status alone', () => {
+test('deleteStage removes the only stage that moved the status and reverts it', () => {
   const app = application()
   const { stage } = addStage(db, app.id, { kind: 'offered', stageType: 'verbal' })
   expect(deleteStage(db, stage.id).id).toBe(stage.id)
   expect(listStages(db, app.id)).toEqual([])
-  expect(getApplication(db, app.id)?.status).toBe('offered')
+  expect(getApplication(db, app.id)?.status).toBe('applied')
+})
+
+test('deleteStage reverts interviewing to applied when it removes the only interviewing entry', () => {
+  const app = application()
+  const { stage } = addStage(db, app.id, { kind: 'interviewing', stageType: 'phone_screen' })
+  deleteStage(db, stage.id)
+  expect(getApplication(db, app.id)).toMatchObject({ status: 'applied', applied_at: app.applied_at })
+})
+
+test('deleteStage keeps interviewing while another interviewing entry remains', () => {
+  const app = application()
+  const first = addStage(db, app.id, { kind: 'interviewing', stageType: 'phone_screen' }).stage
+  const second = addStage(db, app.id, { kind: 'interviewing', stageType: 'technical' }).stage
+  deleteStage(db, first.id)
+  expect(getApplication(db, app.id)?.status).toBe('interviewing')
+  deleteStage(db, second.id)
+  expect(getApplication(db, app.id)?.status).toBe('applied')
+})
+
+test('deleteStage leaves the status alone when the stage did not move it', () => {
+  const offered = application()
+  addStage(db, offered.id, { kind: 'interviewing', stageType: 'phone_screen' })
+  addStage(db, offered.id, { kind: 'offered', stageType: 'written' })
+  const late = addStage(db, offered.id, { kind: 'interviewing', stageType: 'onsite' }).stage
+  deleteStage(db, late.id)
+  expect(getApplication(db, offered.id)?.status).toBe('offered')
+
+  const closed = application()
+  setStatus(db, closed.id, 'deny_by_employer', { occurredAt: '2026-03-01' })
+  const after = addStage(db, closed.id, { kind: 'interviewing', stageType: 'technical' }).stage
+  deleteStage(db, after.id)
+  expect(getApplication(db, closed.id)).toMatchObject({ status: 'deny_by_employer', closed_at: '2026-03-01' })
 })
 
 test('listStages orders by scheduled_at, falling back to created_at, then id', () => {

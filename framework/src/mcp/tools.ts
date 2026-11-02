@@ -9,6 +9,7 @@ import {
   PENDING_REASON_REQUIRED, PendingReasonSchema, setStatus, summarizeApplication, updateApplicationFields,
 } from '../db/applications'
 import { type Db, transaction } from '../db/client'
+import { EVENT_DATE, eventDateMessage } from '../db/dates'
 import {
   addStage, deleteStage, listStages, MAX_CONTACTS, SCHEDULED_AT, SCHEDULED_AT_MESSAGE, STAGE_KINDS, STAGE_OUTCOMES,
   STAGE_TYPES, updateStage,
@@ -138,6 +139,8 @@ const StageType = z.enum(STAGE_TYPES)
 const Outcome = z.enum(STAGE_OUTCOMES)
 const ScheduledAt = z.string().regex(SCHEDULED_AT, SCHEDULED_AT_MESSAGE)
   .describe('ISO date (YYYY-MM-DD) or timestamp of the round')
+const EventDate = z.string().regex(EVENT_DATE, eventDateMessage('date'))
+  .describe('ISO date (YYYY-MM-DD) or timestamp the change happened; defaults to now')
 const Contact = z.object({
   name: z.string(),
   title: z.string().optional(),
@@ -379,17 +382,21 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     description: 'Change an application status and log the event (requires the track module). '
       + 'A note is stored on the event and appended to the application note (newline-separated). '
       + 'Status saved means chosen but not submitted yet; pending means you stopped and the user must act and needs a '
-      + 'pending_reason, which any later status clears.',
+      + 'pending_reason, which any later status clears. Statuses only move forward (saved/pending, applied, '
+      + 'interviewing, offered, then a closed status): a backwards move, a repeat of the current status, a second '
+      + 'applied or any change to a closed application is refused; the user undoes a wrong entry in the dashboard. '
+      + 'Pass date when the change happened on another day than today.',
     inputSchema: z.object({
       id: z.number().int().positive(),
       status: Status,
       pending_reason: PendingReason.optional(),
       note: z.string().optional(),
+      date: EventDate.optional(),
       source: Source.default('agent'),
     }).refine(needsPendingReason, pendingRefinement),
-  }, ({ id, status, pending_reason: pendingReason, note, source }) => run(() => {
+  }, ({ id, status, pending_reason: pendingReason, note, date, source }) => run(() => {
     requireTrack()
-    return { application: setStatus(db, id, status, { pendingReason, note, source }) }
+    return { application: setStatus(db, id, status, { pendingReason, note, source, occurredAt: date }) }
   }))
 
   server.registerTool('list_applications', {
@@ -475,8 +482,9 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   }))
 
   server.registerTool('delete_interview', {
-    description: 'Delete an interview or offer stage by event_id (requires the track module). Refuses other events; '
-      + 'the application status does not change.',
+    description: 'Delete an interview or offer stage by event_id (requires the track module). Refuses other events. '
+      + 'When the stage was the only entry that moved the application to its current status, the status goes back '
+      + 'to the one before it.',
     inputSchema: { event_id: Id },
     annotations: { destructiveHint: true },
   }, ({ event_id: eventId }) => run(() => {

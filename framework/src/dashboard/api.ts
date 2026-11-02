@@ -6,9 +6,9 @@ import { readStoredPermissions, writePermissions } from '../config/permissions'
 import { TEMPLATE_SECTIONS, isPlaceholder, readStoredProfile, splitSections, updateProfile } from '../config/profile'
 import {
   APPLICATION_STATUSES, type ApplicationFields, PAY_FIELDS, PENDING_REASON_ONLY_PENDING, PENDING_REASON_REQUIRED,
-  PendingReasonSchema, type PayField, TERMINAL_STATUSES, getApplication,
-  getApplicationWithPosting, listApplicationsWithPostings, listEvents, setStatus, softDeleteApplication,
-  updateApplicationFields,
+  PendingReasonSchema, type PayField, TERMINAL_STATUSES, deleteEvent, getApplication,
+  getApplicationWithPosting, getEvent, listApplicationsWithPostings, listEvents, setStatus, softDeleteApplication,
+  updateApplicationFields, updateEvent,
 } from '../db/applications'
 import { type Db, transaction } from '../db/client'
 import {
@@ -60,6 +60,7 @@ const patchSchema = z.object({
   ...versioned,
   status: z.enum(APPLICATION_STATUSES).optional(),
   pending_reason: PendingReasonSchema.optional(),
+  occurred_at: z.string().max(40).optional(),
   note: text(20_000),
   title_override: text(500),
   company_override: text(500),
@@ -92,6 +93,10 @@ const addStageSchema = z.object({
 }).strict()
 
 const stagePatchSchema = z.object({ ...versioned, stage_type: z.enum(STAGE_TYPES).optional(), ...stageFields }).strict()
+
+const eventPatchSchema = z.object({ ...versioned, occurred_at: z.string().max(40).optional(), note: text(20_000) }).strict()
+
+export const OCCURRED_AT_REQUIRED = 'occurred_at is required when changing status'
 
 const matchSchema = z.object({ application_id: z.number().int().positive() }).strict()
 
@@ -236,13 +241,16 @@ function patchApplication(db: Db, id: number, body: unknown) {
     const current = currentApplication(db, id, expected)
     const changing = input.status !== undefined
       && (input.status !== current.status || (input.status === 'pending' && input.pending_reason !== current.pending_reason))
+    if (changing && input.status !== 'pending' && input.occurred_at === undefined) throw new ApiError(400, OCCURRED_AT_REQUIRED)
     const fields = Object.fromEntries(Object.entries(input)
-      .filter(([key, value]) => key !== 'status' && key !== 'pending_reason' && !(key === 'note' && changing)
-        && value !== undefined)) as ApplicationFields
+      .filter(([key, value]) => key !== 'status' && key !== 'pending_reason' && key !== 'occurred_at'
+        && !(key === 'note' && changing) && value !== undefined)) as ApplicationFields
     if (Object.keys(fields).length > 0) saving(() => updateApplicationFields(db, id, fields))
     if (changing && input.status !== undefined) {
-      const { status, pending_reason: pendingReason } = input
-      saving(() => setStatus(db, id, status, { source: 'dashboard', pendingReason, note: input.note ?? undefined }))
+      const { status, pending_reason: pendingReason, occurred_at: occurredAt } = input
+      saving(() => setStatus(db, id, status, {
+        source: 'dashboard', pendingReason, occurredAt, note: input.note ?? undefined,
+      }))
     }
     return requireApplication(db, id)
   })
@@ -293,6 +301,28 @@ function removeStage(db: Db, id: number, body: unknown) {
   return transaction(db, () => {
     currentApplication(db, requireStage(db, id).application_id, expected)
     return deleteStage(db, id)
+  })
+}
+
+function requireEvent(db: Db, id: number) {
+  const event = getEvent(db, id)
+  if (!event) throw new ApiError(404, `event ${id} not found`)
+  return event
+}
+
+function patchEvent(db: Db, id: number, body: unknown) {
+  const { expected_updated_at: expected, occurred_at: occurredAt, note } = parse(eventPatchSchema, body ?? {})
+  return transaction(db, () => {
+    currentApplication(db, requireEvent(db, id).application_id, expected)
+    return saving(() => updateEvent(db, id, { occurredAt, note }))
+  })
+}
+
+function removeEvent(db: Db, id: number, body: unknown) {
+  const { expected_updated_at: expected } = parse(deleteSchema, body ?? {})
+  return transaction(db, () => {
+    currentApplication(db, requireEvent(db, id).application_id, expected)
+    return saving(() => deleteEvent(db, id))
   })
 }
 
@@ -399,6 +429,8 @@ const routes: { method: string; pattern: RegExp; handler: Handler }[] = [
   { method: 'POST', pattern: /^\/api\/applications\/(\d+)\/stages$/, handler: ({ db }, req, id) => postStage(db, id, req.body) },
   { method: 'PATCH', pattern: /^\/api\/stages\/(\d+)$/, handler: ({ db }, req, id) => patchStage(db, id, req.body) },
   { method: 'DELETE', pattern: /^\/api\/stages\/(\d+)$/, handler: ({ db }, req, id) => removeStage(db, id, req.body) },
+  { method: 'PATCH', pattern: /^\/api\/events\/(\d+)$/, handler: ({ db }, req, id) => patchEvent(db, id, req.body) },
+  { method: 'DELETE', pattern: /^\/api\/events\/(\d+)$/, handler: ({ db }, req, id) => removeEvent(db, id, req.body) },
   { method: 'PATCH', pattern: /^\/api\/applications\/(\d+)$/, handler: ({ db }, req, id) => patchApplication(db, id, req.body) },
   {
     method: 'DELETE', pattern: /^\/api\/applications\/(\d+)$/,
