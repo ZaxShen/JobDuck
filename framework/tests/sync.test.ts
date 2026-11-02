@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { spawn } from 'node:child_process'
-import { writeFileSync } from 'node:fs'
+import { existsSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { join } from 'node:path'
-import { type Sandbox, migratedDb, sandbox } from './helpers'
+import { type Sandbox, closeWithoutWalFiles, migratedDb, sandbox } from './helpers'
 import { runSync } from '../src/commands/sync'
 import { type ApplicationStatus, createApplication, getApplication, listEvents } from '../src/db/applications'
-import type { Db } from '../src/db/client'
+import { type Db, openDb } from '../src/db/client'
 import { listOutcomes } from '../src/db/outcomes'
 import { upsertPosting } from '../src/db/postings'
 import { permissionsPath } from '../src/paths'
@@ -197,6 +197,23 @@ test('--dry-run prints the plan, writes nothing and sends no ack', async () => {
   expect(text).toContain('Dry run: nothing stored or acknowledged.')
   expect(text).toContain(`would match #${app.id} (marker)`)
   expect(text).toContain('fetched 2 / matched 1 (marker 1, url 0, ref 0, company_title 0) / needs_match 1 / known 0')
+})
+
+test('--dry-run reads a closed WAL database that has no -shm file', async () => {
+  const app = application('Acme', 'AI Engineer')
+  const path = closeWithoutWalFiles(db, box.home)
+  expect(existsSync(`${path}-shm`)).toBe(false)
+  try {
+    expect(await run([outcome('m1', { applicationId: app.id })], { dryRun: true })).toBe(0)
+    expect(err).toEqual([])
+    const text = out.join('\n')
+    expect(text).toContain('Dry run: nothing stored or acknowledged.')
+    expect(text).toContain(`would match #${app.id} (marker)`)
+    expect(acks()).toHaveLength(0)
+  } finally {
+    db = openDb(path)
+  }
+  expect(listOutcomes(db)).toHaveLength(0)
 })
 
 test('unauthorized exits 1 without storing or leaking the token', async () => {

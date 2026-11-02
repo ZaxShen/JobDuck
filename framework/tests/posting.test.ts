@@ -5,6 +5,7 @@ import type { FetchLike, FreehireJob } from '../src/freehire/client'
 import { atsEndpoint } from '../src/posting/ats'
 import { acceptAgentFields } from '../src/posting/evidence'
 import type { LookupLike } from '../src/posting/fetch'
+import { missingCore } from '../src/posting/fields'
 import { freehireFields } from '../src/posting/freehire'
 import { appleRead, metaCareersRead } from '../src/posting/html'
 import { resolvePosting } from '../src/posting/resolve'
@@ -151,6 +152,37 @@ describe('resolvePosting', () => {
       ['city', 'city is already set by an earlier layer'],
     ])
     expect(result).toMatchObject({ missing: [], next: 'done' })
+  })
+
+  test('a remote US posting with country, work mode and pay resolves without city or state', async () => {
+    const { fetch, calls } = routes({})
+    const known = {
+      fields: { title: 'Platform Engineer', company: 'Acme', country: 'US', work_mode: 'remote' as const, pay_min: 100000 },
+      sources: {},
+    }
+    const result = await resolvePosting({ url: 'https://careers.example.com/jobs/remote-platform', known }, { fetch, lookup })
+    expect(calls).toEqual([])
+    expect(result.missing).toEqual([])
+    expect(result.next).not.toBe('agent_browser')
+    expect(result.next).toBe('done')
+  })
+})
+
+describe('missingCore', () => {
+  test('a remote posting needs no city or state', () => {
+    expect(missingCore({ country: 'US', work_mode: 'remote', pay_min: 100000 })).toEqual([])
+  })
+
+  test('a remote posting still needs country and pay', () => {
+    expect(missingCore({ work_mode: 'remote', pay_min: 100000 })).toEqual(['country'])
+    expect(missingCore({ country: 'US', work_mode: 'remote' })).toEqual(['pay'])
+  })
+
+  test('hybrid and onsite US postings still need state and city', () => {
+    for (const work_mode of ['hybrid', 'onsite'] as const) {
+      expect(missingCore({ country: 'US', work_mode, pay_min: 100000 })).toEqual(['state', 'city'])
+    }
+    expect(missingCore({ country: 'US', pay_min: 100000 })).toEqual(['state', 'city', 'work_mode'])
   })
 })
 

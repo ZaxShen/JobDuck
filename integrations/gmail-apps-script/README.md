@@ -1,6 +1,6 @@
 # Job Duck — Gmail automation (Apps Script)
 
-Script v5. Rejections are queued inside the script and served to `jobduck sync` by the script itself, deployed as a
+Script v5.1. Rejections are queued inside the script and served to `jobduck sync` by the script itself, deployed as a
 web app; `jobduck sync` records them in your local Job Duck database. Nothing is pushed anywhere.
 
 A Google Apps Script that runs in the user's own Google account. Every 10 minutes it does two jobs:
@@ -43,8 +43,13 @@ job link; nothing else leaves Gmail.
 `jobduck sync` polls the script, deployed as a web app, for queued rejections and acknowledges each one it has
 recorded; acknowledged outcomes are deleted from the script. The agent never gets mail access.
 
-1. In the template's Overview page, click the **Make a copy** icon (top right, next to the star). The copy opens in a
-   new tab. Optional script properties (**Project Settings → Script Properties → Add script property**, then
+1. Open [script.google.com](https://script.google.com/home) and click **New project**; rename it
+   `Job Duck - Gmail Rejection Sync v5.1`. In **Project Settings**, tick **Show "appsscript.json" manifest file in
+   editor**. Back in the **Editor**, replace the contents of `appsscript.json` with
+   [`appsscript.json`](https://github.com/ZaxShen/JobDuck/blob/main/integrations/gmail-apps-script/appsscript.json)
+   and of `Code.gs` with
+   [`Code.gs`](https://github.com/ZaxShen/JobDuck/blob/main/integrations/gmail-apps-script/Code.gs) (open each and
+   click **Raw** to copy), then **Save** (Cmd/Ctrl+S). Optional script properties (**Project Settings → Script Properties → Add script property**, then
    **Save script properties**): `PROTECTED_LABELS` and `EXCLUDED_DOMAINS` (comma-separated),
    `KEEP_ACTION_MAIL_IN_INBOX=true`.
 2. In the Editor, pick `generateSyncToken` in the function menu and **Run**. The first run opens Google's permission
@@ -63,7 +68,11 @@ recorded; acknowledged outcomes are deleted from the script. The agent never get
    `Deny Letters`) into the nested ones, deletes the old `JobDuck Sync` / `JobDuck Synced` / `JobDuck Review` labels
    and clears the push-mode queue left by v3/v4; threads keep their mail. `uninstall` removes the trigger.
 
-The URL alone exposes nothing: a `GET` returns the one line `Job Duck Gmail script v5 — POST only`, and every request
+On a large Inbox: the trigger only reads Inbox mail from the last 3 days (`CONFIG.RUN_QUERY`), so run `backfill`
+once for older mail. Only rejections received in the last 30 days (`CONFIG.SYNC_SINCE`) are queued for
+`jobduck sync`; older ones are labeled and archived but not queued.
+
+The URL alone exposes nothing: a `GET` returns the one line `Job Duck Gmail script v5.1 — POST only`, and every request
 for data is a `POST` whose JSON body carries the token (`{ token, action, messageIds? }`, actions `pending`, `ack`,
 `status`). The token never goes into a URL. After editing the script, **Deploy → Manage deployments → Edit → Version:
 New version** so the `/exec` URL serves the new code; a deployment keeps running the version it was created with.
@@ -109,9 +118,16 @@ To push your own copy of the script with [clasp](https://github.com/google/clasp
 The included `.claspignore` keeps the `test/` harness out of the push, so only `appsscript.json` and `Code.gs` upload.
 
 Every version bump renames the project `vN` (or `vN.M`), so a copy's name says which version it runs.
-Copies never auto-update: to update, make a new copy and re-add your script properties.
+Copies never auto-update: to update, paste the new `Code.gs` over yours, **Save**, then **Deploy → Manage
+deployments → Edit → Version: New version** so the `/exec` URL serves it. Script properties, the token and the
+trigger are kept.
 
 ## Changelog
+
+- **v5.1**: A rejection whose only signal is one explicit decision sentence ("we have decided not to move forward
+  with your application") is now recognized: the rejection threshold drops from 3 to 2, and an explicit decision
+  phrase is still required. Four new fixtures cover single-signal rejections and confirmations that stay `job`.
+  Setup describes creating the project yourself at script.google.com.
 
 - **v5**: Serve-only. Push mode is removed: the script properties `JOBDUCK_TOKEN` and `JOBDUCK_URL` are ignored
   (`checkConnection` notes a leftover `JOBDUCK_TOKEN`), there is no `syncPending` or 15/run and 90/day cap, and

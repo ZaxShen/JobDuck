@@ -248,5 +248,33 @@
     "body": "Hi Alex,\n\nYou started an application for the Platform Engineer role at Acme but have not submitted it yet. Sign in to finish your application before the position closes.\n\nAcme Recruiting",
     "expect": "skip",
     "negative": "unfinished application"
+  },
+  {
+    "name": "Globex single decision sentence",
+    "from": "Globex Recruiting <no-reply@greenhouse.io>",
+    "subject": "Your application to Globex",
+    "body": "After careful review, we have decided not to move forward with your application.",
+    "expect": "rejection"
+  },
+  {
+    "name": "Initech thank you for applying, not moving forward",
+    "from": "Initech Recruiting <no-reply@greenhouse.io>",
+    "subject": "Thank you for applying to Initech",
+    "body": "Thank you for applying. Unfortunately, we will not be moving forward with your candidacy.",
+    "expect": "rejection"
+  },
+  {
+    "name": "Initech confirmation with conditional decision",
+    "from": "Initech Recruiting <no-reply@greenhouse.io>",
+    "subject": "Thank you for applying to Initech",
+    "body": "We have received your application and will review it. If we decide not to move forward, we will let you know.",
+    "expect": "job"
+  },
+  {
+    "name": "Globex courtesy-only",
+    "from": "Globex Recruiting <no-reply@greenhouse.io>",
+    "subject": "Your application to Globex",
+    "body": "We wish you the best in your search and will keep your resume on file.",
+    "expect": "job"
   }
 ]

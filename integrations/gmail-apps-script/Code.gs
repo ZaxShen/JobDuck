@@ -1,6 +1,6 @@
 /**
- * Job Duck — Gmail Rejection Sync v5
- * Script v5 — serve-only: rejections are queued in the script and served to `jobduck sync` by the script deployed
+ * Job Duck — Gmail Rejection Sync v5.1
+ * Script v5.1 — serve-only: rejections are queued in the script and served to `jobduck sync` by the script deployed
  * as a web app. Nothing is pushed anywhere.
  *
  * Moves job-application mail out of the Inbox into the nested label "Job Duck/Applications" and rejections
@@ -19,7 +19,7 @@
  * Optional properties: PROTECTED_LABELS and EXCLUDED_DOMAINS (comma-separated), KEEP_ACTION_MAIL_IN_INBOX=true.
  */
 
-var SCRIPT_VERSION = '5';
+var SCRIPT_VERSION = '5.1';
 
 var LABEL_PARENT = 'Job Duck';
 
@@ -581,7 +581,7 @@ function guessTitle_(subject, head) {
 }
 
 var JOB_THRESHOLD = 3;
-var DENY_THRESHOLD = 3;
+var DENY_THRESHOLD = 2;
 var MIN_PREFIX_LENGTH = 12;
 
 var ATS_SENDER = /@([\w.-]*\.)?(greenhouse-mail\.io|greenhouse\.io|lever\.co|ashbyhq\.com|myworkday\.com|workday\.(?!com\b)[\w.]+|smartrecruiters\.com|icims\.com|jobvite\.com|gem\.com|eightfold\.ai|avature\.net|paylocity\.com|paycomonline\.com|taleo\.net|successfactors\.(com|eu)|oraclecloud\.com|breezy\.hr|recruitee\.com|workable(mail)?\.com|bamboohr\.com|applytojob\.com|rippling(mail)?\.com|dayforcehcm\.com|ultipro\.com|ukg\.com|teamtailor(-mail)?\.com|pinpointhq\.com|wellfound\.com)\b/i;
