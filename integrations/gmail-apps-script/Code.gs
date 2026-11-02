@@ -3,15 +3,17 @@
  * Script v5.2 — serve-only: rejections are queued in the script and served to `jobduck sync` by the script deployed
  * as a web app. Nothing is pushed anywhere.
  *
- * Moves job-application mail out of the Inbox into the nested label "Job Duck/Applications" and rejections
- * into "Job Duck/Rejections". Interview, assessment, scheduling and offer mail, detected from the message body, gets
- * "Job Duck/Interviews" and is never archived. Each rejection becomes an outcome (header fields and a job link/ID
- * only; the email body never leaves Gmail) queued for the web app.
+ * Archives by allowlist, reading message bodies only. A thread whose every message is a plain application
+ * confirmation (no scheduling word, no personal note) gets "Job Duck/Applications" and is archived. A rejection gets
+ * "Job Duck/Rejections" and is archived only when it is the latest job message and every other message is a plain
+ * confirmation. Everything else gets "Job Duck/Interviews" and stays in the Inbox; a thread with that label is never
+ * archived. Each rejection that stands becomes an outcome (header fields and a job link/ID only; the email body never
+ * leaves Gmail) queued for the web app.
  *
  * Scope: the script only ever searches the Inbox (in:inbox), plus the "Job Duck/Applications" label when you run
- * previewReaudit/reauditApplications. Threads already labeled "Job Duck/Rejections" are never re-read or re-labeled;
- * a thread that is back in the Inbox because a new message arrived is re-archived only, unless it also carries
- * "Job Duck/Interviews".
+ * previewReaudit/reauditApplications. A "Job Duck/Rejections" thread that is back in the Inbox because a new message
+ * arrived is re-read: if the rejection still stands it is re-archived, otherwise it moves to "Job Duck/Interviews",
+ * stays in the Inbox and its still-pending outcome is dropped.
  *
  * Setup:
  *   1. Run generateSyncToken and copy the logged token.
@@ -28,7 +30,7 @@ var LABEL_PARENT = 'Job Duck';
 var CONFIG = {
   JOB_LABEL: LABEL_PARENT + '/Applications',
   DENY_LABEL: LABEL_PARENT + '/Rejections',
-  // Interview, assessment, scheduling and offer mail; threads carrying it are never archived.
+  // Every job thread that is not plain application mail or a standing rejection; threads carrying it are never archived.
   INTERVIEW_LABEL: LABEL_PARENT + '/Interviews',
   // Labels from earlier versions, renamed by install() so existing threads keep their history.
   LEGACY_JOB_LABELS: ['Job Applications', 'JD - Job Applications'],
@@ -123,56 +125,88 @@ function processThread_(thread) {
   var userLabels = thread.getLabels().map(function (l) { return l.getName(); });
   if (userLabels.some(function (n) { return rules.protectedLabels.indexOf(n) >= 0; })) return 'skipped';
   var hasJob = userLabels.indexOf(CONFIG.JOB_LABEL) >= 0;
+  var hasDeny = userLabels.indexOf(CONFIG.DENY_LABEL) >= 0;
   var hasInterview = userLabels.indexOf(CONFIG.INTERVIEW_LABEL) >= 0;
-  if (userLabels.indexOf(CONFIG.DENY_LABEL) >= 0) {
+  var me = Session.getActiveUser().getEmail().toLowerCase();
+  var messages = thread.getMessages();
+  var d = classifyThread_(messages, rules, me);
+  if (d.action === 'skipped') return 'skipped';
+
+  if (hasDeny && d.action !== 'interview') {
     if (!hasInterview) thread.moveToArchive();
     return 'skipped';
   }
-
-  var me = Session.getActiveUser().getEmail().toLowerCase();
-  var messages = thread.getMessages();
-  var jobMsgs = [], denyMsgs = [];
-
-  for (var i = 0; i < messages.length; i++) {
-    var m = messages[i];
-    var from = m.getFrom();
-    var addr = ((from.match(/<([^>]+)>/) || [null, from])[1] || '').trim().toLowerCase();
-    if (addr === me) return 'skipped';
-    var domain = addr.split('@')[1] || '';
-    if (rules.excludedDomains.some(function (d) { return domain === d || domain.endsWith('.' + d); })) return 'skipped';
-
-    var subject = m.getSubject(), body = m.getPlainBody();
-    if (!isJobEmail(from, subject, body)) continue;
-    jobMsgs.push(m);
-    if (isRejection(subject, body)) denyMsgs.push(m);
+  if (d.action === 'deny') {
+    thread.addLabel(L.deny);
+    if (hasJob) thread.removeLabel(L.job);
+    if (d.message.getDate() >= CONFIG.SYNC_SINCE) recordRejection_(d.message);
+    if (!hasInterview) thread.moveToArchive();
+    return 'deny';
   }
-  if (!jobMsgs.length) return 'skipped';
-
-  var last = messages[messages.length - 1];
-  var overruled = false;
-  if (denyMsgs.length) {
-    var latestDeny = denyMsgs[denyMsgs.length - 1];
-    overruled = !rejectionStands_(latestDeny.getPlainBody()) ||
-      jobMsgs.slice(jobMsgs.indexOf(latestDeny) + 1).some(function (m) { return isInterview(m.getPlainBody()); });
-    if (!overruled) {
-      thread.addLabel(L.deny);
-      if (hasJob) thread.removeLabel(L.job);
-      if (latestDeny.getDate() >= CONFIG.SYNC_SINCE) recordRejection_(latestDeny);
-      if (!hasInterview) thread.moveToArchive();
-      return 'deny';
-    }
-  }
-
-  if (overruled || hasInterview || isInterview(jobMsgs[jobMsgs.length - 1].getPlainBody())) {
+  if (d.action === 'interview' || hasInterview) {
     if (!hasInterview) thread.addLabel(L.interview);
     if (hasJob) thread.removeLabel(L.job);
+    if (hasDeny) {
+      thread.removeLabel(L.deny);
+      unqueueOutcomes_(messages);
+      thread.moveToInbox();
+    }
     return 'interview';
   }
 
   if (!hasJob) thread.addLabel(L.job);
-  if (rules.keepActionMail && VERIFICATION_SUBJECT.test(last.getSubject())) return 'kept';
+  if (rules.keepActionMail && VERIFICATION_SUBJECT.test(messages[messages.length - 1].getSubject())) return 'kept';
   thread.moveToArchive();
   return 'job';
+}
+
+/** The allowlist decision for a thread, read from every message:
+ *  { action: 'skipped' | 'deny' | 'interview' | 'job', reasons[], evidence, message }.
+ *  'deny' only when the rejection is the latest job message, stands on its own and every other message is a plain
+ *  application confirmation; 'job' only when every message is one; anything else is 'interview' (kept in the Inbox). */
+function classifyThread_(messages, rules, me) {
+  var notes = [];
+  for (var i = 0; i < messages.length; i++) {
+    var m = messages[i];
+    var from = m.getFrom();
+    var addr = ((from.match(/<([^>]+)>/) || [null, from])[1] || '').trim().toLowerCase();
+    if (addr === me) return { action: 'skipped', reasons: ['your own message'] };
+    var domain = addr.split('@')[1] || '';
+    if (rules.excludedDomains.some(function (x) { return domain === x || domain.endsWith('.' + x); })) {
+      return { action: 'skipped', reasons: ['excluded domain'] };
+    }
+    var subject = m.getSubject(), body = m.getPlainBody();
+    var job = isJobEmail(from, subject, body);
+    var deny = job && isRejection(subject, body);
+    notes.push({ message: m, subject: subject, body: body, job: job, deny: deny, plain: job && !deny && plainConfirmation_(subject, body) });
+  }
+  var jobNotes = notes.filter(function (n) { return n.job; });
+  if (!jobNotes.length) return { action: 'skipped', reasons: ['not job mail'] };
+  var latest = jobNotes[jobNotes.length - 1];
+  var others = notes.filter(function (n) { return n !== latest; });
+
+  if (latest.deny) {
+    var ds = denyScore(latest.subject, latest.body);
+    var extra = others.filter(function (n) { return !n.plain; })[0];
+    if (rejectionStands_(latest.body) && !extra) {
+      return { action: 'deny', reasons: ds.reasons, evidence: ds.evidence, score: ds.score, message: latest.message };
+    }
+    if (extra) return keptFor_(extra, 'message besides the rejection');
+    return { action: 'interview', reasons: ['rejection offers a conversation'], evidence: ds.evidence, message: latest.message };
+  }
+  var notPlain = notes.filter(function (n) { return !n.plain; })[0];
+  if (notPlain) return keptFor_(notPlain, notPlain.deny ? 'rejection followed by another message' : null);
+  return { action: 'job', reasons: ['plain application confirmation'], message: latest.message };
+}
+
+function keptFor_(note, why) {
+  var iv = interviewScore(note.body);
+  var word = String(note.body || '').match(SCHEDULING_WORDS);
+  var reasons = why ? [why] : [];
+  if (iv.interview) reasons = reasons.concat(iv.reasons);
+  else if (word) reasons.push('scheduling word: ' + word[0]);
+  else if (!why) reasons.push('not a plain application confirmation');
+  return { action: 'interview', reasons: reasons, evidence: iv.evidence || note.subject, message: note.message };
 }
 
 function rules_() {
@@ -253,29 +287,27 @@ function tally_(stats, r) { stats[r] = (stats[r] || 0) + 1; }
 
 function preview() {
   var jobs = 0, denies = 0, interviews = 0, start = 0, began = Date.now();
+  var rules = rules_();
+  var me = Session.getActiveUser().getEmail().toLowerCase();
   while (Date.now() - began < 4 * 60 * 1000) {
     var threads = GmailApp.search('in:inbox', start, 100);
     if (!threads.length) break;
     start += threads.length;
     threads.forEach(function (t) {
-      var msgs = t.getMessages(), last = msgs[msgs.length - 1];
-      var subj = last.getSubject(), body = last.getPlainBody();
-      var j = jobScore(last.getFrom(), subj, body);
-      if (j.score < JOB_THRESHOLD) return;
-      var d = denyScore(subj, body);
-      if (d.score >= DENY_THRESHOLD && d.strong && rejectionStands_(body)) {
+      var d = classifyThread_(t.getMessages(), rules, me);
+      if (d.action === 'skipped') return;
+      var line = d.message.getDate().toISOString().slice(0, 10) + ' | ' + d.message.getSubject() + '  <=  ' +
+        d.reasons.join(' ') + ' | "' + String(d.evidence || '').slice(0, 90) + '"';
+      if (d.action === 'deny') {
         denies++;
-        Logger.log('DENY [' + d.score + '] ' + last.getDate().toISOString().slice(0, 10) + ' | ' + subj + '  <=  ' + d.reasons.join(' ') + ' | "' + String(d.evidence || '').slice(0, 90) + '"');
-        Logger.log('  would queue: ' + JSON.stringify(buildOutcome_(last)));
-        return;
-      }
-      var iv = interviewScore(body);
-      if (iv.interview) {
+        Logger.log('DENY [' + d.score + '] ' + line);
+        Logger.log('  would queue: ' + JSON.stringify(buildOutcome_(d.message)));
+      } else if (d.action === 'interview') {
         interviews++;
-        Logger.log('INTERVIEW ' + last.getDate().toISOString().slice(0, 10) + ' | ' + subj + '  <=  ' + iv.reasons.join(' ') + ' | "' + String(iv.evidence || '').slice(0, 90) + '"');
-        return;
+        Logger.log('INTERVIEW ' + line);
+      } else {
+        jobs++;
       }
-      jobs++;
     });
   }
   Logger.log('Scanned ' + start + ' inbox threads: ' + denies + ' rejections, ' + interviews + ' interview emails, ' + jobs + ' other job emails.');
@@ -293,9 +325,9 @@ function resetReaudit() {
 
 function reauditCursorKey_(apply) { return apply ? 'reauditOffset' : 'previewReauditOffset'; }
 
-/** Re-classifies the latest message of every "Job Duck/Applications" thread, newest first, within the time budget.
- *  apply=false only logs; apply=true relabels rejections (and queues them), moves interview mail to
- *  "Job Duck/Interviews" and back to the Inbox, and drops non-application mail. */
+/** Re-classifies every "Job Duck/Applications" thread, newest first, within the time budget, with the same thread
+ *  rules as run(). apply=false only logs; apply=true relabels rejections (and queues them), moves every thread that
+ *  is not plain application mail to "Job Duck/Interviews" and back to the Inbox, and drops non-application mail. */
 function reaudit_(apply) {
   var name = apply ? 'reauditApplications' : 'previewReaudit';
   var props = PropertiesService.getUserProperties();
@@ -350,29 +382,32 @@ function reauditDecision_(thread, rules, me) {
   var subject = last.getSubject(), body = last.getPlainBody();
   var info = { message: last, subject: subject, date: last.getDate().toISOString().slice(0, 10) };
   var j = jobScore(from, subject, body);
-  if (j.score < JOB_THRESHOLD) {
-    if (!j.negative) return kept;
+  if (j.score < JOB_THRESHOLD && j.negative) {
     info.action = 'notJob';
     info.reasons = j.reasons;
     return info;
   }
-  var d = denyScore(subject, body);
-  if (d.score >= DENY_THRESHOLD && d.strong && rejectionStands_(body)) {
-    info.action = 'rejection';
-    info.reasons = d.reasons;
-    return info;
-  }
-  var iv = interviewScore(body);
-  if (iv.interview) {
-    info.action = 'interview';
-    info.reasons = iv.reasons;
-    return info;
-  }
-  return kept;
+  var d = classifyThread_(messages, rules, me);
+  if (d.action !== 'deny' && d.action !== 'interview') return kept;
+  info.action = d.action === 'deny' ? 'rejection' : 'interview';
+  info.reasons = d.reasons;
+  if (d.action === 'deny') info.message = d.message;
+  return info;
 }
 
 function recordRejection_(message) {
   queueOutcome_(buildOutcome_(message));
+}
+
+/** Drops the still-pending outcomes of a thread whose rejection no longer stands. */
+function unqueueOutcomes_(messages) {
+  var store = outcomeStore_();
+  messages.forEach(function (m) { store.deleteProperty(OUTCOME_PREFIX + outcomeId_(m)); });
+}
+
+function outcomeId_(message) {
+  var messageId = message.getHeader('Message-ID');
+  return messageId && messageId.length <= MAX_FIELD_LENGTH ? messageId : message.getId();
 }
 
 function buildOutcome_(message) {
@@ -486,10 +521,9 @@ function buildPayload_(message) {
   var subject = message.getSubject() || '';
   var head = String(message.getPlainBody() || '').slice(0, 3000);
   var sender = parseSender_(message.getFrom());
-  var messageId = message.getHeader('Message-ID');
   var jobUrl = findJobUrl_(head);
   var payload = {
-    messageId: messageId && messageId.length <= MAX_FIELD_LENGTH ? messageId : message.getId(),
+    messageId: outcomeId_(message),
     receivedAt: message.getDate().toISOString(),
     senderEmail: clip_(sender.email),
     senderName: clip_(sender.name),
@@ -647,8 +681,8 @@ var INTERVIEW_SIGNALS = [
 var ASSESSMENT_WORD = /\b(assessment|coding (challenge|exercise|test|assignment)|take[- ]home|hackerrank|codesignal|codility|coderpad|online test|skills test|work sample)\b/i;
 var ASSESSMENT_ACTION = /\b(complete|completing|take|finish|start|begin|submit|attempt|access|link|within \d+|due|deadline|invit\w*)\b/i;
 var INTERVIEW_LINK = /https?:\/\/[^\s<>"')\]]*\b(calendly\.com|goodtime\.io|hackerrank\.com|codesignal\.com|codility\.com|coderpad\.io|testgorilla\.com)\b/i;
-// Fail-safe: a real invite must never be archived, so a sentence about a call, chat or interview aimed at the candidate
-// is interview mail, and only applicant-pool, employer-conditional, review or process boilerplate is set aside.
+// Interview detection names why a thread stays in the Inbox; it never decides archiving, which is the plain-confirmation
+// allowlist below. A sentence about a call, chat or interview is interview mail unless it is boilerplate.
 // A direct offer to the candidate is an invite whatever condition precedes it ("If you have time this week, we would
 // like to schedule a phone interview", "The hiring manager would like to speak with you").
 var DIRECT_OFFERS = [
@@ -664,24 +698,27 @@ var DIRECT_OFFERS = [
 ];
 // A plain statement that the candidate has advanced, unless a condition comes before it.
 var ADVANCED = /\b(you(['’]ve| have) been (selected|chosen|shortlisted|invited|advanced|moved)|we(['’]re| are|['’]ve| have)( \w+)? (moving|advancing|moved|advanced|inviting|selected|shortlisted) you)\b[^.?!]{0,40}?\b(interview|next (step|round|stage)|round|on-?site|screen)/i;
-// Any other sentence about the candidate's interview, a call or a chat ("Here are the details for your upcoming
-// interview", "Can you do a call on Tuesday?") is interview mail unless it is boilerplate.
-var INTERVIEW_TOPIC = /\b(interview\w*|calls?|chat|chatting|speak|speaking|talk|talking|meet|meeting|screen|screening|on-?site|rounds?|next steps?|availability)\b/i;
-var AIMED_AT_YOU = /\b(you|your|yours)\b/i;
+// Any other sentence about an interview, a call or a chat ("Here are the details for your upcoming interview",
+// "The next step is a 30-minute call with our hiring manager") is interview mail unless it is boilerplate.
+var INTERVIEW_TOPIC = /\b(interview\w*|calls?|chat|chatting|speak|speaking|talk|talking|meet|meeting|screen|screening|on-?site|rounds?|next steps?|availability|zoom)\b/i;
 
-// Boilerplate, the only thing the archive may swallow: the applicant pool ("Applicants who move forward to the
+// Boilerplate that vetoes every signal except a direct offer: the applicant pool ("Applicants who move forward to the
 // interview stage will be contacted"),
 var APPLICANT_POOL = /\b(candidates|applicants|those)( who| that| whose| moving| advancing| progressing| selected| shortlisted| chosen)\b|\b(selected|qualified|shortlisted|successful|top) (candidates|applicants)\b/i;
 // a step the employer only takes once it picks the candidate ("If your experience matches, we will reach out to
 // schedule an interview", "If selected, you will be invited to an onsite interview"),
 var EMPLOYER_CONDITION = /\b(if|when|once|should|in case|in the event( that)?|provided( that)?|assuming)\s+((we|our (\w+ )?team|the (\w+ )?team|the hiring manager) (decide|decides|choose|chooses|determine|determines|feel|feels|think|thinks|believe|believes|find|finds|see|sees|are interested|is interested|would like|wish|wishes|want|wants)\b|there(['’]s| is| are)\b|(you(['’]re| are| were| have been| get| are being) )?(selected|chosen|shortlisted|qualified|successful)\b|you (meet|match|fit|move forward|advance|progress|pass)\b|you(['’]re| are) (a )?(good |strong )?(match|fit)\b|(it['’]?s |this is )?a (good |strong )?(match|fit)\b)|\b(if|when|once|should)\b[^.?!]{0,60}?\byour (\w+ )?(experience|background|qualifications?|skills?|profile|application|resume|candidacy)( \w+){0,2}? (match|matches|align|aligns|fit|fits|meet|meets|is a (good |strong )?(fit|match)|are a (good |strong )?(fit|match))\b/i;
 var EMPLOYER_STEP = /\b(will|['’]ll|would|may|might|can|could)\b[^.?!]{0,60}?\b(schedul\w*|invit\w*|arrang\w*|set up|book|ask(ed)?|move|advance|call|reach out|contact|be in touch|get in touch|follow up|let you know|notify|receive)\b/i;
-// review or possibility boilerplate ("We will review your application", "You may be asked to complete an assessment"),
-var REVIEW_ONLY = /\b(may|might|could) (also )?(be )?(asked|invited|required|contacted|requested)\b|\b(will|we'?ll) (review|be reviewing|carefully review)\b|\bcurrently reviewing\b|\bunder review\b/i;
-// a description of the process ("Our interview process consists of a phone screen and an onsite"),
+// a possibility ("You may be asked to complete an assessment"),
+var POSSIBILITY = /\b(may|might|could) (also )?(be )?(asked|invited|required|contacted|requested)\b/i;
+// and a description of the process ("Our interview process consists of a phone screen and an onsite").
 var PROCESS_DESCRIPTION = /\b(about|on) (our|the) (interview|hiring|recruiting|selection) process\b|\b(our|the|this|a typical) (interview|hiring|recruiting|selection) process\b[^.?!]{0,30}?\b(consists?|includes?|involves?|comprises?|is made up|typically|usually|generally|will (include|consist|involve))\b|\b(typically|usually|generally) (consists?|includes?|involves?)\b/i;
-// and a vague promise of future contact ("You will hear from us about the interview stage soon") that does not commit
-// to scheduling the candidate's own interview ("Our recruiter will contact you to schedule your interview" is kept).
+// Boilerplate that only vetoes the broad topic match, never an explicit invite or scheduling signal ("We are currently
+// reviewing your application and would like to schedule a phone screen" is kept): review wording ("We will review
+// your application") and a vague promise of future contact ("You will hear from us about the interview stage soon")
+// that does not commit to scheduling the candidate's own interview ("Our recruiter will contact you to schedule your
+// interview" is kept).
+var REVIEW_ONLY = /\b(will|we'?ll) (review|be reviewing|carefully review)\b|\bcurrently reviewing\b|\bunder review\b/i;
 var FUTURE_CONTACT = /\b(will|['’]ll|would|shall|may|might|can)( \w+){0,2}? (reach out|be reaching out|contact you|be contacted|be in touch|get in touch|hear from us|hear back|be notified|notify you|let you know|follow up|get back to you|receive (an? |further |more |another )?(e-?mail|message|call|invitation|invite|notification|update|follow-up))\b|\bhear from us\b|\bbe in touch\b/i;
 var SCHEDULES_YOURS = /\b(schedul\w*|book\w*|set(ting)? up|arrang\w*|coordinat\w*|confirm\w*) (your|the|an?)( [\w-]+){0,2}? (interview|call|chat|screen(ing)?|on-?site|round|meeting|conversation)s?\b/i;
 
@@ -700,9 +737,12 @@ function directOffer_(sentence) {
 }
 
 function boilerplate_(sentence) {
-  return APPLICANT_POOL.test(sentence) || REVIEW_ONLY.test(sentence) || PROCESS_DESCRIPTION.test(sentence) ||
-    (EMPLOYER_CONDITION.test(sentence) && EMPLOYER_STEP.test(sentence)) ||
-    (FUTURE_CONTACT.test(sentence) && !SCHEDULES_YOURS.test(sentence));
+  return APPLICANT_POOL.test(sentence) || POSSIBILITY.test(sentence) || PROCESS_DESCRIPTION.test(sentence) ||
+    (EMPLOYER_CONDITION.test(sentence) && EMPLOYER_STEP.test(sentence));
+}
+
+function vagueContact_(sentence) {
+  return REVIEW_ONLY.test(sentence) || (FUTURE_CONTACT.test(sentence) && !SCHEDULES_YOURS.test(sentence));
 }
 
 /** Interview score over the body only: { interview, reasons[], evidence } */
@@ -720,13 +760,26 @@ function interviewScore(body) {
     var before = why.length;
     INTERVIEW_SIGNALS.forEach(function (sig) { if (sig[1].test(sentence)) add(sig[0], sentence); });
     if (ASSESSMENT_WORD.test(sentence) && ASSESSMENT_ACTION.test(sentence)) add('assessment', sentence);
-    if (!offer && why.length === before && INTERVIEW_TOPIC.test(sentence) && AIMED_AT_YOU.test(sentence)) {
-      add('about your interview', sentence);
+    if (!offer && why.length === before && INTERVIEW_TOPIC.test(sentence) && !vagueContact_(sentence)) {
+      add('about an interview', sentence);
     }
   });
   var link = String(body || '').match(INTERVIEW_LINK);
   if (link) why.push('link: ' + link[1]);
   return { interview: why.length > 0, reasons: why, evidence: evidence };
+}
+
+// The archive allowlist. A message is plain application mail only when its body confirms an application (or its
+// subject is a verification code), it is not a rejection, it is not interview mail, it carries no scheduling word at
+// all (boilerplate included) and nobody writes in the first person. Anything else keeps its thread in the Inbox.
+var CONFIRMATION = /\bthank(s| you)\b[^.!?]{0,60}\bfor (applying|submitting|your (application|interest|submission))\b|\b(received|receipt of) your application\b|\byour application\b[^.!?]{0,80}\b(has been|was|is|been) (successfully )?(received|submitted)\b|\bapplication (received|submitted|confirmation)\b/i;
+var SCHEDULING_WORDS = /\b(interview\w*|calls?|called|calling|chat\w*|zoom|calendly|goodtime|calendar\w*|(re)?schedul\w*|availab(le|ility)|on-?site|screen\w*|next steps?|assessments?|meet|meeting|meetings|talk|talks|talking|speak\w*|conversations?|phone|video|rounds?|slots?|book|booked|booking|invit\w*|hackerrank|codesignal|codility|coderpad|testgorilla|take-?home|coding (challenge|exercise|test|assignment)|questionnaire|offers?|congratulat\w*|super ?day|hiring manager|background check|reference check|times? that works?|works? for you)\b|\b(can|could|would|will|are|do) you\b[^.!?]*\?/i;
+var FIRST_PERSON = /\bI\b|\bI['’](m|ve|ll|d)\b|\b(me|my)\b|(^|[.!?]\s+)My\b/;
+
+function plainConfirmation_(subject, body) {
+  var text = String(body || '');
+  if (!CONFIRMATION.test(text) && !VERIFICATION_SUBJECT.test(subject)) return false;
+  return !SCHEDULING_WORDS.test(text) && !FIRST_PERSON.test(text) && !isInterview(text);
 }
 
 // Text from the first of these onward is hypothetical ("If you are not selected...") and is ignored.

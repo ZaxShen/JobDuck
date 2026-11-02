@@ -130,14 +130,14 @@
     "from": "Recruiting <no-reply@greenhouse.io>",
     "subject": "Update on your application",
     "body": "Hi Alex,\n\nShould your expertise align with the role's requirements, we will contact you.\n\nBest regards,\nThe Talent Team",
-    "expect": "job"
+    "expect": "interview"
   },
   {
     "name": "Green Dot should your qualifications match",
     "from": "Recruiting <no-reply@greenhouse.io>",
     "subject": "Update on your application",
     "body": "Hi Alex,\n\nShould your qualifications match the requirements of the role, a recruiter will reach out.\n\nBest regards,\nThe Talent Team",
-    "expect": "job"
+    "expect": "interview"
   },
   {
     "name": "CVS application received",
@@ -158,7 +158,7 @@
     "from": "Recruiting <no-reply@greenhouse.io>",
     "subject": "Update on your application",
     "body": "Hi Alex,\n\nWe wish you the best and encourage you to apply to future opportunities.\n\nBest regards,\nThe Talent Team",
-    "expect": "job"
+    "expect": "interview"
   },
   {
     "name": "ITBrainiac immediate need pitch",
@@ -275,7 +275,7 @@
     "from": "Globex Recruiting <no-reply@greenhouse.io>",
     "subject": "Your application to Globex",
     "body": "We wish you the best in your search and will keep your resume on file.",
-    "expect": "job"
+    "expect": "interview"
   },
   {
     "name": "Salient Ashby interview kickoff",
@@ -303,7 +303,7 @@
     "from": "Initech Recruiting <no-reply@greenhouse.io>",
     "subject": "Thank you for applying to Initech",
     "body": "Hi Danlin,\n\nThank you for applying to the Data Engineer role at Initech. Our team will review your application and next steps.\n\nIf your experience matches, we will reach out to schedule an interview.\n\nInitech Recruiting",
-    "expect": "job"
+    "expect": "interview"
   },
   {
     "name": "Hooli rejection after interview",
@@ -366,21 +366,21 @@
     "from": "Massive Dynamic Recruiting <no-reply@greenhouse.io>",
     "subject": "Thank you for applying to Massive Dynamic",
     "body": "Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Massive Dynamic. Applicants who move forward to the interview stage will be contacted by a recruiter.\n\nMassive Dynamic Recruiting",
-    "expect": "job"
+    "expect": "interview"
   },
   {
     "name": "Oscorp confirmation: if selected for the interview stage you will receive an email",
     "from": "Oscorp Recruiting <no-reply@greenhouse.io>",
     "subject": "Thank you for applying to Oscorp",
     "body": "Hi Danlin,\n\nThank you for applying to the Data Engineer role at Oscorp. If you are selected for the interview stage, you will receive an email from our team. Candidates moving forward in the interview process will be contacted within two weeks.\n\nOscorp Recruiting",
-    "expect": "job"
+    "expect": "interview"
   },
   {
     "name": "Vandelay confirmation: courtesy clause then employer condition then reach out",
     "from": "Vandelay Recruiting <no-reply@greenhouse.io>",
     "subject": "Thank you for applying to Vandelay",
     "body": "Hi Danlin,\n\nThank you for applying to the Platform Engineer role at Vandelay. If you are interested and your experience matches, we will reach out to schedule an interview. If you have any questions or if your background is a fit, we will reach out to schedule an interview.\n\nVandelay Recruiting",
-    "expect": "job"
+    "expect": "interview"
   },
   {
     "name": "Gringotts phone interview after if-you-have-time",
@@ -450,7 +450,7 @@
     "from": "Dunder Careers <no-reply@greenhouse.io>",
     "subject": "Thank you for applying to Dunder",
     "body": "Hi Danlin,\n\nThank you for applying to the Data Analyst role at Dunder. We have received your application. Applicants who move forward to the interview stage will be contacted by a recruiter. If selected, you will be invited to an onsite interview. You will hear from us about the interview stage soon. Our interview process consists of a phone screen, a technical round and an onsite.\n\nDunder Careers",
-    "expect": "job"
+    "expect": "interview"
   },
   {
     "name": "Kaiju reminder that you have not selected a time (not a rejection)",

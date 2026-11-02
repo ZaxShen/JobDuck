@@ -13,6 +13,12 @@ const CONFIRMATION_BODY =
   'Hi Danlin,\n\nThank you for applying to the Platform Engineer position at Globex. We have received your application.\n\nGlobex Careers';
 const REJECTION_BODY =
   'Hi Danlin,\n\nThank you for taking the time to interview with us. Unfortunately, we have decided not to move forward.\n\nHooli Recruiting';
+const ACME_CONFIRMATION =
+  'Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Acme. We have received your application and our team will review it.\n\nAcme Recruiting';
+const ACME_REJECTION =
+  'Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Acme. Unfortunately, we have decided not to move forward with your application.\n\nAcme Recruiting';
+const RECRUITER_NOTE =
+  "Hi Danlin,\n\nI'm the recruiter for this role and wanted to say thanks for applying. I have passed your profile to the team.\n\nMaya";
 
 type Label = { name: string; getName(): string };
 type Message = ReturnType<typeof message>;
@@ -77,19 +83,22 @@ function load(threads: FakeThread[], scriptProps: Record<string, string> = {}) {
     GmailApp: {
       getUserLabelByName: (name: string) => label(name),
       search: (query: string, start: number, max: number) =>
-        threads.filter((t) => query.includes(APPLICATIONS) && t.labels.has(APPLICATIONS)).slice(start, start + max),
+        threads
+          .filter((t) => (query.includes(APPLICATIONS) ? t.labels.has(APPLICATIONS) : query.includes('in:inbox') && t.inInbox))
+          .slice(start, start + max),
     },
   };
   vm.createContext(sandbox);
   vm.runInContext(
     readFileSync(join(import.meta.dir, '..', 'Code.gs'), 'utf8') +
-      '\nthis.__api = { processThread_, reauditApplications, previewReaudit, isInterview };',
+      '\nthis.__api = { processThread_, reauditApplications, previewReaudit, preview, isInterview };',
     sandbox,
   );
   const api = sandbox.__api as {
     processThread_(t: FakeThread): string;
     reauditApplications(): void;
     previewReaudit(): void;
+    preview(): void;
     isInterview(body: string): boolean;
   };
   return { api, logs, scriptStore };
@@ -133,15 +142,15 @@ describe('processThread_ keeps interview mail in the Inbox', () => {
     expect(t.calls).toEqual([]);
   });
 
-  test('a rejection still wins, and is archived unless the thread carries Interviews', () => {
+  test('a lone rejection is archived; a rejection after an invite keeps the thread in the Inbox', () => {
     const plain = thread([], [message('Your interview with Hooli', REJECTION_BODY)]);
     const interviewed = thread([INTERVIEWS], [message('Next step with Hooli', INVITE_BODY), message('Your interview with Hooli', REJECTION_BODY)]);
     const { api, scriptStore } = load([plain, interviewed]);
     expect(api.processThread_(plain)).toBe('deny');
     expect(plain.calls).toEqual(['add ' + REJECTIONS, 'archive']);
-    expect(api.processThread_(interviewed)).toBe('deny');
-    expect(interviewed.calls).toEqual(['add ' + REJECTIONS]);
-    expect(Object.keys(scriptStore.data).filter((k) => k.startsWith('outcome:'))).toHaveLength(2);
+    expect(api.processThread_(interviewed)).toBe('interview');
+    expect(interviewed.calls).toEqual([]);
+    expect(Object.keys(scriptStore.data).filter((k) => k.startsWith('outcome:'))).toHaveLength(1);
   });
 
   test('an invite after the latest rejection makes the thread interview, not deny', () => {
@@ -174,10 +183,12 @@ describe('processThread_ keeps interview mail in the Inbox', () => {
     expect(courtesy.calls).toEqual(['add ' + REJECTIONS, 'archive']);
   });
 
-  test('a plain update after the latest rejection does not overrule it', () => {
+  test('a rejection that is not the latest job message keeps the thread in the Inbox', () => {
     const t = thread([], [message('Your interview with Hooli', REJECTION_BODY), message('Your application', CONFIRMATION_BODY)]);
-    const { api } = load([t]);
-    expect(api.processThread_(t)).toBe('deny');
+    const { api, scriptStore } = load([t]);
+    expect(api.processThread_(t)).toBe('interview');
+    expect(t.calls).toEqual(['add ' + INTERVIEWS]);
+    expect(Object.keys(scriptStore.data).filter((k) => k.startsWith('outcome:'))).toHaveLength(0);
   });
 
   test('a thread labeled Rejections and Interviews is left in the Inbox', () => {
@@ -185,6 +196,87 @@ describe('processThread_ keeps interview mail in the Inbox', () => {
     const { api } = load([t]);
     expect(api.processThread_(t)).toBe('skipped');
     expect(t.calls).toEqual([]);
+  });
+});
+
+describe('the archive is an allowlist', () => {
+  const outcomes = (data: Record<string, string>) => Object.keys(data).filter((k) => k.startsWith('outcome:'));
+
+  test('a Greenhouse confirmation followed by a rejection is archived as a rejection', () => {
+    const t = thread([APPLICATIONS], [message('Thank you for applying to Acme', ACME_CONFIRMATION), message('Update on your application', ACME_REJECTION)]);
+    const { api, scriptStore } = load([t]);
+    expect(api.processThread_(t)).toBe('deny');
+    expect(t.calls).toEqual(['add ' + REJECTIONS, 'remove ' + APPLICATIONS, 'archive']);
+    expect(outcomes(scriptStore.data)).toHaveLength(1);
+  });
+
+  test('a recruiter note between the confirmation and the rejection keeps the thread in the Inbox', () => {
+    const t = thread([APPLICATIONS], [
+      message('Thank you for applying to Acme', ACME_CONFIRMATION),
+      message('Re: Thank you for applying to Acme', RECRUITER_NOTE, 'Maya Chen <maya@acme.com>'),
+      message('Update on your application', ACME_REJECTION),
+    ]);
+    const { api, scriptStore } = load([t]);
+    expect(api.processThread_(t)).toBe('interview');
+    expect(t.calls).toEqual(['add ' + INTERVIEWS, 'remove ' + APPLICATIONS]);
+    expect(t.inInbox).toBe(true);
+    expect(outcomes(scriptStore.data)).toHaveLength(0);
+  });
+
+  test('a thread already labeled Rejections that gets an invite goes back to the Inbox as Interviews (F35-9)', () => {
+    const rejection = message('Update on your application', ACME_REJECTION);
+    const invite = message(
+      'Re: Update on your application',
+      'Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Acme. Our Staff Engineer role just opened and we would like to schedule a phone screen with you for it next week.\n\nAcme Recruiting',
+    );
+    const t = thread([REJECTIONS], [rejection, invite]);
+    const { api, scriptStore } = load([t], { ['outcome:' + rejection.getHeader()]: '{}' });
+    expect(api.processThread_(t)).toBe('interview');
+    expect(t.calls).toEqual(['add ' + INTERVIEWS, 'remove ' + REJECTIONS, 'inbox']);
+    expect([...t.labels]).toEqual([INTERVIEWS]);
+    expect(outcomes(scriptStore.data)).toHaveLength(0);
+  });
+
+  test('a thread labeled Rejections whose rejection still stands is re-archived without being re-queued', () => {
+    const t = thread([REJECTIONS], [message('Thank you for applying to Acme', ACME_CONFIRMATION), message('Update on your application', ACME_REJECTION)]);
+    const { api, scriptStore } = load([t]);
+    expect(api.processThread_(t)).toBe('skipped');
+    expect(t.calls).toEqual(['archive']);
+    expect(outcomes(scriptStore.data)).toHaveLength(0);
+  });
+
+  test('a confirmation with scheduling boilerplate stays in the Inbox', () => {
+    const body =
+      'Hi Danlin,\n\nThank you for applying to the Data Engineer role at Initech. Our team will review your application and next steps.\n\nIf your experience matches, we will reach out to schedule an interview.\n\nInitech Recruiting';
+    const t = thread([], [message('Thank you for applying to Initech', body)]);
+    const { api } = load([t]);
+    expect(api.isInterview(body)).toBe(false);
+    expect(api.processThread_(t)).toBe('interview');
+    expect(t.calls).toEqual(['add ' + INTERVIEWS]);
+  });
+
+  test('a personal note after a confirmation stays in the Inbox even without scheduling words', () => {
+    const t = thread([], [message('Thank you for applying to Acme', ACME_CONFIRMATION), message('Re: Thank you for applying to Acme', RECRUITER_NOTE, 'Maya Chen <maya@acme.com>')]);
+    const { api } = load([t]);
+    expect(api.processThread_(t)).toBe('interview');
+    expect(t.inInbox).toBe(true);
+  });
+
+  test('two plain confirmations are archived as application mail', () => {
+    const t = thread([], [message('Thank you for applying to Acme', ACME_CONFIRMATION), message('Your application', CONFIRMATION_BODY)]);
+    const { api } = load([t]);
+    expect(api.processThread_(t)).toBe('job');
+    expect(t.calls).toEqual(['add ' + APPLICATIONS, 'archive']);
+  });
+
+  test('verification-code mail is application mail, kept in the Inbox only with KEEP_ACTION_MAIL_IN_INBOX', () => {
+    const body = 'Your verification code is 482913. Enter it to continue your application for the Backend Engineer role.';
+    const archived = thread([], [message('Your verification code', body)]);
+    const kept = thread([], [message('Your verification code', body)]);
+    expect(load([archived]).api.processThread_(archived)).toBe('job');
+    expect(archived.calls).toEqual(['add ' + APPLICATIONS, 'archive']);
+    expect(load([kept], { KEEP_ACTION_MAIL_IN_INBOX: 'true' }).api.processThread_(kept)).toBe('kept');
+    expect(kept.calls).toEqual(['add ' + APPLICATIONS]);
   });
 });
 
@@ -270,6 +362,32 @@ describe('isInterview reads invites in the body', () => {
   });
 
   test.each([
+    'The next step is a 30-minute call with our hiring manager.',
+    'The hiring team would like to chat.',
+    'We will reach out shortly to arrange a call with the CTO.',
+    "Please find the Zoom link for tomorrow's interview below.",
+    "Unfortunately, Jane is no longer able to make Tuesday's call. We'd like to move it to Thursday at 2pm.",
+    "Unfortunately we can't proceed with the onsite on Friday since the office is closed. We'd like to find another date.",
+  ])('a sentence about your own call or interview without a literal "you" is interview mail (F35-10): %s', (sentence) => {
+    expect(api.isInterview(sentence)).toBe(true);
+  });
+
+  test.each([
+    'We are currently reviewing your application and would like to schedule a phone screen.',
+    'You will receive an invitation to your interview from Calendly.',
+    'Our team will be in touch shortly to set up a time to talk.',
+    'The team will reach out to book your technical interview.',
+  ])('review or future-contact wording never hides an explicit invite (F35-11): %s', (sentence) => {
+    expect(api.isInterview(sentence)).toBe(true);
+  });
+
+  test.each([
+    'Thank you for applying. We will review your application and get back to you.',
+  ])('plain review wording is not interview mail (F35-10): %s', (sentence) => {
+    expect(api.isInterview(sentence)).toBe(false);
+  });
+
+  test.each([
     'Our interview process consists of a phone screen, a technical round and an onsite.',
     'The hiring process typically includes a recruiter call and two interviews.',
     'We will review your application and be in touch about next steps.',
@@ -304,5 +422,34 @@ describe('reaudit restores archived interview mail', () => {
     expect(confirmation.calls).toEqual([]);
     expect(Object.keys(scriptStore.data).filter((k) => k.startsWith('outcome:'))).toHaveLength(0);
     expect(logs.some((l) => l.startsWith('interview | ') && l.includes('Next step with Acme'))).toBe(true);
+  });
+
+  test('reauditApplications follows the thread rules: a recruiter note or scheduling boilerplate goes back to the Inbox', () => {
+    const noted = thread([APPLICATIONS], [message('Thank you for applying to Acme', ACME_CONFIRMATION), message('Re: Thank you for applying to Acme', RECRUITER_NOTE, 'Maya Chen <maya@acme.com>')], false);
+    const boilerplate = thread([APPLICATIONS], [message('Thank you for applying to Initech', 'Thank you for applying to Initech. If your experience matches, we will reach out to schedule an interview.')], false);
+    const rejected = thread([APPLICATIONS], [message('Thank you for applying to Acme', ACME_CONFIRMATION), message('Update on your application', ACME_REJECTION)], false);
+    const { api, scriptStore } = load([noted, boilerplate, rejected]);
+    api.reauditApplications();
+    expect(noted.calls).toEqual(['add ' + INTERVIEWS, 'remove ' + APPLICATIONS, 'inbox']);
+    expect(boilerplate.calls).toEqual(['add ' + INTERVIEWS, 'remove ' + APPLICATIONS, 'inbox']);
+    expect(rejected.calls).toEqual(['add ' + REJECTIONS, 'remove ' + APPLICATIONS]);
+    expect(Object.keys(scriptStore.data).filter((k) => k.startsWith('outcome:'))).toHaveLength(1);
+  });
+
+  test('preview follows the thread rules and changes nothing', () => {
+    const rejected = thread([], [message('Thank you for applying to Acme', ACME_CONFIRMATION), message('Update on your application', ACME_REJECTION)]);
+    const noted = thread([], [
+      message('Thank you for applying to Acme', ACME_CONFIRMATION),
+      message('Re: Thank you for applying to Acme', RECRUITER_NOTE, 'Maya Chen <maya@acme.com>'),
+      message('Update on your application', ACME_REJECTION),
+    ]);
+    const plain = thread([], [message('Your application', CONFIRMATION_BODY)]);
+    const { api, logs, scriptStore } = load([rejected, noted, plain]);
+    api.preview();
+    expect([rejected, noted, plain].flatMap((t) => t.calls)).toEqual([]);
+    expect(logs.filter((l) => l.startsWith('DENY '))).toHaveLength(1);
+    expect(logs.filter((l) => l.startsWith('INTERVIEW ') && l.includes('message besides the rejection'))).toHaveLength(1);
+    expect(logs.some((l) => l.includes('1 rejections, 1 interview emails, 1 other job emails'))).toBe(true);
+    expect(Object.keys(scriptStore.data).filter((k) => k.startsWith('outcome:'))).toHaveLength(0);
   });
 });
