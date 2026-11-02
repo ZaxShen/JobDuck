@@ -873,8 +873,6 @@ var FOOTER_ITEM = '(?:unsubscribe(?: here)?|privacy (?:policy|notice|statement)|
 var FOOTER_STOP = '(?:these|this|all|future|our) (?:e-?mails|messages|notifications|communications|mailing list|list)';
 var FOOTER_EEO_ITEM = '(?:race|colou?r|religion|creed|sex|gender|gender identity(?: (?:or|and|and/or) expression)?|gender expression|sexual orientation|national origin|ancestry|age|(?:physical or mental )?disability(?: status)?|(?:protected )?veteran status|military(?: or veteran)? status|marital status|genetic information|pregnancy|citizenship(?: status)?|(?:or )?any other (?:characteristic|status|basis) protected by (?:applicable |federal, state,? (?:or|and) local )?law|(?:any )?other (?:legally )?protected (?:characteristics?|status))';
 var FOOTER_EEO_LIST = FOOTER_EEO_ITEM + '(?:(?:,|,? or|,? and|,? and/or|/) ' + FOOTER_EEO_ITEM + '){0,25}';
-var FOOTER_STREET = '(?:street|st|avenue|ave|road|rd|boulevard|blvd|drive|dr|lane|ln|way|plaza|parkway|pkwy|court|ct|place|pl|square|sq|highway|hwy|circle|cir)';
-var FOOTER_CITY = "(?:[a-z.'-]+ ){0,3}[a-z.'-]+, [a-z]{2}(?: \\d{5}(?:-\\d{4})?)?(?:,? (?:usa|united states))?";
 var FOOTER_CLAUSES = [
   // Do not reply / unattended mailbox / automated message
   '(?:please )?(?:do not|don\'t|kindly do not) (?:reply|respond)(?: directly)?(?: to (?:this|the|it|this ' + FOOTER_MAIL + ')(?: address)?)?',
@@ -896,10 +894,6 @@ var FOOTER_CLAUSES = [
   '(?:an? )?equal (?:employment )?opportunity(?: and affirmative action)? employer|eoe|eeo',
   'all qualified applicants will receive consideration for employment without regard to ' + FOOTER_EEO_LIST,
   '(?:(?:we|' + FOOTER_NAME + ') )?(?:does not|do not|will not) discriminate (?:against any (?:applicant|employee) )?(?:on the basis of|based on|because of) ' + FOOTER_EEO_LIST,
-  // Mailing address
-  '(?:' + FOOTER_NAME + '(?:,| ·| \\|) )?\\d{1,6} (?:[a-z0-9.\'-]+ ){1,5}' + FOOTER_STREET + '\\.?(?:,? (?:suite|ste|floor|fl|unit|room|rm)\\.? ?#?[a-z0-9-]{1,6}|,? #[a-z0-9-]{1,6})?(?:(?:,| ·| \\|) ' + FOOTER_CITY + ')?',
-  '(?:suite|ste|floor|fl|unit) #?[a-z0-9-]{1,6}(?:(?:,| ·| \\|) ' + FOOTER_CITY + ')?',
-  "(?:[a-z.'-]+ ){0,3}[a-z.'-]+, [a-z]{2} \\d{5}(?:-\\d{4})?(?:,? (?:usa|united states))?",
   // Copyright
   '(?:copyright(?: ©| \\(c\\))?|©|\\(c\\)) ?(?:\\d{4}(?: ?[-–] ?\\d{4})?,? ?)?(?:' + FOOTER_NAME + '(?:,? (?:inc|llc|ltd|corp|co|gmbh|plc)\\.?)?)?(?:,? all rights reserved)?',
   'all rights reserved',
@@ -910,6 +904,33 @@ var FOOTER_CLAUSES = [
 ];
 var FOOTER_CLAUSE = new RegExp('^(?:(?:please note|note|important)[:,]? )?(?:' + FOOTER_CLAUSES.join('|') + ')$', 'i');
 var FOOTER_JOIN = /[,;:]? (?:and|as|because|since|so) |[,;:] /g;
+
+// A mailing address is a footer only as a whole sentence of its own, read case-sensitively: a house number, one to
+// four capitalised street words (or ordinals like 5th), a street suffix, then a city with a state and ZIP code or a
+// suite. Street, city and company words hold no time, day, action or meeting word ("1 pm Thursday at 350 Mission St").
+var ADDRESS_WORD = "[A-Z][A-Za-z'.-]*";
+var ADDRESS_STREET = '\\d{1,6} ((?:(?:' + ADDRESS_WORD + '|\\d{1,3}(?:st|nd|rd|th)) ){1,4})(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|Plaza|Parkway|Pkwy|Court|Ct|Place|Pl|Square|Sq|Highway|Hwy|Circle|Cir)\\.?';
+var ADDRESS_UNIT = '(?:(?:Suite|Ste|Floor|Fl|Unit|Room|Rm)\\.? ?#?[A-Za-z0-9-]{1,6}|#[A-Za-z0-9-]{1,6}|\\d{1,3}(?:st|nd|rd|th) Floor)';
+var ADDRESS_SEP = '(?:,| ·| \\|) ';
+var ADDRESS_CITY = '(' + ADDRESS_WORD + '(?: ' + ADDRESS_WORD + '){0,3}), [A-Z]{2}';
+var ADDRESS_ZIP = ' \\d{5}(?:-\\d{4})?(?:,? (?:USA|US|United States))?';
+var ADDRESS_COMPANY = '(?:(' + ADDRESS_WORD + '(?: (?:' + ADDRESS_WORD + '|of|&)){0,5})' + ADDRESS_SEP + ')?';
+var ADDRESS_SHAPES = [
+  new RegExp('^' + ADDRESS_COMPANY + ADDRESS_STREET + '(?:,? ' + ADDRESS_UNIT + ')?' + ADDRESS_SEP + ADDRESS_CITY + ADDRESS_ZIP + '$'),
+  new RegExp('^' + ADDRESS_COMPANY + ADDRESS_STREET + ',? (?:Suite|Ste)\\.? ?#?[A-Za-z0-9-]{1,6}(?:' + ADDRESS_SEP + ADDRESS_CITY + ')?$'),
+  new RegExp('^' + ADDRESS_UNIT + ADDRESS_SEP + ADDRESS_CITY + ADDRESS_ZIP + '$'),
+  new RegExp('^' + ADDRESS_CITY + ADDRESS_ZIP + '$')
+];
+var ADDRESS_VETO_WORD = /\b(?:at|see|meet\w*|noon|o'?clock)\b/i;
+
+function addressFooter_(sentence) {
+  return ADDRESS_SHAPES.some(function (re) {
+    var m = re.exec(sentence);
+    return !!m && m.slice(1).every(function (g) {
+      return !g || (g.length <= 60 && !ACK_VETO_WORD.test(g) && !ADDRESS_VETO_WORD.test(g));
+    });
+  });
+}
 
 function footerClause_(clause) {
   var m = FOOTER_CLAUSE.exec(clause);
@@ -931,7 +952,7 @@ function footerClauses_(text, depth) {
 /** True when the whole sentence is a standard footer. */
 function footer_(sentence) {
   var s = String(sentence).replace(/\s+/g, ' ').replace(/[.!]+$/, '').trim();
-  return !!s && s.length <= 400 && footerClauses_(s, 0);
+  return !!s && s.length <= 400 && (addressFooter_(s) || footerClauses_(s, 0));
 }
 
 function greetingName_(greeting) {
@@ -947,10 +968,13 @@ var SIG_NAME = new RegExp('^' + SIG_NAME_WORD + '(?: [A-Z]\\.)?(?: ' + SIG_NAME_
 var SIG_DEPT = '(?:Recruiting|Recruitment|Talent Acquisition|Talent|People|People Operations|Hiring|HR|Human Resources|Careers)';
 var SIG_TITLE_NOUN = '(?:Recruiter|(?:Recruiting|Recruitment) (?:Coordinator|Manager|Lead|Partner)|Sourcer|Talent Acquisition (?:Partner|Specialist|Manager|Lead|Coordinator)|Talent Partner|People Partner|HR (?:Manager|Generalist|Business Partner|Coordinator)|Hiring Manager|Engineering Manager|Founder|Co-[Ff]ounder|CEO|CTO|Head of (?:Talent|People|Recruiting))';
 var SIG_TITLE_LINE = new RegExp('^(?:([A-Z][A-Za-z.-]*(?: [A-Z][A-Za-z.-]*){0,2}) )?' + SIG_TITLE_NOUN + '(?: (?:&|and) ' + SIG_TITLE_NOUN + ')?(?:(?: at|,| \\||| -| –| —| @) ' + SIG_COMPANY + ')?$');
+// A phone number has ten digits, or eight after a +, and is not a date or time range ("2026-11-05", "10.30 - 11.30").
+var SIG_PHONE = '(?:(?:Phone|Tel|Mobile|Cell|[MPTO])[:.]? ?)?(?!\\d{1,4}[./ -]\\d{1,2}[./ -]\\d{1,4}(?![\\d ().-]))(?:\\+(?=(?:[ ().-]*\\d){8})|(?=(?:[ ().-]*\\d){10}))[\\d(][\\d ().-]{6,18}\\d';
+var SIG_CONTACT = '(?:' + SIG_PHONE + '|EMAIL|[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.(?:com|io|co|ai|org|net|dev|app|jobs))';
 var SIG_SHAPES = [
   new RegExp('^(?:The )?(?:' + SIG_COMPANY + ' )?(?:' + SIG_DEPT + '(?: Team)?|Team)$'),
   new RegExp('^' + SIG_COMPANY + ',? (?:Inc|LLC|Ltd|Corp|Co|GmbH|Labs|Technologies|AI)\\.?$'),
-  /^(?:(?:(?:Phone|Tel|Mobile|Cell|[MPTO])[:.]? ?)?\+?[\d(][\d ().-]{6,18}\d|EMAIL|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|io|co|ai|org|net|dev|app|jobs))(?: ?[|·•,\/] ?(?:(?:(?:Phone|Tel|Mobile|Cell|[MPTO])[:.]? ?)?\+?[\d(][\d ().-]{6,18}\d|EMAIL|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|io|co|ai|org|net|dev|app|jobs))){0,3}$/
+  new RegExp('^' + SIG_CONTACT + '(?: ?[|·•,\\/] ?' + SIG_CONTACT + '){0,3}$')
 ];
 
 function sigWords_(m) {

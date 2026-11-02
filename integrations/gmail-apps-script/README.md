@@ -16,9 +16,11 @@ company and contact lines), an unsigned signature that is the one unbroken block
 body, and sentences that are a standard footer in their entirety are set aside. A footer sentence is one of: do not
 reply or an unattended mailbox; sent by, sent via or powered by a named ATS (Greenhouse, Lever, Workday, Ashby,
 iCIMS, SmartRecruiters and others); unsubscribe or manage email preferences; privacy policy; the equal opportunity
-statement; a mailing address; copyright; the standard confidentiality notice. A sentence that merely contains footer
-words ("This message was sent by the CTO, who loved your profile", "Note that the case study we sent is
-confidential") is an ordinary sentence. Every other sentence must be one of: thanks for
+statement; a mailing address; copyright; the standard confidentiality notice. A mailing address counts only as a
+sentence of its own made of capitalised address words, with a suite or a city, state and ZIP code ("500 Market St,
+Suite 300, San Francisco, CA 94105"), so a meeting time and place ("10 am Friday at 500 Market St") is not a footer. A
+sentence that merely contains footer words ("This message was sent by the CTO, who loved your profile", "Note that
+the case study we sent is confidential") is an ordinary sentence. Every other sentence must be one of: thanks for
 applying or for your interest (in a role at a company); we have received your application; we or our team will
 review your application, qualifications or background; we will be in touch, contact you or get back to you (if your
 experience matches, in the coming weeks); you can view or track your application status in the candidate portal;
@@ -199,7 +201,9 @@ trigger are kept.
   in footer wording ("This automated email is a reminder that your work sample is still outstanding") stays in the
   Inbox too. Signature lines are an allowlist as well: a line under the sign-off ("Technical Project Instructions",
   "Let's Connect Soon") is set aside only when it is a name, job title, team, company or contact line, and an
-  unsigned signature only as the unbroken block that ends the body. The allowlist moves no existing fixture: all 7
+  unsigned signature only as the unbroken block that ends the body. A mailing address is a footer only on its own,
+  and a phone line needs ten digits (eight after a +), so a meeting place or a date or time line under the signature
+  stays in the Inbox. The allowlist moves no existing fixture: all 7
   remaining `job` fixtures stay `job` and none flips to `interview`. `bun test` runs `test/interview.test.ts`
   against fake threads, including 55 action sentences, 45 actions in footer wording and 12 action lines under a
   signature that must stay in the Inbox, and Greenhouse, Lever, Workday, Ashby, iCIMS, SmartRecruiters and

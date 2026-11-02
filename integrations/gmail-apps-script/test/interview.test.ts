@@ -717,6 +717,76 @@ describe('a footer is set aside only when the whole sentence is a standard foote
   });
 });
 
+describe('a mailing address is a footer only as a whole sentence of capitalised address words (F35-14)', () => {
+  const sandbox: Record<string, unknown> = { Logger: { log() {} }, PropertiesService: {}, Session: {}, GmailApp: {}, Gmail: {} };
+  vm.createContext(sandbox);
+  vm.runInContext(readFileSync(join(import.meta.dir, '..', 'Code.gs'), 'utf8') + '\nthis.__a = { classifyThread_, footer_ };', sandbox);
+  const { classifyThread_, footer_ } = sandbox.__a as {
+    classifyThread_(messages: unknown[], rules: { excludedDomains: string[] }, me: string): { action: string };
+    footer_(sentence: string): boolean;
+  };
+  const wrapped = (sentence: string) =>
+    'Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Acme. ' + sentence + '\n\nBest,\nAcme Recruiting';
+  const classify = (body: string) =>
+    classifyThread_([{ getFrom: () => 'Acme Recruiting <no-reply@greenhouse.io>', getSubject: () => 'Your application to Acme', getPlainBody: () => body }], { excludedDomains: [] }, 'me@example.com').action;
+
+  test.each([
+    // probe F35-14
+    'Important: 1 pm Thursday at 350 Mission St, Floor 4, San Francisco, CA',
+    '10 am Friday at 500 Market St.',
+    'Note: 9 am Monday at 1 Hacker Way.',
+    'Please note: 11 am tomorrow at our Main St',
+    '500 Market St, see you on monday, ok',
+    'Suite 300, see you tomorrow, ok',
+    // the same with capitalised words or a full address
+    '1 PM Thursday At 350 Mission St, Floor 4, San Francisco, CA 94105',
+    '10 AM Friday, 500 Market St, Suite 300, San Francisco, CA 94105',
+    '500 Market St, Suite 300, See You Monday, OK',
+    'Suite 300, See You Tomorrow, CA 94105',
+    'Meet Jane, 500 Market St, Suite 300, San Francisco, CA 94105',
+    '500 Market St, Room 4',
+    '500 Market St, Floor 4, San Francisco, CA',
+    'Floor 4.',
+    'Room 12B.',
+    '500 Market St.',
+    'Interview: 500 Market St, Suite 300, San Francisco, CA 94105',
+    '500 Market St, Suite 300, San Francisco, CA 94105, at 2 pm',
+  ])('a meeting time or place on a confirmation is kept: %s', (sentence) => {
+    expect(footer_(sentence)).toBe(false);
+    expect(classify(wrapped(sentence))).toBe('interview');
+  });
+
+  test.each([
+    '500 Market St, Suite 300, San Francisco, CA 94105',
+    '1 Hacker Way, Menlo Park, CA 94025',
+    '500 Howard Street, San Francisco, CA 94105',
+    'Acme Corporation, 100 Market Street, Suite 300, San Francisco, CA 94105',
+    '350 5th Ave, New York, NY 10118, USA',
+    'Acme · 1 Infinite Loop Blvd · Cupertino, CA 95014',
+    'San Francisco, CA 94105',
+    '500 Market St, Suite 300',
+  ])('a real mailing address stays a footer: %s', (address) => {
+    expect(footer_(address)).toBe(true);
+    expect(classify(wrapped(address))).toBe('job');
+  });
+
+  const signed = (line: string) => 'Hi Danlin,\n\nThank you for applying to Acme.\n\nBest,\nJane Doe\nRecruiter, Acme\n' + line;
+
+  test.each(['2026-11-05', '11.05.2026', '05 11 2026', '10.30 - 11.30'])(
+    'a date or time line under the signature is not a phone line: %s',
+    (line) => {
+      expect(classify(signed(line))).toBe('interview');
+    },
+  );
+
+  test.each(['(555) 123-4567', '+1 415.555.0123', 'T: 020 7946 0958', 'jane@acme.com | +44 20 7946 0958'])(
+    'a phone line under the signature is set aside: %s',
+    (line) => {
+      expect(classify(signed(line))).toBe('job');
+    },
+  );
+});
+
 describe('after a sign-off only allowlisted signature lines are set aside', () => {
   const sandbox: Record<string, unknown> = { Logger: { log() {} }, PropertiesService: {}, Session: {}, GmailApp: {}, Gmail: {} };
   vm.createContext(sandbox);
