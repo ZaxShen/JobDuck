@@ -83,13 +83,14 @@ function load(threads: FakeThread[], scriptProps: Record<string, string> = {}) {
   vm.createContext(sandbox);
   vm.runInContext(
     readFileSync(join(import.meta.dir, '..', 'Code.gs'), 'utf8') +
-      '\nthis.__api = { processThread_, reauditApplications, previewReaudit };',
+      '\nthis.__api = { processThread_, reauditApplications, previewReaudit, isInterview };',
     sandbox,
   );
   const api = sandbox.__api as {
     processThread_(t: FakeThread): string;
     reauditApplications(): void;
     previewReaudit(): void;
+    isInterview(body: string): boolean;
   };
   return { api, logs, scriptStore };
 }
@@ -148,6 +149,34 @@ describe('processThread_ keeps interview mail in the Inbox', () => {
     const { api } = load([t]);
     expect(api.processThread_(t)).toBe('skipped');
     expect(t.calls).toEqual([]);
+  });
+});
+
+describe('isInterview reads invites in the body', () => {
+  const { api } = load([]);
+
+  test.each([
+    'If you are still interested, we would like to schedule a phone screen with you next week.',
+    'If you are interested, we would like to invite you to interview for the role.',
+    'Should you wish to proceed, we can schedule a call with the hiring manager this week.',
+    'Once you confirm, we will schedule your onsite interview.',
+  ])('a courtesy conditional before an invite stays interview mail: %s', (sentence) => {
+    expect(api.isInterview(sentence)).toBe(true);
+  });
+
+  test.each([
+    'Congratulations! You have been selected to move forward to the interview stage.',
+    'Your interview is confirmed for Tuesday at 2pm PT.',
+  ])('stage and confirmed-time wording is interview mail: %s', (sentence) => {
+    expect(api.isInterview(sentence)).toBe(true);
+  });
+
+  test.each([
+    'If your experience matches, we will reach out to schedule an interview.',
+    'If you are selected, we will reach out to schedule an interview.',
+    'Should your background align with the role, we will contact you to schedule a call.',
+  ])('an employer-side conditional promise is not interview mail: %s', (sentence) => {
+    expect(api.isInterview(sentence)).toBe(false);
   });
 });
 

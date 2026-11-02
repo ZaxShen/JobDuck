@@ -635,19 +635,25 @@ var INTERVIEW_SIGNALS = [
   ['onsite', /\b(virtual )?on-?site (interview|visit|round|loop|day)s?\b|\bvirtual on-?site\b|\bsuper ?day\b/i],
   ['offer', /\boffer letter\b|\b(pleased|happy|excited|delighted|thrilled) to (extend (you )?(an? |the )?(formal |verbal |written )?offer|offer you)\b|\b(verbal|formal|written) offer\b/i],
   ['questionnaire', /\bpre-?interview (questionnaire|survey|form)\b|\b(fill out|fill in|complete|answer|submit)\b[^.]{0,30}\bquestionnaire\b/i],
-  ['background check', /\b(complete|authorize|consent to|start|initiate)\b[^.]{0,30}\bbackground (check|screening)\b/i]
+  ['background check', /\b(complete|authorize|consent to|start|initiate)\b[^.]{0,30}\bbackground (check|screening)\b/i],
+  ['interview stage', /\b(mov(e|ed|ing)|advanc\w*|progress\w*|proceed\w*|invit\w*|selected|chosen|shortlisted)\b[^.]{0,40}\b(interview|interviewing) (stage|round|step|process|phase)\b/i],
+  ['interview confirmed', /\b(your|the|our) (interview|phone screen|screening call|call|chat|meeting|on-?site)s? (is|are|has been|have been) (now )?(confirmed|scheduled|booked|set( up)?)\b/i]
 ];
 var ASSESSMENT_WORD = /\b(assessment|coding (challenge|exercise|test|assignment)|take[- ]home|hackerrank|codesignal|codility|coderpad|online test|skills test|work sample)\b/i;
 var ASSESSMENT_ACTION = /\b(complete|completing|take|finish|start|begin|submit|attempt|access|link|within \d+|due|deadline|invit\w*)\b/i;
 var INTERVIEW_LINK = /https?:\/\/[^\s<>"')\]]*\b(calendly\.com|goodtime\.io|hackerrank\.com|codesignal\.com|codility\.com|coderpad\.io|testgorilla\.com)\b/i;
 // Sentences that only promise a possible future step ("If your experience matches, we will reach out to schedule an
 // interview", "Our team will review your application", "Selected candidates will be invited") are not interview mail.
+// A courtesy clause about the candidate's own interest or reply ("If you are still interested,", "Should you wish to
+// proceed,", "Once you confirm,") does not make an invite hypothetical, so it is dropped before that check.
+var COURTESY_CLAUSE = /\b(if|should|once|when|whenever|as soon as)\s+(you|you're|you've|you'd)\s+(are\s+|were\s+|have\s+|would\s+|still\s+)*(interested|available|free|open|keen|happy|comfortable|ready|wish\w*|want\w*|like|prefer|confirm\w*|accept\w*|agree\w*|repl(y|ied)|respond\w*|get back|let us know|decide to (proceed|move forward|continue)|choose to (proceed|move forward|continue)|any questions|questions)\b[^,.;:!?]*[,;:]?|\bif (interested|so|convenient|possible|this works|that works|it works)\b[^,.;:!?]*[,;:]?/gi;
 var MAYBE_CONDITIONAL = /\bshould (you|your|there|we|it|the)\b/i;
 var MAYBE_PROMISE = /\b(will|we'?ll|would|may|might|can)\b[^.]{0,60}\b(reach out|contact|be in touch|get in touch|follow up|get back|let you know|notify|invite|schedule|be invited|be asked)\b/i;
 var MAYBE_SENTENCE = /\b(may|might|could) (also )?(be )?(asked|invited|required|contacted|requested)\b|\b(selected|qualified|shortlisted|successful|top) (candidates|applicants)\b|\b(candidates|applicants) (who are )?(selected|shortlisted|chosen)\b|\b(will|we'?ll) (review|be reviewing|carefully review)\b|\bcurrently reviewing\b|\bunder review\b/i;
 
 function hypotheticalSentence_(sentence) {
   if (MAYBE_SENTENCE.test(sentence)) return true;
+  sentence = sentence.replace(COURTESY_CLAUSE, ' ');
   return (CONDITIONAL.test(sentence) || MAYBE_CONDITIONAL.test(sentence)) && MAYBE_PROMISE.test(sentence);
 }
 

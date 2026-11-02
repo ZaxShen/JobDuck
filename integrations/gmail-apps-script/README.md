@@ -11,10 +11,12 @@ of precedence per thread:
    is still a rejection.
 2. **Keeps interview mail in the Inbox.** When the body of the latest job email invites you to act (an interview
    invite or kickoff, a request to share your availability or book a time, a phone or technical screen, a next
-   round or onsite, an assessment, coding challenge, take-home, HackerRank or CodeSignal test to complete, an offer
-   letter, a pre-interview questionnaire), the thread gets `Job Duck/Interviews`, loses `Job Duck/Applications` and
-   is never archived. Only the body is read for this; the subject never decides it, and conditional confirmation
-   wording ("if your experience matches, we will reach out to schedule an interview") does not count. A thread
+   round or onsite, moving forward to the interview stage, a confirmed interview time, an assessment, coding
+   challenge, take-home, HackerRank or CodeSignal test to complete, an offer letter, a pre-interview questionnaire),
+   the thread gets `Job Duck/Interviews`, loses `Job Duck/Applications` and is never archived. Only the body is read
+   for this; the subject never decides it, and conditional confirmation wording ("if your experience matches, we
+   will reach out to schedule an interview") does not count. A courtesy condition about your own interest or reply
+   ("if you are still interested, we would like to schedule a phone screen") still counts as an invite. A thread
    labeled `Job Duck/Interviews` is never archived by a later run, even when a rejection arrives in it.
 3. **Sorts application mail.** Other job-application emails get the nested label `Job Duck/Applications` and skip
    the Inbox (archived). Confirmations never leave Gmail. Verification and security-code emails are archived too
@@ -147,8 +149,10 @@ trigger are kept.
   logs interview mail on its own `INTERVIEW` line, and `previewReaudit` / `reauditApplications` move interview mail
   from Applications to Interviews and back to the Inbox. **Existing users: after updating, run
   `reauditApplications` once (again until it says `complete`) to restore interview invites that earlier versions
-  archived.** New fixtures cover invites with neutral subjects, a conditional interview promise and an interview
-  subject over a plain confirmation (both stay `job`), and a rejection after an interview; `bun test` runs
+  archived.** New fixtures cover invites with neutral subjects, invites after a courtesy condition ("if you are
+  still interested", "should you wish to proceed", "once you confirm"), being moved forward to the interview stage,
+  a confirmed interview time, a conditional interview promise and an interview subject over a plain confirmation
+  (both stay `job`), and a rejection after an interview; `bun test` runs
   `test/interview.test.ts` against fake threads.
 
 - **v5.1**: A rejection whose only signal is one explicit decision sentence ("we have decided not to move forward

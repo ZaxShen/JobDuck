@@ -318,5 +318,47 @@
     "subject": "Interview Scheduling Team: application received",
     "body": "Hi Danlin,\n\nThank you for applying to the Platform Engineer position at Globex. We have received your application.\n\nGlobex Careers",
     "expect": "job"
+  },
+  {
+    "name": "Umbrella phone screen after a courtesy conditional",
+    "from": "Umbrella Recruiting <no-reply@greenhouse.io>",
+    "subject": "Your application to Umbrella",
+    "body": "Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Umbrella. If you are still interested, we would like to schedule a phone screen with you next week.\n\nUmbrella Recruiting",
+    "expect": "interview"
+  },
+  {
+    "name": "Stark invite to interview after a courtesy conditional",
+    "from": "Stark Recruiting <no-reply@greenhouse.io>",
+    "subject": "Your application to Stark",
+    "body": "Hi Danlin,\n\nThank you for your interest in the Platform Engineer position at Stark. If you are interested, we would like to invite you to interview for the role.\n\nStark Recruiting",
+    "expect": "interview"
+  },
+  {
+    "name": "Wayne hiring manager call after should-you-wish",
+    "from": "Wayne Recruiting <no-reply@greenhouse.io>",
+    "subject": "Following up on your application",
+    "body": "Hi Danlin,\n\nThank you for applying to the Data Engineer role at Wayne. Should you wish to proceed, we can schedule a call with the hiring manager this week.\n\nWayne Recruiting",
+    "expect": "interview"
+  },
+  {
+    "name": "Cyberdyne onsite after once-you-confirm",
+    "from": "Cyberdyne Recruiting <no-reply@greenhouse.io>",
+    "subject": "Next step with Cyberdyne",
+    "body": "Hi Danlin,\n\nThank you for your application for the ML Engineer role at Cyberdyne. Once you confirm, we will schedule your onsite interview.\n\nCyberdyne Recruiting",
+    "expect": "interview"
+  },
+  {
+    "name": "Tyrell selected to move forward to the interview stage",
+    "from": "Tyrell Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Danlin,\n\nThank you for applying to the Site Reliability Engineer role at Tyrell. Congratulations! You have been selected to move forward to the interview stage.\n\nTyrell Recruiting",
+    "expect": "interview"
+  },
+  {
+    "name": "Soylent interview confirmed for a time",
+    "from": "Soylent Recruiting <no-reply@greenhouse.io>",
+    "subject": "Your application to Soylent",
+    "body": "Hi Danlin,\n\nThank you for applying to the Frontend Engineer role at Soylent. Your interview is confirmed for Tuesday at 2pm PT.\n\nSoylent Recruiting",
+    "expect": "interview"
   }
 ]
