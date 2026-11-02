@@ -1,13 +1,12 @@
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { CheckGroup } from '@/components/fields/check-group'
+import { ChipInput } from '@/components/fields/chip-input'
 import { NumberInput } from '@/components/fields/number-input'
 import { RowList } from '@/components/fields/row-list'
-import { TagInput } from '@/components/fields/tag-input'
-import type { Field } from '@/lib/forms'
+import { fieldId, type Field } from '@/lib/forms'
 import { cn } from '@/lib/utils'
 
 interface FieldControlProps {
@@ -15,6 +14,7 @@ interface FieldControlProps {
   field: Field
   value: unknown
   onChange: (next: unknown) => void
+  size?: 'default' | 'compact'
 }
 
 const asStrings = (value: unknown) => (Array.isArray(value) ? value.map(String) : [])
@@ -41,7 +41,7 @@ function Control({ id, field, value, onChange }: FieldControlProps & { id: strin
     case 'number':
       return <NumberInput id={id} value={value} onChange={onChange} min={field.min} step={field.step} placeholder={field.placeholder} />
     case 'tags':
-      return <TagInput id={id} value={asStrings(value)} onChange={onChange} placeholder={field.placeholder} suggest={field.suggest} />
+      return <ChipInput id={id} label={field.label} value={asStrings(value)} onChange={onChange} placeholder={field.placeholder} suggest={field.suggest} />
     case 'checks':
       return <CheckGroup id={id} value={asStrings(value)} options={field.options ?? []} onChange={onChange} />
     case 'record': {
@@ -83,25 +83,20 @@ function Control({ id, field, value, onChange }: FieldControlProps & { id: strin
   }
 }
 
+const STYLES = {
+  default: { item: 'space-y-2', label: '', help: 'text-sm text-muted-foreground' },
+  compact: { item: 'space-y-1', label: 'text-xs font-medium text-muted-foreground', help: 'text-xs text-muted-foreground' },
+} as const
+
 export function FieldControl(props: FieldControlProps) {
-  const { formName, field, value, onChange } = props
-  const id = `${formName}-${field.key.replace(/[^A-Za-z0-9]+/g, '-')}`
-  const help = field.help && <p className="text-xs text-muted-foreground">{field.help}</p>
-  if (field.type === 'switch') {
-    return (
-      <Label className="items-start justify-between gap-4 sm:col-span-2">
-        <span className="space-y-1">
-          <span className="block">{field.label}</span>
-          {field.help && <span className="block text-xs font-normal text-muted-foreground">{field.help}</span>}
-        </span>
-        <Switch id={id} checked={Boolean(value)} onCheckedChange={(on) => onChange(on)} />
-      </Label>
-    )
-  }
+  const { formName, field, value, onChange, size = 'default' } = props
+  const id = fieldId(formName, field)
+  const styles = STYLES[size]
+  const help = field.help && <p className={styles.help}>{field.help}</p>
   if (field.type === 'checkbox') {
     return (
       <div className="space-y-1 sm:col-span-2">
-        <Label className="font-normal">
+        <Label className="flex cursor-pointer items-center gap-2 font-normal">
           <Checkbox id={id} checked={Boolean(value)} onCheckedChange={(on) => onChange(on)} />
           {field.label}
         </Label>
@@ -110,8 +105,8 @@ export function FieldControl(props: FieldControlProps) {
     )
   }
   return (
-    <div className={cn('space-y-1.5', field.wide && 'sm:col-span-2')}>
-      <Label htmlFor={id}>{field.label}</Label>
+    <div className={cn(styles.item, 'min-w-0', field.wide && 'sm:col-span-2')}>
+      <Label htmlFor={id} className={styles.label}>{field.label}</Label>
       <Control {...props} id={id} />
       {help}
     </div>

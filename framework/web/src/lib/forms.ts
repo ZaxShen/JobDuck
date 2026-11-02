@@ -187,3 +187,12 @@ export const SETTINGS_GROUPS: Group[] = [
     fields: [{ key: 'cv.page_limit', label: 'Page limit', type: 'number', min: 1 }],
   },
 ]
+
+export const visibleFields = (group: Group, draft: Draft) => group.fields.filter((field) => !field.when || field.when(draft))
+
+export function withField(draft: Draft, field: Field, value: unknown): Draft {
+  const next = setPath(draft, field.key, value)
+  return field.after ? field.after(next, value) : next
+}
+
+export const fieldId = (formName: string, field: Field) => `${formName}-${field.key.replace(/[^A-Za-z0-9]+/g, '-')}`
