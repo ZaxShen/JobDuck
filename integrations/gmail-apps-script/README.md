@@ -11,8 +11,13 @@ it. Missing an invite is the defect to avoid, so keeping an extra email in the I
 A **plain application confirmation** is a job email whose body confirms the application ("thank you for applying",
 "we have received your application"), is not a rejection, is written by nobody in the first person, and in which
 every sentence is a known acknowledgement. Only the greeting line ("Hi Alex,"), the sign-off with the signature
-under it ("Best, Acme Recruiting") and standard footer lines (unsubscribe, privacy policy, equal opportunity, do not
-reply, mailing address, copyright, "powered by" an ATS) are set aside. Every other sentence must be one of: thanks for
+lines directly under it ("Best, Acme Recruiting"), an unsigned signature that is the one unbroken block ending the
+body, and sentences that are a standard footer in their entirety are set aside. A footer sentence is one of: do not
+reply or an unattended mailbox; sent by, sent via or powered by a named ATS (Greenhouse, Lever, Workday, Ashby,
+iCIMS, SmartRecruiters and others); unsubscribe or manage email preferences; privacy policy; the equal opportunity
+statement; a mailing address; copyright; the standard confidentiality notice. A sentence that merely contains footer
+words ("This message was sent by the CTO, who loved your profile", "Note that the case study we sent is
+confidential") is an ordinary sentence. Every other sentence must be one of: thanks for
 applying or for your interest (in a role at a company); we have received your application; we or our team will
 review your application, qualifications or background; we will be in touch, contact you or get back to you (if your
 experience matches, in the coming weeks); you can view or track your application status in the candidate portal;
@@ -189,10 +194,13 @@ trigger are kept.
   A plain confirmation is now a sentence allowlist, not a word list: every sentence outside the greeting, sign-off,
   signature and footer must be a known acknowledgement, so a confirmation that also asks you to take a HireVue,
   CCAT, Pymetrics, Karat or Spark Hire step, join a Teams link at a set time, or reply with your free times stays in
-  the Inbox. The allowlist moves no existing fixture: all 7 remaining `job` fixtures stay `job` and none flips to
-  `interview`. `bun test` runs `test/interview.test.ts` against fake threads, including 55 action sentences that
-  must stay in the Inbox and Greenhouse, Lever, Workday, Ashby, iCIMS and SmartRecruiters acknowledgements that are
-  still archived.
+  the Inbox. Footer sentences are set aside only when the whole sentence is a standard footer, so an action wrapped
+  in footer wording ("This automated email is a reminder that your work sample is still outstanding") stays in the
+  Inbox too, and an unsigned signature is set aside only as the unbroken block that ends the body. The allowlist
+  moves no existing fixture: all 7 remaining `job` fixtures stay `job` and none flips to `interview`. `bun test`
+  runs `test/interview.test.ts` against fake threads, including 55 action sentences and 45 actions in footer
+  wording that must stay in the Inbox, and Greenhouse, Lever, Workday, Ashby, iCIMS, SmartRecruiters and
+  equal-opportunity footers on acknowledgements that are still archived.
 
 - **v5.1**: A rejection whose only signal is one explicit decision sentence ("we have decided not to move forward
   with your application") is now recognized: the rejection threshold drops from 3 to 2, and an explicit decision

@@ -861,11 +861,79 @@ var GREETING_PREFIX = new RegExp('^(?:[Hh]i|[Hh]ello|[Hh]ey|[Dd]ear|[Gg]reetings
 var SIGN_OFF = /^(?:best|best regards|kind regards|warm regards|warmest regards|regards|warmly|sincerely|sincerely yours|yours sincerely|yours truly|respectfully|cheers|all the best|best wishes|many thanks|thanks|thank you|thanks again|thank you again|with appreciation|with gratitude)(?:\s*[,.!]\s*|\s*$)/i;
 var SIGNATURE_LINE = /^(?:[Tt]he )?[A-Z][A-Za-z'&.()-]*(?:(?: | ?[|,\/–—-] ?)(?:[A-Z][A-Za-z'&.()-]*|of|the|at|for|&)){0,7}\.?$/;
 var ACK_VETO_WORD = new RegExp('\\b(?:' + ACK_VETO + ')\\b', 'i');
-// Standard footer sentences, set aside unless they also ask for something.
-var ACK_FOOTER = /\bunsubscribe\b|\bprivacy (policy|notice|statement)\b|\bterms of (use|service)\b|\bequal (employment )?opportunit(y|ies)\b|\bEEO\b|\baffirmative action\b|\bwithout regard to\b|\breceive consideration for employment\b|\b(do not|don't|please do not) (reply|respond)\b|\bno-?reply\b|\b(not monitored|unmonitored|unattended)\b|\breplies (to this (e-?mail|message) )?(will|are) not\b|\bautomated (message|e-?mail|notification|response)\b|\bautomatically generated\b|\bthis (e-?mail|message|notification) (was|is|has been) (sent|generated|delivered)\b|\b(sent|powered|delivered) (by|via|with|through|using)\b|\bon behalf of\b|©|\(c\)|\bcopyright\b|\ball rights reserved\b|\bmanage (your )?(e-?mail |notification )?(preferences|notifications|subscriptions|settings)\b|\be-?mail preferences\b|\bconfidential\b|\bintended (only )?for the (named )?recipient\b|^\d{1,6} [\w .,'#-]{2,80}\b(street|st|avenue|ave|road|rd|boulevard|blvd|drive|dr|lane|ln|way|suite|ste|floor|fl|plaza|parkway|pkwy|court|ct|place|pl|square|sq)\b[\w .,'#-]*$|^[A-Za-z .'-]+, [A-Z]{2} \d{5}(-\d{4})?(,? (USA|United States))?$/i;
-var FOOTER_ACTION = /\b(complete|join|upload|submit|record|book|select|choose|confirm|sign|schedule|deadline|due|instead|however|but|before|until|within|link below|send|provide|fill|attach|share|let us know|must|need to|required to|take (the|your|a|our|this|it))\b|(?<!(\bnot|n't|\bnever) )\b(reply|respond)\b|\bclick (?!(here )?to (unsubscribe|manage|update))|\bplease (?!(do not|don't|note)\b)|\bby (monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|tonight|end of|eod|noon|\d)|\?/i;
+// Standard footer clauses. A sentence is set aside as footer only when the whole of it is one of these clauses, or a
+// few of them joined by a comma, semicolon or "and"/"as"/"so": anything else in it ("This message was sent by the
+// CTO, who loved your profile") makes it an ordinary sentence that must be a known acknowledgement. Names in them
+// are capitalised words with no digit and no action, time or deadline word.
+var FOOTER_ATS = '(?:greenhouse|lever|workday|ashby|icims|smart ?recruiters|jobvite|taleo|bamboo ?hr|workable|jazz ?hr|breezy(?: ?hr)?|recruitee|teamtailor|rippling|gem|paylocity|ukg|(?:sap )?successfactors|oracle(?: recruiting cloud| taleo)?)(?:\\.(?:io|com|co))?';
+var FOOTER_NAME = "([a-z&'().-]+(?: [a-z&'().-]+){0,5})";
+var FOOTER_NAME_SHAPE = /^(?:the )?[A-Z][A-Za-z&'().-]*(?: (?:[A-Z][A-Za-z&'().-]*|of|&)){0,5}$/;
+var FOOTER_MAIL = '(?:e-?mail|message|notification)';
+var FOOTER_LINK = '(?:(?::| here:?| at:?)? URL)?';
+var FOOTER_ITEM = '(?:unsubscribe(?: here)?|privacy (?:policy|notice|statement)|terms(?: of (?:use|service))?|(?:manage|update|change) (?:your )?(?:e-?mail |notification |communication )?(?:preferences|settings|subscriptions)|e-?mail preferences)' + FOOTER_LINK;
+var FOOTER_STOP = '(?:these|this|all|future|our) (?:e-?mails|messages|notifications|communications|mailing list|list)';
+var FOOTER_EEO_ITEM = '(?:race|colou?r|religion|creed|sex|gender|gender identity(?: (?:or|and|and/or) expression)?|gender expression|sexual orientation|national origin|ancestry|age|(?:physical or mental )?disability(?: status)?|(?:protected )?veteran status|military(?: or veteran)? status|marital status|genetic information|pregnancy|citizenship(?: status)?|(?:or )?any other (?:characteristic|status|basis) protected by (?:applicable |federal, state,? (?:or|and) local )?law|(?:any )?other (?:legally )?protected (?:characteristics?|status))';
+var FOOTER_EEO_LIST = FOOTER_EEO_ITEM + '(?:(?:,|,? or|,? and|,? and/or|/) ' + FOOTER_EEO_ITEM + '){0,25}';
+var FOOTER_STREET = '(?:street|st|avenue|ave|road|rd|boulevard|blvd|drive|dr|lane|ln|way|plaza|parkway|pkwy|court|ct|place|pl|square|sq|highway|hwy|circle|cir)';
+var FOOTER_CITY = "(?:[a-z.'-]+ ){0,3}[a-z.'-]+, [a-z]{2}(?: \\d{5}(?:-\\d{4})?)?(?:,? (?:usa|united states))?";
+var FOOTER_CLAUSES = [
+  // Do not reply / unattended mailbox / automated message
+  '(?:please )?(?:do not|don\'t|kindly do not) (?:reply|respond)(?: directly)?(?: to (?:this|the|it|this ' + FOOTER_MAIL + ')(?: address)?)?',
+  '(?:this|the) ' + FOOTER_MAIL + ' (?:is|was|has been) (?:sent|generated|delivered) (?:from|by) an? (?:unattended|unmonitored|automated|send-only|no-?reply|system)(?: (?:mailbox|e-?mail address|address|account|inbox|system))?',
+  '(?:this|the) ' + FOOTER_MAIL + ' (?:is|was|has been) (?:automatically|system|auto)[ -]generated',
+  '(?:this|the|our) (?:e-?mail address|mailbox|inbox|address|account) (?:is not|isn\'t) (?:monitored|checked)|(?:this|the|our) (?:e-?mail address|mailbox|inbox|address|account) is (?:unmonitored|unattended)',
+  'replies (?:to this (?:e-?mail|message|address) )?(?:will not|won\'t|are not|cannot|can not|will never) (?:be )?(?:read|monitored|received|answered|seen|reviewed)',
+  'this is an? (?:automated|automatic|system-generated|auto-generated|automatically generated) ' + FOOTER_MAIL + '(?: from ' + FOOTER_ATS + ')?',
+  // Sent by / powered by an ATS
+  '(?:(?:this|the) ' + FOOTER_MAIL + ' (?:was|is|has been) )?(?:sent|powered|delivered|generated) (?:by|via|with|through|from|using) (?:the )?' + FOOTER_ATS + '(?: (?:platform|system))?(?: on behalf of ' + FOOTER_NAME + ')?',
+  // Unsubscribe, manage preferences, privacy policy
+  FOOTER_ITEM + '(?: ?[|·•,] ?' + FOOTER_ITEM + '){0,5}',
+  '(?:to|if you(?:\'d| would)? (?:no longer )?(?:wish|want|like) to) (?:unsubscribe|stop receiving (?:these|such|future) (?:e-?mails|messages|notifications))(?: from ' + FOOTER_STOP + ')?,? (?:please )?(?:click (?:here|the link below|URL)|visit URL|go to URL|URL)',
+  'click (?:here|URL) to (?:unsubscribe|manage (?:your )?(?:e-?mail )?(?:preferences|subscriptions))(?: from ' + FOOTER_STOP + ')?',
+  'you (?:can|may) unsubscribe(?: from ' + FOOTER_STOP + ')?(?: at any time)?(?: (?:here|URL))?',
+  '(?:(?:to learn more|for (?:more )?information|for details) (?:about|on) how (?:we|' + FOOTER_NAME + ') (?:collects?|uses?|processes|handles?|protects?)(?:(?:,| and|,? and) (?:collects?|uses?|processes|handles?|protects?)){0,3} your (?:personal )?(?:data|information),? )?(?:please )?(?:see|read|review|visit|refer to|view) (?:our|the) (?:candidate |applicant )?privacy (?:policy|notice|statement)' + FOOTER_LINK,
+  // Equal opportunity
+  '(?:we|' + FOOTER_NAME + ') (?:is|are) (?:proud to be )?an? (?:proud )?equal (?:employment )?opportunity(?: and affirmative action)? employer(?:,? (?:m/f/d/v|minorities/females/veterans/disabled|minorities/women/veterans/disabled))?',
+  '(?:an? )?equal (?:employment )?opportunity(?: and affirmative action)? employer|eoe|eeo',
+  'all qualified applicants will receive consideration for employment without regard to ' + FOOTER_EEO_LIST,
+  '(?:(?:we|' + FOOTER_NAME + ') )?(?:does not|do not|will not) discriminate (?:against any (?:applicant|employee) )?(?:on the basis of|based on|because of) ' + FOOTER_EEO_LIST,
+  // Mailing address
+  '(?:' + FOOTER_NAME + '(?:,| ·| \\|) )?\\d{1,6} (?:[a-z0-9.\'-]+ ){1,5}' + FOOTER_STREET + '\\.?(?:,? (?:suite|ste|floor|fl|unit|room|rm)\\.? ?#?[a-z0-9-]{1,6}|,? #[a-z0-9-]{1,6})?(?:(?:,| ·| \\|) ' + FOOTER_CITY + ')?',
+  '(?:suite|ste|floor|fl|unit) #?[a-z0-9-]{1,6}(?:(?:,| ·| \\|) ' + FOOTER_CITY + ')?',
+  "(?:[a-z.'-]+ ){0,3}[a-z.'-]+, [a-z]{2} \\d{5}(?:-\\d{4})?(?:,? (?:usa|united states))?",
+  // Copyright
+  '(?:copyright(?: ©| \\(c\\))?|©|\\(c\\)) ?(?:\\d{4}(?: ?[-–] ?\\d{4})?,? ?)?(?:' + FOOTER_NAME + '(?:,? (?:inc|llc|ltd|corp|co|gmbh|plc)\\.?)?)?(?:,? all rights reserved)?',
+  'all rights reserved',
+  // Confidentiality notice
+  '(?:this|the information in this) (?:e-?mail|message|communication|transmission)(?:,? (?:and|including|together with) any (?:attachments|files transmitted with it)(?: (?:to|with) it)?,?)? (?:is|are|may be|may contain information that is|contains information that (?:is|may be)) (?:strictly )?(?:confidential|privileged|proprietary)(?:(?:,| and|,? and/or|,? or) (?:legally )?(?:confidential|privileged|proprietary)){0,2},? and (?:(?:is|are) )?intended (?:solely|only|exclusively) for (?:the use of )?the (?:addressee|recipient|individual|person|entity|intended recipient)(?:\\(s\\)|s)?(?: (?:or|and) (?:entity|entities))?(?: (?:to whom|to which) (?:it is|they are) addressed| named above)?',
+  'if you are not the intended recipient(?:,? (?:please )?notify the sender(?: immediately)?(?: and delete (?:it|this ' + FOOTER_MAIL + ')(?: from your system)?)?)?',
+  'if you (?:have )?received this ' + FOOTER_MAIL + ' (?:in error|by mistake),? (?:please )?notify the sender(?: immediately)?(?: and delete (?:it|this ' + FOOTER_MAIL + ')(?: from your system)?)?'
+];
+var FOOTER_CLAUSE = new RegExp('^(?:(?:please note|note|important)[:,]? )?(?:' + FOOTER_CLAUSES.join('|') + ')$', 'i');
+var FOOTER_JOIN = /[,;:]? (?:and|as|because|since|so) |[,;:] /g;
 
-function ackFooter_(sentence) { return ACK_FOOTER.test(sentence) && !FOOTER_ACTION.test(sentence); }
+function footerClause_(clause) {
+  var m = FOOTER_CLAUSE.exec(clause);
+  return !!m && m.slice(1).every(function (g) {
+    return !g || (g.length <= 60 && FOOTER_NAME_SHAPE.test(g) && !ACK_VETO_WORD.test(g));
+  });
+}
+
+function footerClauses_(text, depth) {
+  if (footerClause_(text)) return true;
+  if (depth >= 3) return false;
+  var join = new RegExp(FOOTER_JOIN.source, 'g'), m;
+  while ((m = join.exec(text))) {
+    if (footerClause_(text.slice(0, m.index)) && footerClauses_(text.slice(m.index + m[0].length), depth + 1)) return true;
+  }
+  return false;
+}
+
+/** True when the whole sentence is a standard footer. */
+function footer_(sentence) {
+  var s = String(sentence).replace(/\s+/g, ' ').replace(/[.!]+$/, '').trim();
+  return !!s && s.length <= 400 && footerClauses_(s, 0);
+}
 
 function greetingName_(greeting) {
   return !ACK_VETO_WORD.test(greeting.replace(/^\w+|\b(there|all|team|candidate|applicant)\b/gi, ''));
@@ -881,21 +949,28 @@ function unacknowledged_(body, verification) {
     .replace(/<?(?:https?:\/\/|www\.)[^\s>]*[^\s>.,;:!?)]>?/gi, ' URL ')
     .replace(/<?[\w.+-]+@[\w-]+(?:\.[\w-]+)+>?/g, ' EMAIL ');
   var lines = text.split('\n').map(function (l) { return l.replace(/\s+/g, ' ').replace(/^(?:[*•·>-]+ ?)+/, '').trim(); });
-  var drop = lines.map(function () { return false; });
-  var i, signedOff = false, greeted = false;
+  var footerLine = lines.map(function (l) { return !!l && lineSentences_(l).every(footer_); });
+  var drop = footerLine.slice();
+  var i, j, signedOff = false, greeted = false;
   for (i = 0; i < lines.length; i++) {
     var line = lines[i];
-    if (!line) continue;
+    if (!line || drop[i]) continue;
     if (!greeted) {
       greeted = true;
       if (GREETING_LINE.test(line) && greetingName_(line)) { drop[i] = true; continue; }
     }
     var off = SIGN_OFF.exec(line);
-    if (off && (off[0].length === line.length || signatureLine_(line.slice(off[0].length)))) { signedOff = true; drop[i] = true; continue; }
-    if (signedOff && signatureLine_(line)) drop[i] = true;
+    if (off && (off[0].length === line.length || signatureLine_(line.slice(off[0].length)))) {
+      signedOff = true;
+      drop[i] = true;
+      for (j = i + 1; j < lines.length && !lines[j]; j++);
+      for (; j < lines.length && lines[j] && signatureLine_(lines[j]); j++) drop[j] = true;
+    }
   }
-  for (i = lines.length - 1; i >= 0; i--) {
-    if (!lines[i] || drop[i] || lineSentences_(lines[i]).every(ackFooter_)) continue;
+  // Without a sign-off, only the one unbroken block of signature lines that ends the body is a signature.
+  for (i = lines.length - 1; i >= 0 && !lines[i]; i--);
+  for (; !signedOff && i >= 0 && lines[i]; i--) {
+    if (footerLine[i]) continue;
     if (!signatureLine_(lines[i])) break;
     drop[i] = true;
   }
@@ -909,7 +984,7 @@ function unacknowledged_(body, verification) {
   for (var p = 0; p < paragraphs.length; p++) {
     var sentences = lineSentences_(paragraphs[p]);
     for (var s = 0; s < sentences.length; s++) {
-      if (!ackFooter_(sentences[s]) && !acknowledges_(re, sentences[s])) return sentences[s];
+      if (!footer_(sentences[s]) &&!acknowledges_(re, sentences[s])) return sentences[s];
     }
   }
   return null;

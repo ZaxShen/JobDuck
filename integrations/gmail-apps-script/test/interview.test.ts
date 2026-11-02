@@ -578,3 +578,141 @@ describe('a plain confirmation is an allowlist of acknowledgement sentences (F35
     expect(classify(wrapped('We will review your application and get back to you.'))).toBe('job');
   });
 });
+
+describe('a footer is set aside only when the whole sentence is a standard footer (F35-13)', () => {
+  const sandbox: Record<string, unknown> = { Logger: { log() {} }, PropertiesService: {}, Session: {}, GmailApp: {}, Gmail: {} };
+  vm.createContext(sandbox);
+  vm.runInContext(readFileSync(join(import.meta.dir, '..', 'Code.gs'), 'utf8') + '\nthis.__a = { classifyThread_, unacknowledged_, footer_ };', sandbox);
+  const { classifyThread_, unacknowledged_, footer_ } = sandbox.__a as {
+    classifyThread_(messages: unknown[], rules: { excludedDomains: string[] }, me: string): { action: string };
+    unacknowledged_(body: string, verification: boolean): string | null;
+    footer_(sentence: string): boolean;
+  };
+  const wrapped = (sentence: string) =>
+    'Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Acme. ' + sentence + '\n\nBest,\nAcme Recruiting';
+  const classify = (body: string, from = 'Acme Recruiting <no-reply@greenhouse.io>', subject = 'Your application to Acme') =>
+    classifyThread_([{ getFrom: () => from, getSubject: () => subject, getPlainBody: () => body }], { excludedDomains: [] }, 'me@example.com').action;
+
+  const FOOTER_WORDED_ACTIONS = [
+    // probe13
+    'This message was sent by the CTO, who loved your profile and wants to connect.',
+    'This automated email is a reminder that your work sample is still outstanding.',
+    'This is an automated notification that your coding project is waiting in the portal.',
+    'The engineering team has requested your portfolio on behalf of the CTO.',
+    'Note that the case study we sent is confidential.',
+    'Your portfolio review with Jane is set for 10am; details are confidential.',
+    // reviewer cases
+    'This is an automated message with your test link: https://x.io/t/1',
+    'This message was sent on behalf of the engineering lead, who wants your portfolio.',
+    'Confidential: the take home project brief is attached.',
+    'Sent via Greenhouse with your pair programming exercise.',
+    'Your coding project was sent via a separate email.',
+    'The attached case study is confidential and is due to the team in 3 days.',
+    'Your work sample was sent by our team; it is confidential.',
+    'This message is confidential: we loved your profile and want to connect.',
+    'The case study is confidential.',
+    // footer wording wrapped around an action
+    'Please do not reply to this email; instead, send your portfolio to jane@acme.com.',
+    'Do not reply here, but do complete the coding project in the portal.',
+    'This email was sent from an unmonitored mailbox, so please book a time with Jane using the link below.',
+    'Replies to this email will not be read, so please submit your work sample through the portal.',
+    'This is an automated message to remind you that your case study is due Friday.',
+    'This automated notification is to let you know your portfolio review has been set.',
+    'Sent by Greenhouse on behalf of Jane, who would like to connect with you.',
+    'Powered by Lever: your take-home brief is attached.',
+    'This message was sent via Workday because your work sample is overdue.',
+    'Sent with Ashby on behalf of the CTO, who wants to see your portfolio.',
+    "On behalf of the hiring manager, we'd love to see a code sample.",
+    'Confidential: please send the signed NDA back today.',
+    'This email and any attachments are confidential; the case study inside is due in a week.',
+    'The enclosed exercise is confidential and intended solely for you to complete.',
+    'Unsubscribe from reminders by finishing your work sample.',
+    'To unsubscribe, simply reply with your portfolio link.',
+    'Our privacy notice explains why we need your references by Monday.',
+    'Acme is an equal opportunity employer and would love to see your portfolio.',
+    'All qualified applicants will receive consideration for employment once their work sample is in.',
+    '© 2026 Acme. Your case study is attached.',
+    'All rights reserved; your take-home project is attached.',
+    'If you are not the intended recipient of this case study, please forward it to Jane.',
+    'This mailbox is not monitored, so upload your portfolio in the portal instead.',
+    'Note: this message was sent by our CTO, who loved your portfolio.',
+    'The engineering lead asked us to send this on behalf of the team: we want your portfolio.',
+    'This message has been sent by Jane Doe to request your writing sample.',
+    'This is an automated email from Greenhouse with your work sample instructions.',
+    'Sent via iCIMS with your portfolio request.',
+    'This email is sent from an unattended mailbox; the case study is in the portal.',
+    'Privacy Policy | Unsubscribe | Your Case Study',
+  ];
+
+  test.each(FOOTER_WORDED_ACTIONS)('a confirmation with an action in footer wording is kept: %s', (sentence) => {
+    expect(classify(wrapped(sentence))).toBe('interview');
+    expect(unacknowledged_(wrapped(sentence), false)).not.toBeNull();
+  });
+
+  test.each([
+    ['an unsigned title line above an unsigned signature', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nCoding Project Instructions\n\nAcme Recruiting'],
+    ['an automated-message line after the signature', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nAcme Recruiting\n\nAutomated message: the take-home project is in your portal.'],
+    ['an automated-email line after the signature', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nAcme Recruiting\n\nThis automated email has your portfolio request.'],
+    ['a confidential line after the signature', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nAcme Recruiting\n\nConfidential: your take-home project awaits.'],
+    ['an address line carrying instructions', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nAcme Recruiting\n\n123 Main Street, Suite 400 coding project instructions'],
+    ['a title line above the signature', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nYour Case Study\nAcme Recruiting'],
+    ['a linked title above the signature', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nTechnical Project Instructions <https://acme.io/p>\nAcme Recruiting'],
+    ['a title-case note above a name', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nWe Want To Connect\nJane Doe'],
+    ['a signature block that is not the end of the body', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nAcme Recruiting\n\nYour Case Study'],
+    ['a title line after a signed block across a blank line', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nBest,\nAcme Recruiting\n\nCoding Project Instructions'],
+  ])('%s is kept', (_name, body) => {
+    expect(classify(body)).toBe('interview');
+    expect(unacknowledged_(body, false)).not.toBeNull();
+  });
+
+  const STANDARD_FOOTERS: [string, string, string][] = [
+    ['Greenhouse', 'Acme Recruiting <no-reply@greenhouse.io>',
+      '\n\nPlease do not reply to this email, as this mailbox is not monitored.\n\nPowered by Greenhouse'],
+    ['Lever', 'Acme <no-reply@hire.lever.co>', '\n\nSent with Lever\nPrivacy Policy | Unsubscribe'],
+    ['Workday', 'Acme Careers <acme@myworkday.com>',
+      '\n\nThis is an automated message. Please do not reply to this email.\n\n© 2026 Acme Corporation. All rights reserved.\nAcme Corporation, 100 Market Street, Suite 300, San Francisco, CA 94105'],
+    ['iCIMS', 'Acme Talent <acme@talent.icims.com>',
+      '\n\nThis message was sent by iCIMS on behalf of Acme. Please do not reply to this email.\n\nThis email and any attachments are confidential and intended solely for the addressee. If you have received this email in error, please notify the sender and delete it.'],
+    ['SmartRecruiters', 'Acme Hiring Team <noreply@smartrecruiters.com>',
+      '\n\nPrivacy Policy | Unsubscribe\nPowered by SmartRecruiters\n\nTo unsubscribe from these emails, click here.'],
+    ['EEO', 'Acme Recruiting <no-reply@greenhouse.io>',
+      '\n\nAcme is an Equal Opportunity Employer. We do not discriminate on the basis of race, religion, color, national origin, gender, sexual orientation, age, marital status, veteran status, or disability status.\n\nAll qualified applicants will receive consideration for employment without regard to race, color, religion, sex, sexual orientation, gender identity, national origin, disability, protected veteran status, or any other characteristic protected by law.'],
+  ];
+
+  test.each(STANDARD_FOOTERS)('a plain confirmation with the standard %s footer is archived', (_ats, from, footers) => {
+    const body = wrapped('We will review your application and get back to you.') + footers;
+    expect(classify(body, from, 'Thank you for applying to Acme')).toBe('job');
+    expect(unacknowledged_(body, false)).toBeNull();
+  });
+
+  test('the probe13 footers on a plain confirmation are archived', () => {
+    const footers =
+      '\n\n** Please note: Do not reply to this email. This email is sent from an unattended mailbox. Replies will not be read.\n\nThis message was sent by iCIMS on behalf of Acme. Please do not reply to this email.\n\nPrivacy Policy | Unsubscribe\nPowered by SmartRecruiters\n\nAcme Corporation is an Equal Opportunity Employer. All qualified applicants will receive consideration for employment without regard to race, color, religion, sex, national origin, disability or protected veteran status.';
+    expect(classify(wrapped('We will review your application and get back to you.') + footers)).toBe('job');
+  });
+
+  test.each([
+    'We will be in touch with an update.',
+    'Thanks for your interest!',
+    'We have received your application for the role.',
+    'Thank you for applying to the Staff Engineer team lead opportunity at Acme.',
+  ])('a plain acknowledgement stays archivable: %s', (sentence) => {
+    expect(classify(wrapped(sentence))).toBe('job');
+  });
+
+  test('an unsigned signature as the one unbroken block ending the body is set aside', () => {
+    expect(classify('Hi Danlin,\n\nThank you for applying to Acme.\n\nAcme Recruiting\nTalent Team')).toBe('job');
+  });
+
+  test.each([
+    'Do not reply to this email.',
+    'This message was sent by Greenhouse on behalf of Acme Corporation.',
+    'Sent via Workday',
+    'Powered by SmartRecruiters',
+    'Manage your email preferences | Unsubscribe',
+    'Copyright © 2026 Acme, Inc.',
+    '500 Howard Street, San Francisco, CA 94105',
+  ])('footer_ accepts the standard footer: %s', (sentence) => {
+    expect(footer_(sentence)).toBe(true);
+  });
+});
