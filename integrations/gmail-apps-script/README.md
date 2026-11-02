@@ -45,8 +45,11 @@ recorded; acknowledged outcomes are deleted from the script. The agent never get
 
 1. Open [script.google.com](https://script.google.com/home) and click **New project**; rename it
    `Job Duck - Gmail Rejection Sync v5.1`. In **Project Settings**, tick **Show "appsscript.json" manifest file in
-   editor**. Back in the **Editor**, replace the contents of `appsscript.json` and `Code.gs` with the files of the
-   same name in this folder, then **Save**. Optional script properties (**Project Settings → Script Properties → Add script property**, then
+   editor**. Back in the **Editor**, replace the contents of `appsscript.json` with
+   [`appsscript.json`](https://github.com/ZaxShen/JobDuck/blob/main/integrations/gmail-apps-script/appsscript.json)
+   and of `Code.gs` with
+   [`Code.gs`](https://github.com/ZaxShen/JobDuck/blob/main/integrations/gmail-apps-script/Code.gs) (open each and
+   click **Raw** to copy), then **Save** (Cmd/Ctrl+S). Optional script properties (**Project Settings → Script Properties → Add script property**, then
    **Save script properties**): `PROTECTED_LABELS` and `EXCLUDED_DOMAINS` (comma-separated),
    `KEEP_ACTION_MAIL_IN_INBOX=true`.
 2. In the Editor, pick `generateSyncToken` in the function menu and **Run**. The first run opens Google's permission
