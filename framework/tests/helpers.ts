@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { type Db, openDb } from '../src/db/client'
@@ -29,6 +29,17 @@ export function migratedDb(home: string): Db {
   const db = openDb(dbPath(home))
   migrate(db)
   return db
+}
+
+export function closeWithoutWalFiles(db: Db, home: string): string {
+  const path = dbPath(home)
+  db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+  db.close()
+  const closed = `${path}.closed`
+  renameSync(path, closed)
+  copyFileSync(closed, path)
+  for (const stale of [closed, `${path}-shm`, `${path}-wal`]) rmSync(stale, { force: true })
+  return path
 }
 
 export function snapshot(dir: string): Record<string, string> {

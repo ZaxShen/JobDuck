@@ -23,7 +23,7 @@ export interface OpenOptions {
 }
 
 function bunSqlite(path: string, options: OpenOptions): Db {
-  const db = options.readonly ? new Database(path, { readonly: true }) : new Database(path, { create: true })
+  const db = new Database(path, options.readonly ? { readwrite: true, create: false } : { create: true })
   const bind = (params: unknown[]) => params as SQLQueryBindings[]
   return {
     prepare: (sql) => {
@@ -47,7 +47,8 @@ export const BUSY_TIMEOUT_MS = 5000
 export function openDb(path: string, options: OpenOptions = {}): Db {
   const db = bunSqlite(path, options)
   db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`)
-  if (!options.readonly) db.exec('PRAGMA journal_mode = WAL')
+  if (options.readonly) db.exec('PRAGMA query_only = ON')
+  else db.exec('PRAGMA journal_mode = WAL')
   db.exec('PRAGMA foreign_keys = ON')
   return db
 }
