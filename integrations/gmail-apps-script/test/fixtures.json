@@ -416,5 +416,40 @@
     "subject": "Update on your application",
     "body": "Hi Danlin,\n\nThank you for applying to the Data Engineer role at Aperture. We are pleased to invite you to the next step of our hiring process.\n\nAperture Recruiting",
     "expect": "interview"
+  },
+  {
+    "name": "Vandelay recruiting team will reach out to schedule your onsite",
+    "from": "Vandelay Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Vandelay. Our recruiting team will reach out to schedule your onsite interview.\n\nVandelay Recruiting",
+    "expect": "interview"
+  },
+  {
+    "name": "Massive Dynamic GoodTime email to schedule your interview",
+    "from": "Massive Dynamic Talent <no-reply@ashbyhq.com>",
+    "subject": "Your application to Massive Dynamic",
+    "body": "Hi Danlin,\n\nThank you for applying to the Platform Engineer position at Massive Dynamic. You will receive an email from GoodTime to schedule your interview.\n\nMassive Dynamic Talent",
+    "expect": "interview"
+  },
+  {
+    "name": "Oscorp hiring manager would like to speak with you",
+    "from": "Oscorp Recruiting <no-reply@lever.co>",
+    "subject": "Your application to Oscorp",
+    "body": "Hi Danlin,\n\nThank you for applying to the Site Reliability Engineer role at Oscorp. The hiring manager would like to speak with you. Can you do a call on Tuesday at 2pm?\n\nOscorp Recruiting",
+    "expect": "interview"
+  },
+  {
+    "name": "Hooli details for your upcoming interview",
+    "from": "Hooli Recruiting <no-reply@greenhouse.io>",
+    "subject": "Your application to Hooli",
+    "body": "Hi Danlin,\n\nThank you for applying to the ML Engineer role at Hooli. Here are the details for your upcoming interview. Looking forward to speaking with you on Tuesday.\n\nHooli Recruiting",
+    "expect": "interview"
+  },
+  {
+    "name": "Dunder confirmation with applicant-pool and if-selected boilerplate",
+    "from": "Dunder Careers <no-reply@greenhouse.io>",
+    "subject": "Thank you for applying to Dunder",
+    "body": "Hi Danlin,\n\nThank you for applying to the Data Analyst role at Dunder. We have received your application. Applicants who move forward to the interview stage will be contacted by a recruiter. If selected, you will be invited to an onsite interview. You will hear from us about the interview stage soon. Our interview process consists of a phone screen, a technical round and an onsite.\n\nDunder Careers",
+    "expect": "job"
   }
 ]

@@ -14,12 +14,18 @@ of precedence per thread:
    round or onsite, moving forward to the interview stage, a confirmed interview time, an assessment, coding
    challenge, take-home, HackerRank or CodeSignal test to complete, an offer letter, a pre-interview questionnaire),
    the thread gets `Job Duck/Interviews`, loses `Job Duck/Applications` and is never archived. Only the body is read
-   for this; the subject never decides it. Each sentence is judged by what the employer commits to: a direct offer
-   ("we would like to schedule a phone interview", "would you be available for a call?", "please share a few times
-   that work for you", "we are pleased to invite you to the next step") counts whatever condition comes before it,
-   while a promise of future contact ("if your experience matches, we will reach out to schedule an interview",
-   "applicants who move forward will be contacted", "you will receive an email") does not. A thread
-   labeled `Job Duck/Interviews` is never archived by a later run, even when a rejection arrives in it.
+   for this; the subject never decides it. The check is fail-safe: a real invite must never be archived, so keeping a
+   plain confirmation in the Inbox is the accepted cost. Any sentence about an interview, call, chat, screen, onsite,
+   round, next step or your availability that is aimed at you counts ("the hiring manager would like to speak with
+   you", "here are the details for your upcoming interview", "can you do a call on Tuesday?", "our recruiter will
+   contact you to schedule your interview", "we would like to move forward with your candidacy"). Mail is archived
+   only when every such sentence is boilerplate: about the applicant pool ("applicants who move forward to the
+   interview stage will be contacted"), conditional on the employer picking you ("if selected, you will be invited",
+   "if your experience matches, we will reach out to schedule an interview"), a vague promise of contact ("you will
+   hear from us about the interview stage") or a description of the process ("our interview process consists
+   of..."). A direct offer ("if you have time this week, we would like to schedule a phone interview") counts
+   whatever courtesy condition comes before it. A thread labeled `Job Duck/Interviews` is never archived by a later
+   run, even when a rejection arrives in it.
 3. **Sorts application mail.** Other job-application emails get the nested label `Job Duck/Applications` and skip
    the Inbox (archived). Confirmations never leave Gmail. Verification and security-code emails are archived too
    unless the script property `KEEP_ACTION_MAIL_IN_INBOX` is `true`; that property affects only verification-code
@@ -145,18 +151,23 @@ trigger are kept.
 - **v5.2**: Interview mail is never archived. Earlier versions archived interview invites under
   `Job Duck/Applications` unless `KEEP_ACTION_MAIL_IN_INBOX` was set, and checked only the subject. Now, after the
   rejection check and before the application check, the body of the latest job email is scanned for interview,
-  assessment, scheduling and offer phrases; a match gets the new label `Job Duck/Interviews`, loses
+  assessment, scheduling and offer mail; a match gets the new label `Job Duck/Interviews`, loses
   `Job Duck/Applications` and stays in the Inbox, and a thread with that label is never archived by a later run.
-  The subject is never the signal. `KEEP_ACTION_MAIL_IN_INBOX` now affects only verification-code mail. `preview`
+  The subject is never the signal. The check is fail-safe: any body sentence about an interview, call, chat, screen,
+  onsite, round, next step or your availability that is aimed at you keeps the thread in the Inbox, and only
+  applicant-pool, employer-conditional ("if selected", "if your experience matches, we will reach out"), vague
+  future-contact and process-description boilerplate is archived; a plain confirmation kept in the Inbox is the
+  accepted cost. `KEEP_ACTION_MAIL_IN_INBOX` now affects only verification-code mail. `preview`
   logs interview mail on its own `INTERVIEW` line, and `previewReaudit` / `reauditApplications` move interview mail
   from Applications to Interviews and back to the Inbox. **Existing users: after updating, run
   `reauditApplications` once (again until it says `complete`) to restore interview invites that earlier versions
   archived.** New fixtures cover invites with neutral subjects, direct offers after any condition ("if you have time
   this week, we would like to schedule a phone interview"), availability questions, being moved forward to the
-  interview stage, a confirmed interview time, future-contact promises ("applicants who move forward will be
-  contacted", "if your experience matches, we will reach out") and an interview subject over a plain confirmation
-  (all stay `job`), and a rejection after an interview; `bun test` runs
-  `test/interview.test.ts` against fake threads.
+  interview stage, a confirmed or upcoming interview, a hiring manager who would like to speak with you, and a promise
+  to schedule your own interview (all `interview`); applicant-pool, if-selected and process boilerplate, a
+  conditional promise ("if your experience matches, we will reach out") and an interview subject over a plain
+  confirmation (all `job`); and a rejection after an interview. `bun test` runs `test/interview.test.ts` against
+  fake threads.
 
 - **v5.1**: A rejection whose only signal is one explicit decision sentence ("we have decided not to move forward
   with your application") is now recognized: the rejection threshold drops from 3 to 2, and an explicit decision

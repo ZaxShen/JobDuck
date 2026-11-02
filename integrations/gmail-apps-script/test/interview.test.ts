@@ -208,6 +208,43 @@ describe('isInterview reads invites in the body', () => {
   ])('a direct offer is interview mail whatever condition precedes it: %s', (sentence) => {
     expect(api.isInterview(sentence)).toBe(true);
   });
+
+  test.each([
+    'Our recruiting team will reach out to schedule your onsite interview.',
+    'Our recruiter will contact you to schedule your interview.',
+    'Our coordinator will reach out shortly to schedule your phone screen.',
+    'We will be in touch to schedule your final round.',
+    'You will receive an email from GoodTime to schedule your interview.',
+  ])('an unconditional promise to schedule your own interview is interview mail (F35-7): %s', (sentence) => {
+    expect(api.isInterview(sentence)).toBe(true);
+  });
+
+  test.each([
+    'The hiring manager would like to speak with you.',
+    'Jane would love to chat with you about the role.',
+    'Your interview with Acme has been scheduled for Monday.',
+    'Here are the details for your upcoming interview.',
+    'We would like to invite you to an onsite.',
+    'We would like to move forward with your candidacy.',
+    'Let me know when you are free for a quick chat.',
+    'Can you do a call on Tuesday at 2pm?',
+    'Looking forward to speaking with you on Tuesday.',
+  ])('a sentence about a call or interview aimed at you is interview mail (F35-8): %s', (sentence) => {
+    expect(api.isInterview(sentence)).toBe(true);
+  });
+
+  test.each([
+    'Our interview process consists of a phone screen, a technical round and an onsite.',
+    'The hiring process typically includes a recruiter call and two interviews.',
+    'We will review your application and be in touch about next steps.',
+    'In the meantime, you can learn more about our interview process on our careers page.',
+    'If we would like to move forward with your application, we will contact you to set up an interview.',
+    'Thank you for your interest; we will be in touch if we would like to schedule an interview.',
+    'If the hiring manager would like to speak with you, we will reach out.',
+    'If your skills match, we will call you.',
+  ])('process descriptions and review boilerplate are not interview mail: %s', (sentence) => {
+    expect(api.isInterview(sentence)).toBe(false);
+  });
 });
 
 describe('reaudit restores archived interview mail', () => {

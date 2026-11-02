@@ -622,7 +622,7 @@ var JOB_BODY = /(thank(s| you)[^.]{0,60}for (applying|your application|submittin
 var VERIFICATION_SUBJECT = /(security code|verification code|verify your (email|account)|one[- ]time (code|pass)|confirm your email)/i;
 
 // Interview, assessment, scheduling and offer mail, read from the body only (the subject is never a signal).
-// [reason, pattern] — any match in a sentence that is not hypothetical makes the email interview mail.
+// [reason, pattern] — any match in a sentence that is not boilerplate makes the email interview mail.
 var INTERVIEW_SIGNALS = [
   ['interview invite', /\binvit(e|ed|es|ing|ation)\b[^.]{0,60}\binterview/i],
   ['interview invite', /\binterview (invitation|invite|request|kick-?off|confirmation|details|slot|loop)\b/i],
@@ -642,13 +642,16 @@ var INTERVIEW_SIGNALS = [
 var ASSESSMENT_WORD = /\b(assessment|coding (challenge|exercise|test|assignment)|take[- ]home|hackerrank|codesignal|codility|coderpad|online test|skills test|work sample)\b/i;
 var ASSESSMENT_ACTION = /\b(complete|completing|take|finish|start|begin|submit|attempt|access|link|within \d+|due|deadline|invit\w*)\b/i;
 var INTERVIEW_LINK = /https?:\/\/[^\s<>"')\]]*\b(calendly\.com|goodtime\.io|hackerrank\.com|codesignal\.com|codility\.com|coderpad\.io|testgorilla\.com)\b/i;
-// Each sentence is judged by what the employer commits to, not by the condition in front of it.
+// Fail-safe: a real invite must never be archived, so a sentence about a call, chat or interview aimed at the candidate
+// is interview mail, and only applicant-pool, employer-conditional, review or process boilerplate is set aside.
 // A direct offer to the candidate is an invite whatever condition precedes it ("If you have time this week, we would
-// like to schedule a phone interview", "Would you be available for a call?", "Please share a few times that work").
+// like to schedule a phone interview", "The hiring manager would like to speak with you").
 var DIRECT_OFFERS = [
   /\b(we|i)((['’]d| would) (like|love)( for you)?|(['’]re|['’]m| are| am)( very| so)? (happy|pleased|excited|delighted|thrilled|keen|eager|glad)| (want|wish|hope)) to( \w+)?? ((schedule|set up|arrange|book|invite you|have you|move you|advance you|bring you)\b[^.?!]{0,40}?\b(interview|call|chat|meeting|conversation|screen(ing)?|on-?site|time|slot|discussion|assessment|round|next (step|round|stage))s?\b|(meet|chat|speak|talk|connect) (with )?you\b)/i,
+  /\b((['’]d| would) (like|love)|wants?|hopes?|(is|are) (keen|eager|excited|happy)) to (meet|chat|speak|talk|connect|catch up) (with )?you\b|\blook(ing)? forward to (meeting|chatting|speaking|talking|connecting|catching up) (with )?you\b/i,
+  /\b(like|love|happy|pleased|excited|delighted|thrilled|glad|want|wish|hope|decided|chosen|elected|going) to move (forward|ahead) with (you|your (candidacy|application|profile))\b|\b(will be|are|['’]re) (moving|going to move) (forward|ahead) with (you|your (candidacy|application|profile))\b/i,
   /\b(would|will|are|were) you (be )?(available|free|open)( for (a |an |the )?([\w-]+ ){0,3}?(interview|call|chat|meeting|conversation|screen(ing)?|on-?site|discussion|zoom|video)s?\b| to (talk|chat|speak|meet|connect|interview|jump on|hop on)\b| (this|next|on|tomorrow|today|at|between|sometime|any ?time|later)\b)/i,
-  /\bwhen (are|would|will) you (be )?(available|free)\b|\bdo you have (some |any )?(time|availability) (this|next|on|for|to|in)\b/i,
+  /\bwhen (are|would|will) you (be )?(available|free)\b|\bwhen you(['’]re| are| would be| will be) (available|free)\b|\bdo you have (some |any )?(time|availability) (this|next|on|for|to|in)\b/i,
   /\b(times?|slots?|days?|dates?|windows?)( that| which)? (work|works|suit|suits|fit|fits)( best)? (for|with) you\b|\bwhat (times?|days?|dates?) (work|works|would work|suit)\b/i,
   /\bplease (\w+ )?(share|send|provide|reply with|let (me|us) know|tell (me|us))\b[^.?!]{0,30}?\b(availability|(a|some|few|preferred|convenient|good|suitable|available) (times?|slots?|dates?|days?))\b/i,
   /\bplease (\w+ )?(book|schedule|select|pick|choose|grab)\b[^.?!]{0,30}?\b(interview|call|chat|meeting|screen|time|slot)s?\b(?![ -]?zones?\b)/i,
@@ -656,45 +659,64 @@ var DIRECT_OFFERS = [
 ];
 // A plain statement that the candidate has advanced, unless a condition comes before it.
 var ADVANCED = /\b(you(['’]ve| have) been (selected|chosen|shortlisted|invited|advanced|moved)|we(['’]re| are|['’]ve| have)( \w+)? (moving|advancing|moved|advanced|inviting|selected|shortlisted) you)\b[^.?!]{0,40}?\b(interview|next (step|round|stage)|round|on-?site|screen)/i;
-// A promise of future contact ("we will reach out", "you will receive an email", "candidates who move forward will be
-// contacted") or review boilerplate is not an invite.
+// Any other sentence about the candidate's interview, a call or a chat ("Here are the details for your upcoming
+// interview", "Can you do a call on Tuesday?") is interview mail unless it is boilerplate.
+var INTERVIEW_TOPIC = /\b(interview\w*|calls?|chat|chatting|speak|speaking|talk|talking|meet|meeting|screen|screening|on-?site|rounds?|next steps?|availability)\b/i;
+var AIMED_AT_YOU = /\b(you|your|yours)\b/i;
+
+// Boilerplate, the only thing the archive may swallow: the applicant pool ("Applicants who move forward to the
+// interview stage will be contacted"),
+var APPLICANT_POOL = /\b(candidates|applicants|those)( who| that| whose| moving| advancing| progressing| selected| shortlisted| chosen)\b|\b(selected|qualified|shortlisted|successful|top) (candidates|applicants)\b/i;
+// a step the employer only takes once it picks the candidate ("If your experience matches, we will reach out to
+// schedule an interview", "If selected, you will be invited to an onsite interview"),
+var EMPLOYER_CONDITION = /\b(if|when|once|should|in case|in the event( that)?|provided( that)?|assuming)\s+((we|our (\w+ )?team|the (\w+ )?team|the hiring manager) (decide|decides|choose|chooses|determine|determines|feel|feels|think|thinks|believe|believes|find|finds|see|sees|are interested|is interested|would like|wish|wishes|want|wants)\b|there(['’]s| is| are)\b|(you(['’]re| are| were| have been| get| are being) )?(selected|chosen|shortlisted|qualified|successful)\b|you (meet|match|fit|move forward|advance|progress|pass)\b|you(['’]re| are) (a )?(good |strong )?(match|fit)\b|(it['’]?s |this is )?a (good |strong )?(match|fit)\b)|\b(if|when|once|should)\b[^.?!]{0,60}?\byour (\w+ )?(experience|background|qualifications?|skills?|profile|application|resume|candidacy)( \w+){0,2}? (match|matches|align|aligns|fit|fits|meet|meets|is a (good |strong )?(fit|match)|are a (good |strong )?(fit|match))\b/i;
+var EMPLOYER_STEP = /\b(will|['’]ll|would|may|might|can|could)\b[^.?!]{0,60}?\b(schedul\w*|invit\w*|arrang\w*|set up|book|ask(ed)?|move|advance|call|reach out|contact|be in touch|get in touch|follow up|let you know|notify|receive)\b/i;
+// review or possibility boilerplate ("We will review your application", "You may be asked to complete an assessment"),
+var REVIEW_ONLY = /\b(may|might|could) (also )?(be )?(asked|invited|required|contacted|requested)\b|\b(will|we'?ll) (review|be reviewing|carefully review)\b|\bcurrently reviewing\b|\bunder review\b/i;
+// a description of the process ("Our interview process consists of a phone screen and an onsite"),
+var PROCESS_DESCRIPTION = /\b(about|on) (our|the) (interview|hiring|recruiting|selection) process\b|\b(our|the|this|a typical) (interview|hiring|recruiting|selection) process\b[^.?!]{0,30}?\b(consists?|includes?|involves?|comprises?|is made up|typically|usually|generally|will (include|consist|involve))\b|\b(typically|usually|generally) (consists?|includes?|involves?)\b/i;
+// and a vague promise of future contact ("You will hear from us about the interview stage soon") that does not commit
+// to scheduling the candidate's own interview ("Our recruiter will contact you to schedule your interview" is kept).
 var FUTURE_CONTACT = /\b(will|['’]ll|would|shall|may|might|can)( \w+){0,2}? (reach out|be reaching out|contact you|be contacted|be in touch|get in touch|hear from us|hear back|be notified|notify you|let you know|follow up|get back to you|receive (an? |further |more |another )?(e-?mail|message|call|invitation|invite|notification|update|follow-up))\b|\bhear from us\b|\bbe in touch\b/i;
-var MAYBE_SENTENCE = /\b(may|might|could) (also )?(be )?(asked|invited|required|contacted|requested)\b|\b(selected|qualified|shortlisted|successful|top) (candidates|applicants)\b|\b(candidates|applicants)( who| that| moving| advancing| progressing| selected| shortlisted| chosen)\b|\b(will|we'?ll) (review|be reviewing|carefully review)\b|\bcurrently reviewing\b|\bunder review\b/i;
-// A step the employer only takes once it picks the candidate ("If your experience matches, we will schedule an
-// interview", "If selected, you will be invited") is not an invite either.
-var EMPLOYER_CONDITION = /\b(if|when|once|should|in case|in the event( that)?|provided( that)?|assuming)\s+(we\b|our\b|the (team|hiring|recruit)|there(['’]s| is| are)\b|your (\w+ )?(experience|background|qualifications?|skills?|profile|application|resume|candidacy)\b|(you(['’]re| are| were| have been| get| are being) )?(selected|chosen|shortlisted|qualified|successful)\b|you (meet|match|fit|move forward|advance|progress|pass)\b|you(['’]re| are) (a )?(good |strong )?(match|fit)\b|(it['’]?s |this is )?a (good |strong )?(match|fit)\b)/i;
-var EMPLOYER_STEP = /\b(will|['’]ll|would|may|might|can|could)\b[^.?!]{0,60}?\b(schedul\w*|invit\w*|arrang\w*|set up|book|ask(ed)?|move|advance)\b/i;
+var SCHEDULES_YOURS = /\b(schedul\w*|book\w*|set(ting)? up|arrang\w*|coordinat\w*|confirm\w*) (your|the|an?)( [\w-]+){0,2}? (interview|call|chat|screen(ing)?|on-?site|round|meeting|conversation)s?\b/i;
+
+// "...we will be in touch if we would like to schedule an interview": the offer is itself the employer's condition.
+var OFFER_AS_CONDITION = /\b(if|when|once|should|unless|whether|in case)(\s+[^\s,;:]+){0,3}\s*$/i;
 
 function directOffer_(sentence) {
-  if (DIRECT_OFFERS.some(function (re) { return re.test(sentence); })) return 'direct offer';
+  var direct = DIRECT_OFFERS.some(function (re) {
+    var m = re.exec(sentence);
+    return m && !OFFER_AS_CONDITION.test(sentence.slice(0, m.index));
+  });
+  if (direct) return 'direct offer';
   var m = ADVANCED.exec(sentence);
   if (m && !CONDITIONAL.test(sentence.slice(0, m.index))) return 'moved forward';
   return null;
 }
 
-function promiseOnly_(sentence) {
-  return FUTURE_CONTACT.test(sentence) || MAYBE_SENTENCE.test(sentence) ||
-    (EMPLOYER_CONDITION.test(sentence) && EMPLOYER_STEP.test(sentence));
+function boilerplate_(sentence) {
+  return APPLICANT_POOL.test(sentence) || REVIEW_ONLY.test(sentence) || PROCESS_DESCRIPTION.test(sentence) ||
+    (EMPLOYER_CONDITION.test(sentence) && EMPLOYER_STEP.test(sentence)) ||
+    (FUTURE_CONTACT.test(sentence) && !SCHEDULES_YOURS.test(sentence));
 }
 
 /** Interview score over the body only: { interview, reasons[], evidence } */
 function interviewScore(body) {
   var why = [], evidence = null;
+  function add(reason, sentence) {
+    if (why.indexOf(reason) >= 0) return;
+    why.push(reason);
+    if (!evidence) evidence = sentence;
+  }
   splitSentences(body).forEach(function (sentence) {
     var offer = directOffer_(sentence);
-    if (!offer && promiseOnly_(sentence)) return;
-    if (offer && why.indexOf(offer) < 0) {
-      why.push(offer);
-      if (!evidence) evidence = sentence;
-    }
-    INTERVIEW_SIGNALS.forEach(function (sig) {
-      if (why.indexOf(sig[0]) >= 0 || !sig[1].test(sentence)) return;
-      why.push(sig[0]);
-      if (!evidence) evidence = sentence;
-    });
-    if (why.indexOf('assessment') < 0 && ASSESSMENT_WORD.test(sentence) && ASSESSMENT_ACTION.test(sentence)) {
-      why.push('assessment');
-      if (!evidence) evidence = sentence;
+    if (offer) add(offer, sentence);
+    else if (boilerplate_(sentence)) return;
+    var before = why.length;
+    INTERVIEW_SIGNALS.forEach(function (sig) { if (sig[1].test(sentence)) add(sig[0], sentence); });
+    if (ASSESSMENT_WORD.test(sentence) && ASSESSMENT_ACTION.test(sentence)) add('assessment', sentence);
+    if (!offer && why.length === before && INTERVIEW_TOPIC.test(sentence) && AIMED_AT_YOU.test(sentence)) {
+      add('about your interview', sentence);
     }
   });
   var link = String(body || '').match(INTERVIEW_LINK);
