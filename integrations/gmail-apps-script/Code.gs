@@ -1,15 +1,19 @@
 /**
- * Job Duck — Gmail Rejection Sync v5.1
- * Script v5.1 — serve-only: rejections are queued in the script and served to `jobduck sync` by the script deployed
+ * Job Duck — Gmail Rejection Sync v5.2
+ * Script v5.2 — serve-only: rejections are queued in the script and served to `jobduck sync` by the script deployed
  * as a web app. Nothing is pushed anywhere.
  *
- * Moves job-application mail out of the Inbox into the nested label "Job Duck/Applications" and rejections
- * into "Job Duck/Rejections". Each rejection becomes an outcome (header fields and a job link/ID only; the email
- * body never leaves Gmail) queued for the web app.
+ * Archives by allowlist, reading message bodies only. A thread whose every message is a plain application
+ * confirmation (only acknowledgement sentences, no scheduling word, no personal note) gets "Job Duck/Applications"
+ * and is archived. A rejection gets "Job Duck/Rejections" and is archived only when it is the latest job message and
+ * every other message is a plain confirmation. Everything else gets "Job Duck/Interviews" and stays in the Inbox; a
+ * thread with that label is never archived. Each rejection that stands becomes an outcome (header fields and a job
+ * link/ID only; the email body never leaves Gmail) queued for the web app.
  *
  * Scope: the script only ever searches the Inbox (in:inbox), plus the "Job Duck/Applications" label when you run
- * previewReaudit/reauditApplications. Threads already labeled "Job Duck/Rejections" are never re-read or re-labeled;
- * a thread that is back in the Inbox because a new message arrived is re-archived only.
+ * previewReaudit/reauditApplications. A "Job Duck/Rejections" thread that is back in the Inbox because a new message
+ * arrived is re-read: if the rejection still stands it is re-archived, otherwise it moves to "Job Duck/Interviews",
+ * stays in the Inbox and its still-pending outcome is dropped.
  *
  * Setup:
  *   1. Run generateSyncToken and copy the logged token.
@@ -19,13 +23,15 @@
  * Optional properties: PROTECTED_LABELS and EXCLUDED_DOMAINS (comma-separated), KEEP_ACTION_MAIL_IN_INBOX=true.
  */
 
-var SCRIPT_VERSION = '5.1';
+var SCRIPT_VERSION = '5.2';
 
 var LABEL_PARENT = 'Job Duck';
 
 var CONFIG = {
   JOB_LABEL: LABEL_PARENT + '/Applications',
   DENY_LABEL: LABEL_PARENT + '/Rejections',
+  // Every job thread that is not plain application mail or a standing rejection; threads carrying it are never archived.
+  INTERVIEW_LABEL: LABEL_PARENT + '/Interviews',
   // Labels from earlier versions, renamed by install() so existing threads keep their history.
   LEGACY_JOB_LABELS: ['Job Applications', 'JD - Job Applications'],
   LEGACY_DENY_LABELS: ['Deny Letters', 'JD - Deny Letters'],
@@ -36,7 +42,7 @@ var CONFIG = {
   // Senders from these domains are never sorted, e.g. ['lawfirm.example.com'].
   // Also read from the script property EXCLUDED_DOMAINS (comma-separated).
   EXCLUDED_DOMAINS: [],
-  // Interview, assessment and verification-code emails are labeled but stay in the Inbox when true.
+  // Verification and security-code emails are labeled but stay in the Inbox when true. Interview mail always stays.
   // Also read from the script property KEEP_ACTION_MAIL_IN_INBOX ('true').
   KEEP_ACTION_MAIL_IN_INBOX: false,
   // Only rejections on/after this date are queued for jobduck sync.
@@ -73,10 +79,10 @@ function uninstall() {
 }
 
 function run() {
-  var stats = { job: 0, deny: 0, kept: 0, skipped: 0 };
+  var stats = { job: 0, deny: 0, interview: 0, kept: 0, skipped: 0 };
   var threads = GmailApp.search(CONFIG.RUN_QUERY, 0, CONFIG.MAX_THREADS_PER_RUN);
   threads.forEach(function (t) { tally_(stats, processThread_(t)); });
-  if (stats.job || stats.deny) Logger.log(JSON.stringify(stats));
+  if (stats.job || stats.deny || stats.interview) Logger.log(JSON.stringify(stats));
 }
 
 function checkConnection() {
@@ -93,7 +99,7 @@ function backfill() {
   var props = PropertiesService.getUserProperties();
   var start = Number(props.getProperty('backfillOffset') || 0);
   var began = Date.now();
-  var stats = { job: 0, deny: 0, kept: 0, skipped: 0 };
+  var stats = { job: 0, deny: 0, interview: 0, kept: 0, skipped: 0 };
   while (Date.now() - began < CONFIG.TIME_BUDGET_MS) {
     var threads = GmailApp.search('in:inbox', start, 100);
     if (!threads.length) {
@@ -119,44 +125,89 @@ function processThread_(thread) {
   var userLabels = thread.getLabels().map(function (l) { return l.getName(); });
   if (userLabels.some(function (n) { return rules.protectedLabels.indexOf(n) >= 0; })) return 'skipped';
   var hasJob = userLabels.indexOf(CONFIG.JOB_LABEL) >= 0;
-  if (userLabels.indexOf(CONFIG.DENY_LABEL) >= 0) {
-    thread.moveToArchive();
-    return 'skipped';
-  }
-
+  var hasDeny = userLabels.indexOf(CONFIG.DENY_LABEL) >= 0;
+  var hasInterview = userLabels.indexOf(CONFIG.INTERVIEW_LABEL) >= 0;
   var me = Session.getActiveUser().getEmail().toLowerCase();
   var messages = thread.getMessages();
-  var jobMsgs = [], denyMsgs = [];
+  var d = classifyThread_(messages, rules, me);
+  if (d.action === 'skipped') return 'skipped';
 
+  if (hasDeny && d.action !== 'interview') {
+    if (!hasInterview) thread.moveToArchive();
+    return 'skipped';
+  }
+  if (d.action === 'deny') {
+    thread.addLabel(L.deny);
+    if (hasJob) thread.removeLabel(L.job);
+    if (d.message.getDate() >= CONFIG.SYNC_SINCE) recordRejection_(d.message);
+    if (!hasInterview) thread.moveToArchive();
+    return 'deny';
+  }
+  if (d.action === 'interview' || hasInterview) {
+    if (!hasInterview) thread.addLabel(L.interview);
+    if (hasJob) thread.removeLabel(L.job);
+    if (hasDeny) {
+      thread.removeLabel(L.deny);
+      unqueueOutcomes_(messages);
+      thread.moveToInbox();
+    }
+    return 'interview';
+  }
+
+  if (!hasJob) thread.addLabel(L.job);
+  if (rules.keepActionMail && VERIFICATION_SUBJECT.test(messages[messages.length - 1].getSubject())) return 'kept';
+  thread.moveToArchive();
+  return 'job';
+}
+
+/** The allowlist decision for a thread, read from every message:
+ *  { action: 'skipped' | 'deny' | 'interview' | 'job', reasons[], evidence, message }.
+ *  'deny' only when the rejection is the latest job message, stands on its own and every other message is a plain
+ *  application confirmation; 'job' only when every message is one; anything else is 'interview' (kept in the Inbox). */
+function classifyThread_(messages, rules, me) {
+  var notes = [];
   for (var i = 0; i < messages.length; i++) {
     var m = messages[i];
     var from = m.getFrom();
     var addr = ((from.match(/<([^>]+)>/) || [null, from])[1] || '').trim().toLowerCase();
-    if (addr === me) return 'skipped';
+    if (addr === me) return { action: 'skipped', reasons: ['your own message'] };
     var domain = addr.split('@')[1] || '';
-    if (rules.excludedDomains.some(function (d) { return domain === d || domain.endsWith('.' + d); })) return 'skipped';
-
+    if (rules.excludedDomains.some(function (x) { return domain === x || domain.endsWith('.' + x); })) {
+      return { action: 'skipped', reasons: ['excluded domain'] };
+    }
     var subject = m.getSubject(), body = m.getPlainBody();
-    if (!isJobEmail(from, subject, body)) continue;
-    jobMsgs.push(m);
-    if (isRejection(subject, body)) denyMsgs.push(m);
+    var job = isJobEmail(from, subject, body);
+    var deny = job && isRejection(subject, body);
+    notes.push({ message: m, subject: subject, body: body, job: job, deny: deny, plain: job && !deny && plainConfirmation_(subject, body) });
   }
-  if (!jobMsgs.length) return 'skipped';
+  var jobNotes = notes.filter(function (n) { return n.job; });
+  if (!jobNotes.length) return { action: 'skipped', reasons: ['not job mail'] };
+  var latest = jobNotes[jobNotes.length - 1];
+  var others = notes.filter(function (n) { return n !== latest; });
 
-  var last = messages[messages.length - 1];
-  if (denyMsgs.length) {
-    thread.addLabel(L.deny);
-    if (hasJob) thread.removeLabel(L.job);
-    var latestDeny = denyMsgs[denyMsgs.length - 1];
-    if (latestDeny.getDate() >= CONFIG.SYNC_SINCE) recordRejection_(latestDeny);
-    thread.moveToArchive();
-    return 'deny';
+  if (latest.deny) {
+    var ds = denyScore(latest.subject, latest.body);
+    var extra = others.filter(function (n) { return !n.plain; })[0];
+    if (rejectionStands_(latest.body) && !extra) {
+      return { action: 'deny', reasons: ds.reasons, evidence: ds.evidence, score: ds.score, message: latest.message };
+    }
+    if (extra) return keptFor_(extra, 'message besides the rejection');
+    return { action: 'interview', reasons: ['rejection offers a conversation'], evidence: ds.evidence, message: latest.message };
   }
+  var notPlain = notes.filter(function (n) { return !n.plain; })[0];
+  if (notPlain) return keptFor_(notPlain, notPlain.deny ? 'rejection followed by another message' : null);
+  return { action: 'job', reasons: ['plain application confirmation'], message: latest.message };
+}
 
-  if (!hasJob) thread.addLabel(L.job);
-  if (rules.keepActionMail && ACTION_SUBJECT.test(last.getSubject())) return 'kept';
-  thread.moveToArchive();
-  return 'job';
+function keptFor_(note, why) {
+  var iv = interviewScore(note.body);
+  var word = String(note.body || '').match(SCHEDULING_WORDS);
+  var reasons = why ? [why] : [];
+  if (iv.interview) reasons = reasons.concat(iv.reasons);
+  else if (word) reasons.push('scheduling word: ' + word[0]);
+  else if (!why) reasons.push('not a plain application confirmation');
+  var odd = iv.evidence || word ? null : unacknowledged_(note.body, VERIFICATION_SUBJECT.test(note.subject));
+  return { action: 'interview', reasons: reasons, evidence: iv.evidence || odd || note.subject, message: note.message };
 }
 
 function rules_() {
@@ -173,7 +224,7 @@ function rules_() {
 }
 
 function labels_() {
-  return { job: label_(CONFIG.JOB_LABEL), deny: label_(CONFIG.DENY_LABEL) };
+  return { job: label_(CONFIG.JOB_LABEL), deny: label_(CONFIG.DENY_LABEL), interview: label_(CONFIG.INTERVIEW_LABEL) };
 }
 
 /** Gmail creates the "Job Duck" parent on its own when a nested name is created or a label is renamed into it;
@@ -236,26 +287,31 @@ function clearPushQueue_() {
 function tally_(stats, r) { stats[r] = (stats[r] || 0) + 1; }
 
 function preview() {
-  var jobs = 0, denies = 0, start = 0, began = Date.now();
+  var jobs = 0, denies = 0, interviews = 0, start = 0, began = Date.now();
+  var rules = rules_();
+  var me = Session.getActiveUser().getEmail().toLowerCase();
   while (Date.now() - began < 4 * 60 * 1000) {
     var threads = GmailApp.search('in:inbox', start, 100);
     if (!threads.length) break;
     start += threads.length;
     threads.forEach(function (t) {
-      var msgs = t.getMessages(), last = msgs[msgs.length - 1];
-      var subj = last.getSubject(), body = last.getPlainBody();
-      var j = jobScore(last.getFrom(), subj, body);
-      if (j.score < JOB_THRESHOLD) return;
-      var d = denyScore(subj, body);
-      if (d.score >= DENY_THRESHOLD && d.strong) {
+      var d = classifyThread_(t.getMessages(), rules, me);
+      if (d.action === 'skipped') return;
+      var line = d.message.getDate().toISOString().slice(0, 10) + ' | ' + d.message.getSubject() + '  <=  ' +
+        d.reasons.join(' ') + ' | "' + String(d.evidence || '').slice(0, 90) + '"';
+      if (d.action === 'deny') {
         denies++;
-        Logger.log('DENY [' + d.score + '] ' + last.getDate().toISOString().slice(0, 10) + ' | ' + subj + '  <=  ' + d.reasons.join(' ') + ' | "' + String(d.evidence || '').slice(0, 90) + '"');
-        Logger.log('  would queue: ' + JSON.stringify(buildOutcome_(last)));
+        Logger.log('DENY [' + d.score + '] ' + line);
+        Logger.log('  would queue: ' + JSON.stringify(buildOutcome_(d.message)));
+      } else if (d.action === 'interview') {
+        interviews++;
+        Logger.log('INTERVIEW ' + line);
+      } else {
+        jobs++;
       }
-      else jobs++;
     });
   }
-  Logger.log('Scanned ' + start + ' inbox threads: ' + denies + ' rejections, ' + jobs + ' other job emails.');
+  Logger.log('Scanned ' + start + ' inbox threads: ' + denies + ' rejections, ' + interviews + ' interview emails, ' + jobs + ' other job emails.');
 }
 
 function previewReaudit() { reaudit_(false); }
@@ -270,8 +326,9 @@ function resetReaudit() {
 
 function reauditCursorKey_(apply) { return apply ? 'reauditOffset' : 'previewReauditOffset'; }
 
-/** Re-classifies the latest message of every "Job Duck/Applications" thread, newest first, within the time budget.
- *  apply=false only logs; apply=true relabels rejections (and queues them) and drops non-application mail. */
+/** Re-classifies every "Job Duck/Applications" thread, newest first, within the time budget, with the same thread
+ *  rules as run(). apply=false only logs; apply=true relabels rejections (and queues them), moves every thread that
+ *  is not plain application mail to "Job Duck/Interviews" and back to the Inbox, and drops non-application mail. */
 function reaudit_(apply) {
   var name = apply ? 'reauditApplications' : 'previewReaudit';
   var props = PropertiesService.getUserProperties();
@@ -281,7 +338,7 @@ function reaudit_(apply) {
   var L = apply ? labels_() : null;
   var rules = rules_();
   var me = Session.getActiveUser().getEmail().toLowerCase();
-  var stats = { rejection: 0, notJob: 0, kept: 0 };
+  var stats = { rejection: 0, interview: 0, notJob: 0, kept: 0 };
   while (Date.now() - began < CONFIG.TIME_BUDGET_MS) {
     var threads = GmailApp.search(APPLICATIONS_QUERY, start, REAUDIT_PAGE);
     if (!threads.length) {
@@ -300,6 +357,10 @@ function reaudit_(apply) {
         t.addLabel(L.deny);
         t.removeLabel(L.job);
         recordRejection_(d.message);
+      } else if (d.action === 'interview') {
+        t.addLabel(L.interview);
+        t.removeLabel(L.job);
+        t.moveToInbox();
       } else {
         t.removeLabel(L.job);
       }
@@ -322,23 +383,32 @@ function reauditDecision_(thread, rules, me) {
   var subject = last.getSubject(), body = last.getPlainBody();
   var info = { message: last, subject: subject, date: last.getDate().toISOString().slice(0, 10) };
   var j = jobScore(from, subject, body);
-  if (j.score < JOB_THRESHOLD) {
-    if (!j.negative) return kept;
+  if (j.score < JOB_THRESHOLD && j.negative) {
     info.action = 'notJob';
     info.reasons = j.reasons;
     return info;
   }
-  var d = denyScore(subject, body);
-  if (d.score >= DENY_THRESHOLD && d.strong) {
-    info.action = 'rejection';
-    info.reasons = d.reasons;
-    return info;
-  }
-  return kept;
+  var d = classifyThread_(messages, rules, me);
+  if (d.action !== 'deny' && d.action !== 'interview') return kept;
+  info.action = d.action === 'deny' ? 'rejection' : 'interview';
+  info.reasons = d.reasons;
+  if (d.action === 'deny') info.message = d.message;
+  return info;
 }
 
 function recordRejection_(message) {
   queueOutcome_(buildOutcome_(message));
+}
+
+/** Drops the still-pending outcomes of a thread whose rejection no longer stands. */
+function unqueueOutcomes_(messages) {
+  var store = outcomeStore_();
+  messages.forEach(function (m) { store.deleteProperty(OUTCOME_PREFIX + outcomeId_(m)); });
+}
+
+function outcomeId_(message) {
+  var messageId = message.getHeader('Message-ID');
+  return messageId && messageId.length <= MAX_FIELD_LENGTH ? messageId : message.getId();
 }
 
 function buildOutcome_(message) {
@@ -452,10 +522,9 @@ function buildPayload_(message) {
   var subject = message.getSubject() || '';
   var head = String(message.getPlainBody() || '').slice(0, 3000);
   var sender = parseSender_(message.getFrom());
-  var messageId = message.getHeader('Message-ID');
   var jobUrl = findJobUrl_(head);
   var payload = {
-    messageId: messageId && messageId.length <= MAX_FIELD_LENGTH ? messageId : message.getId(),
+    messageId: outcomeId_(message),
     receivedAt: message.getDate().toISOString(),
     senderEmail: clip_(sender.email),
     senderName: clip_(sender.name),
@@ -589,8 +658,419 @@ var JOB_SENDER_LOCAL = /^(no-?reply[-_.]?(recruiting|careers)?|careers?|jobs?|re
 var JOB_SUBJECT = /(thank(s| you)( so much)? for (applying|your (application|interest|submission))|thanks for applying|your application|application (update|status|received|confirmation|submitted|to )|we('ve| have) received your application|candidacy|following up on your .*application|update (on|regarding|about) (your|the) .*(application|role|position)|^update from \w|application confirmation|interest in (career|joining|working))/i;
 var JOB_BODY = /(thank(s| you)[^.]{0,60}for (applying|your application|submitting your application|your interest in)|(received|reviewed|reviewing) your application|your application (for|to|as)\b|apply(ing)? (for|to) the [^.]{3,120} (role|position)|for the [^.]{3,120} (role|position)\b)/i;
 
-// Kept in the inbox (still labeled) because they need action now.
-var ACTION_SUBJECT = /(security code|verification code|verify your (email|account)|one[- ]time (code|pass)|confirm your email|interview|schedul|availability|assessment|coding (challenge|exercise)|hackerrank|codesignal|take[- ]home|next steps|offer letter|background check)/i;
+// Kept in the inbox (still labeled) when KEEP_ACTION_MAIL_IN_INBOX is set, because a code expires.
+var VERIFICATION_SUBJECT = /(security code|verification code|verify your (email|account)|one[- ]time (code|pass)|confirm your email)/i;
+
+// Interview, assessment, scheduling and offer mail, read from the body only (the subject is never a signal).
+// [reason, pattern] — any match in a sentence that is not boilerplate makes the email interview mail.
+var INTERVIEW_SIGNALS = [
+  ['interview invite', /\binvit(e|ed|es|ing|ation)\b[^.]{0,60}\binterview/i],
+  ['interview invite', /\binterview (invitation|invite|request|kick-?off|confirmation|details|slot|loop)\b/i],
+  ['interview kickoff', /\bkick(s|ing|ed)?[ -]?off (the|your|our) (interview|hiring|recruiting) process\b/i],
+  ['schedule interview', /\b(schedul\w*|book\w*|set(ting)? up|arrang\w*|coordinat\w*|confirm\w*)\b[^.]{0,40}\b(interview|phone screen|screening call|technical screen|on-?site)\b/i],
+  ['book a time', /\b(schedule|book|find|pick|choose|select|grab|set up) (a |an |some )?([\w-]+ ){0,2}?(time|slot|call|chat|meeting|conversation)\b(?![ -]?zones?\b)/i],
+  ['availability', /\b(share|send|provide|let (me|us) know|reply with|what is|what's) (me |us )?(your |some )?(availability|available times|times that work)\b|\byour availability\b/i],
+  ['screen', /\b(phone|technical|recruiter|initial|intro(ductory)?|video|virtual|hiring manager)[ -](screen|screening|interview|call)s?\b/i],
+  ['next round', /\bnext (round|stage)\b|\b(final|second|third)[ -]round\b/i],
+  ['onsite', /\b(virtual )?on-?site (interview|visit|round|loop|day)s?\b|\bvirtual on-?site\b|\bsuper ?day\b/i],
+  ['offer', /\boffer letter\b|\b(pleased|happy|excited|delighted|thrilled) to (extend (you )?(an? |the )?(formal |verbal |written )?offer|offer you)\b|\b(verbal|formal|written) offer\b/i],
+  ['questionnaire', /\bpre-?interview (questionnaire|survey|form)\b|\b(fill out|fill in|complete|answer|submit)\b[^.]{0,30}\bquestionnaire\b/i],
+  ['background check', /\b(complete|authorize|consent to|start|initiate)\b[^.]{0,30}\bbackground (check|screening)\b/i],
+  ['interview stage', /\b(mov(e|ed|ing)|advanc\w*|progress\w*|proceed\w*|invit\w*|selected|chosen|shortlisted)\b[^.]{0,40}\b(interview|interviewing) (stage|round|step|process|phase)\b/i],
+  ['interview confirmed', /\b(your|the|our) (interview|phone screen|screening call|call|chat|meeting|on-?site)s? (is|are|has been|have been) (now )?(confirmed|scheduled|booked|set( up)?)\b/i]
+];
+var ASSESSMENT_WORD = /\b(assessment|coding (challenge|exercise|test|assignment)|take[- ]home|hackerrank|codesignal|codility|coderpad|online test|skills test|work sample)\b/i;
+var ASSESSMENT_ACTION = /\b(complete|completing|take|finish|start|begin|submit|attempt|access|link|within \d+|due|deadline|invit\w*)\b/i;
+var INTERVIEW_LINK = /https?:\/\/[^\s<>"')\]]*\b(calendly\.com|goodtime\.io|hackerrank\.com|codesignal\.com|codility\.com|coderpad\.io|testgorilla\.com)\b/i;
+// Interview detection names why a thread stays in the Inbox; it never decides archiving, which is the plain-confirmation
+// allowlist below. A sentence about a call, chat or interview is interview mail unless it is boilerplate.
+// A direct offer to the candidate is an invite whatever condition precedes it ("If you have time this week, we would
+// like to schedule a phone interview", "The hiring manager would like to speak with you").
+var DIRECT_OFFERS = [
+  /\b(we|i)((['’]d| would) (like|love)( for you)?|(['’]re|['’]m| are| am)( very| so)? (happy|pleased|excited|delighted|thrilled|keen|eager|glad)| (want|wish|hope)) to( \w+)?? ((schedule|set up|arrange|book|invite you|have you|move you|advance you|bring you)\b[^.?!]{0,40}?\b(interview|call|chat|meeting|conversation|screen(ing)?|on-?site|time|slot|discussion|assessment|round|next (step|round|stage))s?\b|(meet|chat|speak|talk|connect) (with )?you\b)/i,
+  /\b((['’]d| would) (like|love)|wants?|hopes?|(is|are) (keen|eager|excited|happy)) to (meet|chat|speak|talk|connect|catch up) (with )?you\b|\blook(ing)? forward to (meeting|chatting|speaking|talking|connecting|catching up) (with )?you\b/i,
+  /\b(like|love|happy|pleased|excited|delighted|thrilled|glad|want|wish|hope|decided|chosen|elected|going) to move (forward|ahead) with (you|your (candidacy|application|profile))\b|\b(will be|are|['’]re) (moving|going to move) (forward|ahead) with (you|your (candidacy|application|profile))\b/i,
+  /\b(would|will|are|were) you (be )?(available|free|open)( for (a |an |the )?([\w-]+ ){0,3}?(interview|call|chat|meeting|conversation|screen(ing)?|on-?site|discussion|zoom|video)s?\b| to (talk|chat|speak|meet|connect|interview|jump on|hop on)\b| (this|next|on|tomorrow|today|at|between|sometime|any ?time|later)\b)/i,
+  /\bwhen (are|would|will) you (be )?(available|free)\b|\bwhen you(['’]re| are| would be| will be) (available|free)\b|\bdo you have (some |any )?(time|availability) (this|next|on|for|to|in)\b/i,
+  /\b(times?|slots?|days?|dates?|windows?)( that| which)? (work|works|suit|suits|fit|fits)( best)? (for|with) you\b|\bwhat (times?|days?|dates?) (work|works|would work|suit)\b/i,
+  /\bplease (\w+ )?(share|send|provide|reply with|let (me|us) know|tell (me|us))\b[^.?!]{0,30}?\b(availability|(a|some|few|preferred|convenient|good|suitable|available) (times?|slots?|dates?|days?))\b/i,
+  /\bplease (\w+ )?(book|schedule|select|pick|choose|grab)\b[^.?!]{0,30}?\b(interview|call|chat|meeting|screen|time|slot)s?\b(?![ -]?zones?\b)/i,
+  /\binvit(e|ing) you (to|for)\b[^.?!]{0,40}?\b(interview|call|chat|meeting|conversation|screen(ing)?|on-?site|discussion|assessment|next (step|round|stage))s?\b/i
+];
+// A plain statement that the candidate has advanced, unless a condition comes before it.
+var ADVANCED = /\b(you(['’]ve| have) been (selected|chosen|shortlisted|invited|advanced|moved)|we(['’]re| are|['’]ve| have)( \w+)? (moving|advancing|moved|advanced|inviting|selected|shortlisted) you)\b[^.?!]{0,40}?\b(interview|next (step|round|stage)|round|on-?site|screen)/i;
+// Any other sentence about an interview, a call or a chat ("Here are the details for your upcoming interview",
+// "The next step is a 30-minute call with our hiring manager") is interview mail unless it is boilerplate.
+var INTERVIEW_TOPIC = /\b(interview\w*|calls?|chat|chatting|speak|speaking|talk|talking|meet|meeting|screen|screening|on-?site|rounds?|next steps?|availability|zoom)\b/i;
+
+// Boilerplate that vetoes every signal except a direct offer: the applicant pool ("Applicants who move forward to the
+// interview stage will be contacted"),
+var APPLICANT_POOL = /\b(candidates|applicants|those)( who| that| whose| moving| advancing| progressing| selected| shortlisted| chosen)\b|\b(selected|qualified|shortlisted|successful|top) (candidates|applicants)\b/i;
+// a step the employer only takes once it picks the candidate ("If your experience matches, we will reach out to
+// schedule an interview", "If selected, you will be invited to an onsite interview"),
+var EMPLOYER_CONDITION = /\b(if|when|once|should|in case|in the event( that)?|provided( that)?|assuming)\s+((we|our (\w+ )?team|the (\w+ )?team|the hiring manager) (decide|decides|choose|chooses|determine|determines|feel|feels|think|thinks|believe|believes|find|finds|see|sees|are interested|is interested|would like|wish|wishes|want|wants)\b|there(['’]s| is| are)\b|(you(['’]re| are| were| have been| get| are being) )?(selected|chosen|shortlisted|qualified|successful)\b|you (meet|match|fit|move forward|advance|progress|pass)\b|you(['’]re| are) (a )?(good |strong )?(match|fit)\b|(it['’]?s |this is )?a (good |strong )?(match|fit)\b)|\b(if|when|once|should)\b[^.?!]{0,60}?\byour (\w+ )?(experience|background|qualifications?|skills?|profile|application|resume|candidacy)( \w+){0,2}? (match|matches|align|aligns|fit|fits|meet|meets|is a (good |strong )?(fit|match)|are a (good |strong )?(fit|match))\b/i;
+var EMPLOYER_STEP = /\b(will|['’]ll|would|may|might|can|could)\b[^.?!]{0,60}?\b(schedul\w*|invit\w*|arrang\w*|set up|book|ask(ed)?|move|advance|call|reach out|contact|be in touch|get in touch|follow up|let you know|notify|receive)\b/i;
+// a possibility ("You may be asked to complete an assessment"),
+var POSSIBILITY = /\b(may|might|could) (also )?(be )?(asked|invited|required|contacted|requested)\b/i;
+// and a description of the process ("Our interview process consists of a phone screen and an onsite").
+var PROCESS_DESCRIPTION = /\b(about|on) (our|the) (interview|hiring|recruiting|selection) process\b|\b(our|the|this|a typical) (interview|hiring|recruiting|selection) process\b[^.?!]{0,30}?\b(consists?|includes?|involves?|comprises?|is made up|typically|usually|generally|will (include|consist|involve))\b|\b(typically|usually|generally) (consists?|includes?|involves?)\b/i;
+// Boilerplate that only vetoes the broad topic match, never an explicit invite or scheduling signal ("We are currently
+// reviewing your application and would like to schedule a phone screen" is kept): review wording ("We will review
+// your application") and a vague promise of future contact ("You will hear from us about the interview stage soon")
+// that does not commit to scheduling the candidate's own interview ("Our recruiter will contact you to schedule your
+// interview" is kept).
+var REVIEW_ONLY = /\b(will|we'?ll) (review|be reviewing|carefully review)\b|\bcurrently reviewing\b|\bunder review\b/i;
+var FUTURE_CONTACT = /\b(will|['’]ll|would|shall|may|might|can)( \w+){0,2}? (reach out|be reaching out|contact you|be contacted|be in touch|get in touch|hear from us|hear back|be notified|notify you|let you know|follow up|get back to you|receive (an? |further |more |another )?(e-?mail|message|call|invitation|invite|notification|update|follow-up))\b|\bhear from us\b|\bbe in touch\b/i;
+var SCHEDULES_YOURS = /\b(schedul\w*|book\w*|set(ting)? up|arrang\w*|coordinat\w*|confirm\w*) (your|the|an?)( [\w-]+){0,2}? (interview|call|chat|screen(ing)?|on-?site|round|meeting|conversation)s?\b/i;
+
+// "...we will be in touch if we would like to schedule an interview": the offer is itself the employer's condition.
+var OFFER_AS_CONDITION = /\b(if|when|once|should|unless|whether|in case)(\s+[^\s,;:]+){0,3}\s*$/i;
+
+function directOffer_(sentence) {
+  var direct = DIRECT_OFFERS.some(function (re) {
+    var m = re.exec(sentence);
+    return m && !OFFER_AS_CONDITION.test(sentence.slice(0, m.index));
+  });
+  if (direct) return 'direct offer';
+  var m = ADVANCED.exec(sentence);
+  if (m && !CONDITIONAL.test(sentence.slice(0, m.index))) return 'moved forward';
+  return null;
+}
+
+function boilerplate_(sentence) {
+  return APPLICANT_POOL.test(sentence) || POSSIBILITY.test(sentence) || PROCESS_DESCRIPTION.test(sentence) ||
+    (EMPLOYER_CONDITION.test(sentence) && EMPLOYER_STEP.test(sentence));
+}
+
+function vagueContact_(sentence) {
+  return REVIEW_ONLY.test(sentence) || (FUTURE_CONTACT.test(sentence) && !SCHEDULES_YOURS.test(sentence));
+}
+
+/** Interview score over the body only: { interview, reasons[], evidence } */
+function interviewScore(body) {
+  var why = [], evidence = null;
+  function add(reason, sentence) {
+    if (why.indexOf(reason) >= 0) return;
+    why.push(reason);
+    if (!evidence) evidence = sentence;
+  }
+  splitSentences(body).forEach(function (sentence) {
+    var offer = directOffer_(sentence);
+    if (offer) add(offer, sentence);
+    else if (boilerplate_(sentence)) return;
+    var before = why.length;
+    INTERVIEW_SIGNALS.forEach(function (sig) { if (sig[1].test(sentence)) add(sig[0], sentence); });
+    if (ASSESSMENT_WORD.test(sentence) && ASSESSMENT_ACTION.test(sentence)) add('assessment', sentence);
+    if (!offer && why.length === before && INTERVIEW_TOPIC.test(sentence) && !vagueContact_(sentence)) {
+      add('about an interview', sentence);
+    }
+  });
+  var link = String(body || '').match(INTERVIEW_LINK);
+  if (link) why.push('link: ' + link[1]);
+  return { interview: why.length > 0, reasons: why, evidence: evidence };
+}
+
+// The archive allowlist. A message is plain application mail only when its body confirms an application (or its
+// subject is a verification code), it is not a rejection, it is not interview mail, it carries no scheduling word at
+// all (boilerplate included), nobody writes in the first person, and every sentence left once the greeting, the
+// sign-off with its signature and the standard footer are set aside is a known acknowledgement. Any other sentence
+// ("Please complete your HireVue by Friday", "Reply with your free times") keeps its thread in the Inbox.
+var CONFIRMATION = /\bthank(s| you)\b[^.!?]{0,60}\bfor (applying|submitting|your (application|interest|submission))\b|\b(received|receipt of) your application\b|\byour application\b[^.!?]{0,80}\b(has been|was|is|been) (successfully )?(received|submitted)\b|\bapplication (received|submitted|confirmation)\b/i;
+var SCHEDULING_WORDS = /\b(interview\w*|calls?|called|calling|chat\w*|zoom|calendly|goodtime|calendar\w*|(re)?schedul\w*|availab(le|ility)|on-?site|screen\w*|next steps?|assessments?|meet|meeting|meetings|talk|talks|talking|speak\w*|conversations?|phone|video|rounds?|slots?|book|booked|booking|invit\w*|hackerrank|codesignal|codility|coderpad|testgorilla|hirevue|pymetrics|karat|spark ?hire|modern ?hire|harver|wonderlic|shl|ccat|criteria (corp|cognitive)|microsoft teams|teams (link|meeting|call|invite)|webex|bluejeans|gotomeeting|google meet|skype|whereby|take-?home|coding (challenge|exercise|test|assignment)|questionnaire|offers?|congratulat\w*|super ?day|hiring manager|background check|reference check|times? that works?|works? for you)\b|\b(can|could|would|will|are|do) you\b[^.!?]*\?/i;
+var FIRST_PERSON = /\bI\b|\bI['’](m|ve|ll|d)\b|\b(me|my)\b|(^|[.!?]\s+)My\b/;
+
+function plainConfirmation_(subject, body) {
+  var text = String(body || '');
+  var verification = VERIFICATION_SUBJECT.test(subject);
+  if (!CONFIRMATION.test(text) && !verification) return false;
+  if (SCHEDULING_WORDS.test(text) || FIRST_PERSON.test(text) || isInterview(text)) return false;
+  return unacknowledged_(text, verification) === null;
+}
+
+// Words that never belong to a role or company name, a greeting name or a signature line: an action, a time or a
+// deadline, a pronoun, a conjunction or a task. A name holding one ("Acme and please complete your HireVue") is no
+// name, so the sentence matches no acknowledgement.
+var ACK_VETO = "please|kindly|complete\\w*|finish\\w*|start\\w*|begin\\w*|join\\w*|click\\w*|tap|repl\\w*|respond\\w*|submit\\w*|confirm\\w*|select\\w*|choose|pick|book\\w*|upload\\w*|sign\\w*|record\\w*|take|taking|attend\\w*|send|share|provide|fill|follow|log|login|verify|accept|decline|rsvp|review\\w*|continue|access|open|go|get|use|visit|check|view|track|download|install|prepare|practice|need\\w*|requir\\w*|action|must|should|can|could|would|will|may|might|shall|is|are|was|were|be|been|has|have|had|do|does|did|links?|below|above|attached|here|there|now|deadline|due|by|before|within|until|after|asap|urgent|today|tomorrow|tonight|mon|monday|tue|tues|tuesday|wed|wednesday|thu|thur|thurs|thursday|fri|friday|sat|saturday|sun|sunday|jan|january|feb|february|mar|march|apr|april|june?|july?|aug|august|sept?|september|oct|october|nov|november|dec|december|am|pm|noon|midnight|morning|afternoon|evening|weeks?|weekend|days?|hours?|minutes?|times?|dates?|you|your|yours|we|us|our|i|me|my|tests?|games?|sessions?|tasks?|exercises?|challenges?|quiz|survey|form|questionnaire|portal|answers?|questions?|free|and|or|but|so|then|also|to|if|when|once|while|not|no|yes|thanks?|congrats|reminder|important|ready|pending|waiting|steps?|stages?|requested|expir\\w*|last|final|chance|immediately";
+// A role or company name ("the Backend Engineer role at Acme"): up to ten words with no digit and no veto word,
+// captured so its length (at most 60) is checked.
+var ACK_NAME = "((?:(?!(?:" + ACK_VETO + ")\\b)[a-z&'()/+#.-]+(?![a-z&'()/+#.-])(?: (?=[a-z&'()/+#.-]))?){1,10})";
+var ACK_ROLE = '(?:the |our |a |an |this )?' + ACK_NAME;
+var ACK_FOR_ROLE = '(?: (?:to|for|with|at|on|in) ' + ACK_ROLE + ')?';
+var ACK_TEAM = '(?:(?:the|our) )?(?:(?:recruiting|recruitment|hiring|talent(?: acquisition)?|people|hr|human resources|selection|search) )?team';
+var ACK_WHO = '(?:we|' + ACK_TEAM + '(?: members?)?|(?:our|the|a) (?:recruiters?|talent acquisition specialists?)|(?:a |one of the |one of our )?members? of ' + ACK_TEAM + '|someone (?:from|on) ' + ACK_TEAM + ')';
+var ACK_DOCS = '(?:application|qualifications|background|experience|profile|resume|cv|submission|materials|candidacy|skills)';
+var ACK_WHEN = '(?:soon|shortly|directly|again|either way|accordingly|carefully|thoroughly|closely|promptly|now|right away|with care|in detail|as soon as possible|in the (?:coming|next few|near) (?:days|weeks|future)|over the (?:coming|next few) (?:days|weeks)|within (?:the next )?(?:a few|two|three|several) (?:days|weeks)|as soon as (?:we can|we have an update|a decision (?:has been|is) made)|once (?:we(?:\'ve| have) (?:reviewed|completed|finished)(?: (?:our|the|your) (?:review|application)(?: process)?)?|our review is complete|a decision (?:has been|is) made)|after (?:we review|reviewing|our review of) (?:your application|it))';
+var ACK_TAIL = '(?:,? ' + ACK_WHEN + '){0,2}';
+var ACK_IF = '(?:if|should|when|in case|once)(?: (?:there is|there\'s|we (?:find|see|identify|have)) (?:a |an )?(?:(?:good|strong|potential|mutual|suitable) )?(?:match|fit|opening)' +
+  '| your ' + ACK_DOCS + '(?:,? (?:and|or) (?:your )?' + ACK_DOCS + ')? (?:match(?:es)?|aligns?(?: with)?|fits?|meets?|(?:is|are|seems?|looks?)(?: like)? (?:a )?(?:(?:good|strong|great) )?(?:match|fit))(?: (?:for|with|to))?(?: (?:our|the|this) (?:needs|requirements|role|position|opening|team|qualifications)(?: (?:for|of) (?:the|this|our) (?:role|position|opening|team))?)?' +
+  '| you(?:\'re| are)(?: not)? (?:selected|chosen|shortlisted|a (?:good |strong )?(?:fit|match))' +
+  '| we (?:decide|choose|wish|want) (?:not )?to (?:move forward|proceed)(?: with your (?:application|candidacy))?' +
+  '| (?:it\'s|it is) a (?:good |strong )?(?:fit|match)| a decision (?:has been|is) made| we have (?:an update|any updates|news))';
+var ACK_PORTAL = '(?:your|our|the) (?:candidate |applicant |careers? |job seeker )?(?:portal|account|profile|dashboard|home|site)';
+var ACK_STATUS = '(?:the status of your application|your application(?:\'s)?(?: status)?|the progress of your application)';
+var ACK_CLAUSES = [
+  // Thank you for applying to the Backend Engineer role at Acme / for your interest in a career with Acme
+  '(?:thank you|thanks|many thanks)(?: so much| very much)?(?: again)?,? for (?:(?:applying|your (?:recent |online |job )?(?:application|submission)|submitting (?:your|an|the) application|taking the time to apply|the time to apply)' + ACK_FOR_ROLE +
+    '|your interest(?: in (?:joining |working (?:at|with|for) |(?:a career|a position|a role|employment|opportunities|career opportunities) (?:at|with) )?(?:us|our team|' + ACK_ROLE + '))?)',
+  // We have received your application for the Backend Engineer role / This email confirms receipt of your application
+  '(?:(?:this (?:e-?mail|message|note) (?:is to )?)?confirms? (?:that )?|(?:this is to )?confirm(?:ing)? (?:that )?|we(?:\'d| would)? (?:(?:just )?(?:want|wanted|like|are writing)(?: to)? )?(?:let you know|confirm|acknowledge)(?: that)? )?(?:we(?:\'ve| have)?(?: successfully| now| already| just)? received|we are in receipt of|(?:the )?receipt of) (?:your|the) (?:job |online |recent )?(?:application|submission|resume|cv|materials)' + ACK_FOR_ROLE,
+  // Your application for the Backend Engineer role has been received
+  'your (?:job |online |recent )?(?:application|submission|resume|cv)' + ACK_FOR_ROLE + ' (?:has been|was|is|have been)(?: successfully)? (?:received|submitted)(?: successfully)?(?: (?:to|by) ' + ACK_ROLE + ')?',
+  '(?:your )?application (?:received|submitted|confirmation|confirmed)',
+  // Our team will review your application carefully / the team is reviewing it now
+  '(?:' + ACK_WHO + ' )?(?:(?:will|\'ll|shall|are going to|is going to)(?: now)?(?: carefully| thoroughly| closely| personally)? (?:review|be reviewing|consider|assess|evaluate|look (?:over|at|through)|read)|(?:is|are)(?: now| currently)?(?: carefully)? (?:reviewing|considering|evaluating|looking (?:over|at|through)|reading)) (?:it|them|your ' + ACK_DOCS + '(?:(?:,|,? and) (?:your )?' + ACK_DOCS + '){0,3})(?: (?:for|against) ' + ACK_ROLE + ')?' + ACK_TAIL,
+  // Your application will be reviewed by our recruiting team
+  'your (?:application|resume|profile|submission|candidacy)' + ACK_FOR_ROLE + ' (?:will be|is being|is (?:now |currently )?being|is (?:now |currently )?under|has been (?:forwarded|passed|sent) to ' + ACK_TEAM + ' for)(?: carefully)? (?:reviewed|considered|review|consideration|evaluated)(?: by ' + ACK_TEAM + ')?' + ACK_TAIL,
+  // (If your experience matches,) we will be in touch / contact you / get back to you (if there is a match)
+  '(?:' + ACK_IF + ',? )?(?:(?:' + ACK_WHO + ' )?(?:will|\'ll|shall)(?: be sure to| certainly| definitely)? )?(?:be in touch|get in touch|be in contact|contact you|reach out(?: to you)?|be reaching out(?: to you)?|get back to you|follow up(?: with you)?|let you know|notify you|update you|be contacting you|be back in touch)(?: with you)?(?: (?:with|about|regarding|on) (?:an update|any updates|updates|the outcome|our decision|a decision|the status of your application|your application(?: status)?))?' + ACK_TAIL + '(?:,? ' + ACK_IF + ')?',
+  // You will hear from us (if there is a match)
+  '(?:' + ACK_IF + ',? )?you(?:\'ll| will)(?: be sure to)? (?:hear (?:back )?from us|hear back|be contacted|be notified|receive (?:an update|a response|a decision|further information))(?: (?:by|from) (?:a member of )?' + ACK_TEAM + ')?' + ACK_TAIL + '(?:,? ' + ACK_IF + ')?',
+  // You can track the status of your application in your candidate portal
+  'you (?:can|may)(?: also)? (?:view|track|check|monitor|see|follow) ' + ACK_STATUS + '(?: at any time| anytime)?(?:,? (?:by (?:logging|signing) in(?:to| to)?|in|on|through|via|from|at) ' + ACK_PORTAL + ')?(?: at any time| anytime)?(?:(?::| here:?| at:?) URL)?',
+  'to (?:view|track|check|monitor|see) ' + ACK_STATUS + ',? (?:please )?(?:log|sign) in(?:to| to)? ' + ACK_PORTAL + '(?:(?::| here:?| at:?) URL)?',
+  // We appreciate your interest / are excited that you applied / wish you luck
+  '(?:we )?(?:truly |really |sincerely |greatly |do )?appreciate (?:your interest(?: in (?:joining |working (?:at|with|for) |(?:a career|employment|opportunities) (?:at|with) )?(?:us|our team|' + ACK_ROLE + '))?|(?:you |your )?taking the time to apply' + ACK_FOR_ROLE + '|the time you (?:took|have taken|spent) (?:to apply|applying|on your application))',
+  'we(?:\'re| are) (?:so |very |really )?(?:excited|thrilled|delighted|glad|happy|pleased)(?: that)? (?:you(?:\'re| are) interested in|you(?: would)? (?:consider(?:ed)?|are considering)|you (?:applied|chose to apply)(?: (?:to|for))?|to (?:learn of|hear about|see|receive|have received) your (?:interest|application)(?: in| for| to)?)(?: (?:joining|working (?:at|with|for)))?(?: (?:us|our team|' + ACK_ROLE + '))?',
+  '(?:we )?(?:wish(?:ing)? you|good luck|best of luck)(?: (?:the (?:very )?best(?: of luck)?|all the best|good luck|luck|success|the best of success|every success))?(?: (?:in|with|on) your (?:job |career )?(?:search|career|future endeavou?rs))?',
+  '(?:thank you|thanks)(?: again)?(?: for your (?:time|patience|interest))?',
+  // We can't respond to every applicant individually, so please know that we read each one
+  '(?:(?:unfortunately|please note(?: that)?|due to (?:the )?(?:high|large) (?:volume|number) of (?:applications|applicants|candidates)(?: we receive)?),? )?(?:we )?(?:can\'t|cannot|can not|are unable to|aren\'t able to|are not able to|may not be able to|won\'t be able to|do not|don\'t) (?:respond|reply) (?:individually |personally )?to (?:every|each|all)(?: (?:applicant|application|candidate|submission)s?)?(?: (?:individually|personally))?',
+  '(?:please know|rest assured) (?:that )?we (?:read|review|consider|look at) (?:each|every|all)(?: (?:one|application|applicant|submission)s?)?(?: (?:carefully|personally|we receive))?',
+  '(?:only )?(?:shortlisted|selected|successful) (?:candidates|applicants) will be (?:contacted|notified)',
+  'if you have (?:any )?(?:questions|concerns)(?: (?:about|regarding) (?:your application|the process|this (?:e-?mail|message)))?(?: in the meantime)?,? (?:please )?(?:feel free to )?(?:contact|e-?mail|reach out to|write to) (?:us|' + ACK_TEAM + ')(?: at EMAIL)?'
+];
+// Verification-code mail (subject "Your verification code") may also say what the code is for.
+var ACK_VERIFY_CLAUSES = [
+  '(?:your|the|here is your|here\'s your|use this|use the following) (?:verification|security|one[- ]time|confirmation|access) (?:code|passcode|pin)(?: is)?:? [a-z0-9-]{4,12}',
+  '[a-z0-9-]{4,12} is your (?:verification|security|one[- ]time) (?:code|passcode)',
+  'enter (?:it|this code|the code(?: above)?)(?: (?:on|in) the (?:verification|sign[- ]in|login) (?:page|screen))? to (?:continue|verify(?: your (?:e-?mail|account|identity))?|confirm your e-?mail|finish signing in|sign in|log in|proceed)(?: (?:with )?your application' + ACK_FOR_ROLE + ')?',
+  '(?:this|the) code (?:will )?expires? in [a-z0-9]{1,3} (?:minutes|hours)',
+  'if you did(?:n\'t| not) request (?:this|a)(?: (?:code|e-?mail))?,? (?:please )?(?:ignore|disregard) this (?:e-?mail|message)'
+];
+function ackSentence_(clauses) {
+  var clause = '(?:' + clauses.join('|') + ')';
+  var lead = '(?:(?:again|once again|also|additionally|in addition|in the meantime|meanwhile|unfortunately|please note(?: that)?),? )?';
+  return new RegExp('^' + lead + clause + '(?:(?:,? and|,? but|,? so|;|,) ' + lead + clause + '){0,3}$', 'i');
+}
+var ACKNOWLEDGEMENT = ackSentence_(ACK_CLAUSES);
+var VERIFICATION_ACKNOWLEDGEMENT = ackSentence_(ACK_CLAUSES.concat(ACK_VERIFY_CLAUSES));
+
+var GREETING_NAME = "(?: (?:[A-Z][A-Za-z'.-]*|there|all|team|candidate|applicant)){0,4}";
+var GREETING_LINE = new RegExp('^(?:[Hh]i|[Hh]ello|[Hh]ey|[Dd]ear|[Gg]reetings|HI|HELLO|DEAR)' + GREETING_NAME + ' ?[,!:.]?$');
+var GREETING_PREFIX = new RegExp('^(?:[Hh]i|[Hh]ello|[Hh]ey|[Dd]ear|[Gg]reetings)' + GREETING_NAME + ', ');
+var SIGN_OFF = /^(?:best|best regards|kind regards|warm regards|warmest regards|regards|warmly|sincerely|sincerely yours|yours sincerely|yours truly|respectfully|cheers|all the best|best wishes|many thanks|thanks|thank you|thanks again|thank you again|with appreciation|with gratitude)(?:\s*[,.!]\s*|\s*$)/i;
+var ACK_VETO_WORD = new RegExp('\\b(?:' + ACK_VETO + ')\\b', 'i');
+// Standard footer clauses. A sentence is set aside as footer only when the whole of it is one of these clauses, or a
+// few of them joined by a comma, semicolon or "and"/"as"/"so": anything else in it ("This message was sent by the
+// CTO, who loved your profile") makes it an ordinary sentence that must be a known acknowledgement. Names in them
+// are capitalised words with no digit and no action, time or deadline word.
+var FOOTER_ATS = '(?:greenhouse|lever|workday|ashby|icims|smart ?recruiters|jobvite|taleo|bamboo ?hr|workable|jazz ?hr|breezy(?: ?hr)?|recruitee|teamtailor|rippling|gem|paylocity|ukg|(?:sap )?successfactors|oracle(?: recruiting cloud| taleo)?)(?:\\.(?:io|com|co))?';
+var FOOTER_NAME = "([a-z&'().-]+(?: [a-z&'().-]+){0,5})";
+var FOOTER_NAME_SHAPE = /^(?:the )?[A-Z][A-Za-z&'().-]*(?: (?:[A-Z][A-Za-z&'().-]*|of|&)){0,5}$/;
+var FOOTER_MAIL = '(?:e-?mail|message|notification)';
+var FOOTER_LINK = '(?:(?::| here:?| at:?)? URL)?';
+var FOOTER_ITEM = '(?:unsubscribe(?: here)?|privacy (?:policy|notice|statement)|terms(?: of (?:use|service))?|(?:manage|update|change) (?:your )?(?:e-?mail |notification |communication )?(?:preferences|settings|subscriptions)|e-?mail preferences)' + FOOTER_LINK;
+var FOOTER_STOP = '(?:these|this|all|future|our) (?:e-?mails|messages|notifications|communications|mailing list|list)';
+var FOOTER_EEO_ITEM = '(?:race|colou?r|religion|creed|sex|gender|gender identity(?: (?:or|and|and/or) expression)?|gender expression|sexual orientation|national origin|ancestry|age|(?:physical or mental )?disability(?: status)?|(?:protected )?veteran status|military(?: or veteran)? status|marital status|genetic information|pregnancy|citizenship(?: status)?|(?:or )?any other (?:characteristic|status|basis) protected by (?:applicable |federal, state,? (?:or|and) local )?law|(?:any )?other (?:legally )?protected (?:characteristics?|status))';
+var FOOTER_EEO_LIST = FOOTER_EEO_ITEM + '(?:(?:,|,? or|,? and|,? and/or|/) ' + FOOTER_EEO_ITEM + '){0,25}';
+var FOOTER_CLAUSES = [
+  // Do not reply / unattended mailbox / automated message
+  '(?:please )?(?:do not|don\'t|kindly do not) (?:reply|respond)(?: directly)?(?: to (?:this|the|it|this ' + FOOTER_MAIL + ')(?: address)?)?',
+  '(?:this|the) ' + FOOTER_MAIL + ' (?:is|was|has been) (?:sent|generated|delivered) (?:from|by) an? (?:unattended|unmonitored|automated|send-only|no-?reply|system)(?: (?:mailbox|e-?mail address|address|account|inbox|system))?',
+  '(?:this|the) ' + FOOTER_MAIL + ' (?:is|was|has been) (?:automatically|system|auto)[ -]generated',
+  '(?:this|the|our) (?:e-?mail address|mailbox|inbox|address|account) (?:is not|isn\'t) (?:monitored|checked)|(?:this|the|our) (?:e-?mail address|mailbox|inbox|address|account) is (?:unmonitored|unattended)',
+  'replies (?:to this (?:e-?mail|message|address) )?(?:will not|won\'t|are not|cannot|can not|will never) (?:be )?(?:read|monitored|received|answered|seen|reviewed)',
+  'this is an? (?:automated|automatic|system-generated|auto-generated|automatically generated) ' + FOOTER_MAIL + '(?: from ' + FOOTER_ATS + ')?',
+  // Sent by / powered by an ATS
+  '(?:(?:this|the) ' + FOOTER_MAIL + ' (?:was|is|has been) )?(?:sent|powered|delivered|generated) (?:by|via|with|through|from|using) (?:the )?' + FOOTER_ATS + '(?: (?:platform|system))?(?: on behalf of ' + FOOTER_NAME + ')?',
+  // Unsubscribe, manage preferences, privacy policy
+  FOOTER_ITEM + '(?: ?[|·•,] ?' + FOOTER_ITEM + '){0,5}',
+  '(?:to|if you(?:\'d| would)? (?:no longer )?(?:wish|want|like) to) (?:unsubscribe|stop receiving (?:these|such|future) (?:e-?mails|messages|notifications))(?: from ' + FOOTER_STOP + ')?,? (?:please )?(?:click (?:here|the link below|URL)|visit URL|go to URL|URL)',
+  'click (?:here|URL) to (?:unsubscribe|manage (?:your )?(?:e-?mail )?(?:preferences|subscriptions))(?: from ' + FOOTER_STOP + ')?',
+  'you (?:can|may) unsubscribe(?: from ' + FOOTER_STOP + ')?(?: at any time)?(?: (?:here|URL))?',
+  '(?:(?:to learn more|for (?:more )?information|for details) (?:about|on) how (?:we|' + FOOTER_NAME + ') (?:collects?|uses?|processes|handles?|protects?)(?:(?:,| and|,? and) (?:collects?|uses?|processes|handles?|protects?)){0,3} your (?:personal )?(?:data|information),? )?(?:please )?(?:see|read|review|visit|refer to|view) (?:our|the) (?:candidate |applicant )?privacy (?:policy|notice|statement)' + FOOTER_LINK,
+  // Equal opportunity
+  '(?:we|' + FOOTER_NAME + ') (?:is|are) (?:proud to be )?an? (?:proud )?equal (?:employment )?opportunity(?: and affirmative action)? employer(?:,? (?:m/f/d/v|minorities/females/veterans/disabled|minorities/women/veterans/disabled))?',
+  '(?:an? )?equal (?:employment )?opportunity(?: and affirmative action)? employer|eoe|eeo',
+  'all qualified applicants will receive consideration for employment without regard to ' + FOOTER_EEO_LIST,
+  '(?:(?:we|' + FOOTER_NAME + ') )?(?:does not|do not|will not) discriminate (?:against any (?:applicant|employee) )?(?:on the basis of|based on|because of) ' + FOOTER_EEO_LIST,
+  // Copyright
+  '(?:copyright(?: ©| \\(c\\))?|©|\\(c\\)) ?(?:\\d{4}(?: ?[-–] ?\\d{4})?,? ?)?(?:' + FOOTER_NAME + '(?:,? (?:inc|llc|ltd|corp|co|gmbh|plc)\\.?)?)?(?:,? all rights reserved)?',
+  'all rights reserved',
+  // Confidentiality notice
+  '(?:this|the information in this) (?:e-?mail|message|communication|transmission)(?:,? (?:and|including|together with) any (?:attachments|files transmitted with it)(?: (?:to|with) it)?,?)? (?:is|are|may be|may contain information that is|contains information that (?:is|may be)) (?:strictly )?(?:confidential|privileged|proprietary)(?:(?:,| and|,? and/or|,? or) (?:legally )?(?:confidential|privileged|proprietary)){0,2},? and (?:(?:is|are) )?intended (?:solely|only|exclusively) for (?:the use of )?the (?:addressee|recipient|individual|person|entity|intended recipient)(?:\\(s\\)|s)?(?: (?:or|and) (?:entity|entities))?(?: (?:to whom|to which) (?:it is|they are) addressed| named above)?',
+  'if you are not the intended recipient(?:,? (?:please )?notify the sender(?: immediately)?(?: and delete (?:it|this ' + FOOTER_MAIL + ')(?: from your system)?)?)?',
+  'if you (?:have )?received this ' + FOOTER_MAIL + ' (?:in error|by mistake),? (?:please )?notify the sender(?: immediately)?(?: and delete (?:it|this ' + FOOTER_MAIL + ')(?: from your system)?)?'
+];
+var FOOTER_CLAUSE = new RegExp('^(?:(?:please note|note|important)[:,]? )?(?:' + FOOTER_CLAUSES.join('|') + ')$', 'i');
+var FOOTER_JOIN = /[,;:]? (?:and|as|because|since|so) |[,;:] /g;
+
+// A mailing address is a footer only as a whole sentence of its own, read case-sensitively: a house number, one to
+// four capitalised street words (or ordinals like 5th), a street suffix, then a city with a state and ZIP code or a
+// suite. Street, city and company words hold no time, day, action or meeting word ("1 pm Thursday at 350 Mission St").
+var ADDRESS_WORD = "[A-Z][A-Za-z'.-]*";
+var ADDRESS_STREET = '\\d{1,6} ((?:(?:' + ADDRESS_WORD + '|\\d{1,3}(?:st|nd|rd|th)) ){1,4})(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|Plaza|Parkway|Pkwy|Court|Ct|Place|Pl|Square|Sq|Highway|Hwy|Circle|Cir)\\.?';
+var ADDRESS_UNIT = '(?:(?:Suite|Ste|Floor|Fl|Unit|Room|Rm)\\.? ?#?[A-Za-z0-9-]{1,6}|#[A-Za-z0-9-]{1,6}|\\d{1,3}(?:st|nd|rd|th) Floor)';
+var ADDRESS_SEP = '(?:,| ·| \\|) ';
+var ADDRESS_CITY = '(' + ADDRESS_WORD + '(?: ' + ADDRESS_WORD + '){0,3}), [A-Z]{2}';
+var ADDRESS_ZIP = ' \\d{5}(?:-\\d{4})?(?:,? (?:USA|US|United States))?';
+var ADDRESS_COMPANY = '(?:(' + ADDRESS_WORD + '(?: (?:' + ADDRESS_WORD + '|of|&)){0,5})' + ADDRESS_SEP + ')?';
+var ADDRESS_SHAPES = [
+  new RegExp('^' + ADDRESS_COMPANY + ADDRESS_STREET + '(?:,? ' + ADDRESS_UNIT + ')?' + ADDRESS_SEP + ADDRESS_CITY + ADDRESS_ZIP + '$'),
+  new RegExp('^' + ADDRESS_COMPANY + ADDRESS_STREET + ',? (?:Suite|Ste)\\.? ?#?[A-Za-z0-9-]{1,6}(?:' + ADDRESS_SEP + ADDRESS_CITY + ')?$'),
+  new RegExp('^' + ADDRESS_UNIT + ADDRESS_SEP + ADDRESS_CITY + ADDRESS_ZIP + '$'),
+  new RegExp('^' + ADDRESS_CITY + ADDRESS_ZIP + '$')
+];
+var ADDRESS_VETO_WORD = /\b(?:at|see|meet\w*|noon|o'?clock)\b/i;
+
+function addressFooter_(sentence) {
+  return ADDRESS_SHAPES.some(function (re) {
+    var m = re.exec(sentence);
+    return !!m && m.slice(1).every(function (g) {
+      return !g || (g.length <= 60 && !ACK_VETO_WORD.test(g) && !ADDRESS_VETO_WORD.test(g));
+    });
+  });
+}
+
+function footerClause_(clause) {
+  var m = FOOTER_CLAUSE.exec(clause);
+  return !!m && m.slice(1).every(function (g) {
+    return !g || (g.length <= 60 && FOOTER_NAME_SHAPE.test(g) && !ACK_VETO_WORD.test(g));
+  });
+}
+
+function footerClauses_(text, depth) {
+  if (footerClause_(text)) return true;
+  if (depth >= 3) return false;
+  var join = new RegExp(FOOTER_JOIN.source, 'g'), m;
+  while ((m = join.exec(text))) {
+    if (footerClause_(text.slice(0, m.index)) && footerClauses_(text.slice(m.index + m[0].length), depth + 1)) return true;
+  }
+  return false;
+}
+
+/** True when the whole sentence is a standard footer. */
+function footer_(sentence) {
+  var s = String(sentence).replace(/\s+/g, ' ').replace(/[.!]+$/, '').trim();
+  return !!s && s.length <= 400 && (addressFooter_(s) || footerClauses_(s, 0));
+}
+
+function greetingName_(greeting) {
+  return !ACK_VETO_WORD.test(greeting.replace(/^\w+|\b(there|all|team|candidate|applicant)\b/gi, ''));
+}
+
+// Signature lines, an allowlist: a line is set aside only when the whole line is one of these shapes. A person's name
+// counts only directly under the sign-off (or above a job title when there is none), so "Technical Project
+// Instructions" or "Let's Connect Soon" under a signature is body text. Names and companies hold no action word.
+var SIG_COMPANY = "([A-Z][A-Za-z'&.-]*(?: (?:[A-Z][A-Za-z'&.-]*|&|of)){0,3})";
+var SIG_NAME_WORD = "(?:[A-Z][a-z]+(?:[A-Z][a-z]+)?|[A-Z](?=[-']))(?:[-'][A-Z][a-z]+)*";
+var SIG_NAME = new RegExp('^' + SIG_NAME_WORD + '(?: [A-Z]\\.)?(?: ' + SIG_NAME_WORD + '){1,2}$');
+var SIG_DEPT = '(?:Recruiting|Recruitment|Talent Acquisition|Talent|People|People Operations|Hiring|HR|Human Resources|Careers)';
+var SIG_TITLE_NOUN = '(?:Recruiter|(?:Recruiting|Recruitment) (?:Coordinator|Manager|Lead|Partner)|Sourcer|Talent Acquisition (?:Partner|Specialist|Manager|Lead|Coordinator)|Talent Partner|People Partner|HR (?:Manager|Generalist|Business Partner|Coordinator)|Hiring Manager|Engineering Manager|Founder|Co-[Ff]ounder|CEO|CTO|Head of (?:Talent|People|Recruiting))';
+var SIG_TITLE_LINE = new RegExp('^(?:([A-Z][A-Za-z.-]*(?: [A-Z][A-Za-z.-]*){0,2}) )?' + SIG_TITLE_NOUN + '(?: (?:&|and) ' + SIG_TITLE_NOUN + ')?(?:(?: at|,| \\||| -| –| —| @) ' + SIG_COMPANY + ')?$');
+// A phone number has ten digits, or eight after a +, and is not a date or time range ("2026-11-05", "10.30 - 11.30").
+var SIG_PHONE = '(?:(?:Phone|Tel|Mobile|Cell|[MPTO])[:.]? ?)?(?!\\d{1,4}[./ -]\\d{1,2}[./ -]\\d{1,4}(?![\\d ().-]))(?:\\+(?=(?:[ ().-]*\\d){8})|(?=(?:[ ().-]*\\d){10}))[\\d(][\\d ().-]{6,18}\\d';
+var SIG_CONTACT = '(?:' + SIG_PHONE + '|EMAIL|[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.(?:com|io|co|ai|org|net|dev|app|jobs))';
+var SIG_SHAPES = [
+  new RegExp('^(?:The )?(?:' + SIG_COMPANY + ' )?(?:' + SIG_DEPT + '(?: Team)?|Team)$'),
+  new RegExp('^' + SIG_COMPANY + ',? (?:Inc|LLC|Ltd|Corp|Co|GmbH|Labs|Technologies|AI)\\.?$'),
+  new RegExp('^' + SIG_CONTACT + '(?: ?[|·•,\\/] ?' + SIG_CONTACT + '){0,3}$')
+];
+
+function sigWords_(m) {
+  return !!m && m.slice(1).every(function (g) { return !g || !ACK_VETO_WORD.test(g); });
+}
+
+/** A signature line other than a person's name: a job title, a team, a company, or contact details. A bare company
+ *  name of one to four capitalised words counts only when the body above already names it. */
+function signatureLine_(line, above) {
+  var s = line.replace(/\.$/, '');
+  if (sigWords_(SIG_TITLE_LINE.exec(s)) || SIG_SHAPES.some(function (re) { return sigWords_(re.exec(s)); })) return true;
+  var company = new RegExp('^' + SIG_COMPANY + '$').exec(s);
+  return sigWords_(company) && new RegExp("(?:^|[^A-Za-z'&-])" + s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "(?![A-Za-z'&-])").test(above);
+}
+
+function signatureName_(line) { return SIG_NAME.test(line.replace(/\.$/, '')) && !ACK_VETO_WORD.test(line); }
+
+/** Marks the signature lines from index `from` on: an optional name first, then title, team, company and contact
+ *  lines, stopping at the first line that is none of these or at a blank line. */
+function dropSignature_(lines, drop, from, nameAllowed, above) {
+  for (var j = from; j < lines.length && lines[j]; j++) {
+    if (!drop[j] && !signatureLine_(lines[j], above) && !(nameAllowed && j === from && signatureName_(lines[j]))) return;
+    drop[j] = true;
+  }
+}
+
+/** The first body sentence that is not a known acknowledgement once the greeting, the sign-off with its signature
+ *  and the footer are set aside, or null when every sentence is one. */
+function unacknowledged_(body, verification) {
+  var text = String(body || '').replace(/\r/g, '').replace(/&nbsp;| /g, ' ').replace(/[‘’]/g, "'").replace(/[“”]/g, '"')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1 URL')
+    .replace(/<?(?:https?:\/\/|www\.)[^\s>]*[^\s>.,;:!?)]>?/gi, ' URL ')
+    .replace(/<?[\w.+-]+@[\w-]+(?:\.[\w-]+)+>?/g, ' EMAIL ');
+  var lines = text.split('\n').map(function (l) { return l.replace(/\s+/g, ' ').replace(/^(?:[*•·>-]+ ?)+/, '').trim(); });
+  var footerLine = lines.map(function (l) { return !!l && lineSentences_(l).every(footer_); });
+  var drop = footerLine.slice();
+  var i, j, signedOff = false, greeted = false;
+  for (i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    if (!line || drop[i]) continue;
+    if (!greeted) {
+      greeted = true;
+      if (GREETING_LINE.test(line) && greetingName_(line)) { drop[i] = true; continue; }
+    }
+    var off = SIGN_OFF.exec(line);
+    if (!off) continue;
+    var above = lines.slice(0, i).join('\n'), rest = line.slice(off[0].length);
+    if (rest && !signatureLine_(rest, above) && !signatureName_(rest)) continue;
+    signedOff = true;
+    drop[i] = true;
+    for (j = i + 1; j < lines.length && !lines[j]; j++);
+    dropSignature_(lines, drop, j, !rest, above);
+  }
+  // Without a sign-off, only the one unbroken block of signature lines that ends the body is a signature; a name in it
+  // counts only directly above a job title.
+  for (i = lines.length - 1; i >= 0 && !lines[i]; i--);
+  for (; !signedOff && i >= 0 && lines[i]; i--) {
+    if (footerLine[i]) continue;
+    if (signatureLine_(lines[i], lines.slice(0, i).join('\n'))) { drop[i] = true; continue; }
+    if (signatureName_(lines[i]) && SIG_TITLE_LINE.test(lines[i + 1] || '')) drop[i] = true;
+    break;
+  }
+  var paragraphs = [], current = [];
+  lines.forEach(function (l, k) {
+    if (!l || drop[k]) { if (current.length) paragraphs.push(current.join(' ')); current = []; return; }
+    current.push(l);
+  });
+  if (current.length) paragraphs.push(current.join(' '));
+  var re = verification ? VERIFICATION_ACKNOWLEDGEMENT : ACKNOWLEDGEMENT;
+  for (var p = 0; p < paragraphs.length; p++) {
+    var sentences = lineSentences_(paragraphs[p]);
+    for (var s = 0; s < sentences.length; s++) {
+      if (!footer_(sentences[s]) &&!acknowledges_(re, sentences[s])) return sentences[s];
+    }
+  }
+  return null;
+}
+
+function lineSentences_(text) {
+  var out = [];
+  String(text).split(/(?<=[.!?])\s+(?=\S)/).forEach(function (piece) {
+    if (out.length && /\b(mr|mrs|ms|dr|sr|jr|st|prof|e\.g|i\.e|vs)\.$/i.test(out[out.length - 1])) out[out.length - 1] += ' ' + piece;
+    else out.push(piece);
+  });
+  return out.map(function (x) { return x.trim(); }).filter(Boolean);
+}
+
+function acknowledges_(re, sentence) {
+  var greeting = GREETING_PREFIX.exec(sentence);
+  var s = (greeting && greetingName_(greeting[0]) ? sentence.slice(greeting[0].length) : sentence)
+    .replace(/\s+/g, ' ').replace(/[.!]+$/, '').trim();
+  if (!s) return true;
+  if (s.length > 300) return false;
+  var m = re.exec(s);
+  return !!m && m.slice(1).every(function (g) { return !g || g.length <= 60; });
+}
 
 // Text from the first of these onward is hypothetical ("If you are not selected...") and is ignored.
 var CONDITIONAL = /\b(if|when|whenever|once|before|until|should (you|things)|in case|whether|unless|in the event)\b/i;
@@ -602,7 +1082,7 @@ var DENY_SIGNALS = [
   [2, /\b(decided|decision|chosen|chose|elected|opted|aligned|determined)\b[^.]{0,80}\b(move|moving|proceed|proceeding|go|going|pursue|pursuing|continue|continuing|advance)\b[^.]{0,40}\b(other|another|different|a smaller|alternative|a finalist)\b/i],
   [2, /\b(mov(e|ed|ing)|proceed(ed|ing)?|go(ing)?) (forward |ahead )?with (other|another|a smaller|different|a different)\b/i],
   [2, /\b(regret|sorry|unfortunate) to (inform|say|let you know|share|tell|advise)/i],
-  [2, /\b(you |application )?(have|has|were|was|are) not (been )?(selected|chosen|successful|shortlisted)\b|\bdid not select you\b/i],
+  [2, /\b(you |application )?(have|has|were|was|are) not (been )?(selected|chosen|successful|shortlisted)\b(?! (a|an|the|any|your|one)\b)|\bdid not select you\b/i],
   [2, /\b(considering|identified|selected|pursuing|chosen|prioritiz(e|ed|ing)) (other|another|different) candidates?\b/i],
   [2, /\b(candidates?|applicants?|profiles?|backgrounds?|qualifications?|experience)\b[^.]{0,80}\b(more closely|better) (align(s|ed)?|match(es|ed)?|fit(s)?)\b|\b(more closely|better) (align(s|ed)?|match(es|ed)?|fit(s)?)\b[^.]{0,80}\b(candidates?|applicants?|profiles?|backgrounds?|qualifications?|experience)\b/i],
   [2, /\b(isn'?t|is not|aren'?t|are not|wasn'?t|was not) (quite |currently |the right |a strong |a good |an ideal )?(a )?(match|fit)\b/i],
@@ -615,7 +1095,7 @@ var DENY_SIGNALS = [
   [2, /\b(chosen|decided|elected|opted|going) to (move|proceed|go) (forward |ahead )?with (other |another |different |the |a )?candidates?\b/i],
   [2, /\bunable to (move forward|proceed|offer|advance)|\b(will not|won'?t|cannot|can'?t) (be )?(moving|proceeding|progressing|move forward|advance|pursue)/i],
   // definitive closure (+2)
-  [2, /\b(position|role|opening|opportunity|requisition|req|job|seat)\b[^.]{0,100}\b(has been|have been|was|is|been|recently|has|is now|now been) (filled|closed|cancel+ed|put on hold)\b|\b(we'?ve|we have|we) (now |recently |already |just )?(filled|closed|hired someone for) (the|this|that) (position|role|opening|req)|\bno longer (available|hiring|accepting|considering|open|recruiting|being considered)\b|\bdecided not to fill\b/i],
+  [2, /\b(position|role|opening|opportunity|requisition|req|job|seat)\b[^.]{0,100}\b(has been|have been|was|is|been|recently|has|is now|now been) (filled|closed|cancel+ed|put on hold)\b|\b(we'?ve|we have|we) (now |recently |already |just )?(filled|closed|hired someone for) (the|this|that) (position|role|opening|req)|\b(position|role|opening|opportunity|requisition|req|job)\b[^.]{0,60}\bno longer (available|open)\b|\bno longer (hiring|accepting|considering|recruiting|being considered)\b|\bdecided not to fill\b/i],
   // medium (+1)
   [1, /\bunfortunately\b/i],
   [1, /\b(not|isn'?t|aren'?t) (a|the right|the best|an?|an ideal) (strong )?(match|fit)\b|\bdon'?t have a match\b|\bdidn'?t align\b/i],
@@ -691,9 +1171,13 @@ function notApplicationMail_(subject, body) {
   return null;
 }
 
+// Scheduling news, not a decision: "we regret to inform you that we need to reschedule your interview", "you cannot
+// move forward to the onsite until you complete the assessment".
+var NOT_A_DECISION = /\b(reschedul\w*|postpon\w*)\b|\b(cannot|can['’]?t|unable to|will not be able to|won['’]t be able to)\b[^.?!]{0,60}\b(until|unless|without|before)\b/i;
+
 /** Deny score over the unconditional part of each sentence: { score, reasons[], evidence, strong } */
 function denyScore(subject, body) {
-  var sentences = splitSentences(body).map(function (x) {
+  var sentences = splitSentences(body).filter(function (x) { return !NOT_A_DECISION.test(x); }).map(function (x) {
     var m = CONDITIONAL.exec(x);
     return m ? x.slice(0, m.index) : x;
   }).filter(function (x) { return x.length >= MIN_PREFIX_LENGTH; });
@@ -718,4 +1202,15 @@ function isJobEmail(from, subject, body) { return jobScore(from, subject, body).
 function isRejection(subject, body) {
   var d = denyScore(subject, body);
   return d.score >= DENY_THRESHOLD && d.strong;
+}
+function isInterview(body) { return interviewScore(body).interview; }
+
+// A rejection that also offers a forward-looking conversation ("we're not moving forward for this role, but we'd like
+// to schedule a call about another team") is interview mail. Only a direct offer counts, never the broad interview
+// wording, so "thank you for taking the time to interview with us" stays a rejection, and so does a courtesy offer
+// to keep in touch about the future.
+var FUTURE_ONLY = /\b(in the future|future (opportunities|roles|openings|positions)|(keep|stay) (in touch|connected)|talent (community|network|pool)|down the (road|line))\b/i;
+
+function rejectionStands_(body) {
+  return !splitSentences(body).some(function (sentence) { return directOffer_(sentence) && !FUTURE_ONLY.test(sentence); });
 }
