@@ -8,17 +8,25 @@ Job Duck for your coding agent. Job Duck keeps your job search (postings, applic
 
 `jobduck` is a single self-contained binary; nothing else needs to be installed.
 
+The installer is a TypeScript script run by [Bun](https://bun.sh), so install Bun first.
+
 macOS and Linux (arm64 or x64):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ZaxShen/JobDuck/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/ZaxShen/JobDuck/main/framework/scripts/install.ts | bun run -
 mkdir ~/JobDuck && cd ~/JobDuck
 jobduck init
 ```
 
-The installer downloads the binary for your platform from [GitHub Releases](https://github.com/ZaxShen/JobDuck/releases), checks it against the release's `SHA256SUMS`, and puts it in `~/.local/bin` without root. `JOBDUCK_VERSION=0.1.0` pins a version; `JOBDUCK_CHANNEL=rc` or `JOBDUCK_CHANNEL=dev` installs from a [prerelease channel](#release-channels); `JOBDUCK_INSTALL_DIR=<dir>` picks another directory.
+Windows (x64), in PowerShell:
 
-Windows (x64): download `jobduck-windows-x64.exe` from [Releases](https://github.com/ZaxShen/JobDuck/releases), rename it to `jobduck.exe`, and put it in a directory on your `PATH`.
+```powershell
+irm https://raw.githubusercontent.com/ZaxShen/JobDuck/main/framework/scripts/install.ts | bun run -
+```
+
+The installer downloads the binary for your platform from [GitHub Releases](https://github.com/ZaxShen/JobDuck/releases), checks it against the release's `SHA256SUMS`, and puts it in `~/.local/bin` (`jobduck.exe` on Windows) without root or admin rights. `JOBDUCK_VERSION=0.1.0` pins a version; `JOBDUCK_CHANNEL=rc` or `JOBDUCK_CHANNEL=dev` installs from a [prerelease channel](#release-channels); `JOBDUCK_INSTALL_DIR=<dir>` picks another directory.
+
+Without Bun: download the binary for your platform (for example `jobduck-windows-x64.exe`) from [Releases](https://github.com/ZaxShen/JobDuck/releases), rename it to `jobduck` (`jobduck.exe` on Windows), make it executable on macOS and Linux, and put it in a directory on your `PATH`.
 
 Then:
 
@@ -303,7 +311,7 @@ The release workflow (`.github/workflows/release.yml`) runs `scripts/release-gat
 
 `.github/workflows/dev-channel.yml` runs daily, and does nothing unless `dev` moved since the last `dev-latest` build. It tests, stamps the version `X.Y.Z-dev.<n>.gh<PR>` with `scripts/dev-version.ts` (X.Y.Z is the core of a prerelease `package.json` version or the next patch after a stable one, n the first-parent commits since the last stable tag, PR the pull request behind the build) and replaces the `dev-latest` prerelease, titled `vX.Y.Z-dev.<n>.gh<PR>`. [Dev builds](../CONTRIBUTING.md#dev-builds) explains how to read it. For a build right away, run `gh workflow run dev-channel.yml`. Scheduled and manual runs use the workflow file on `main`.
 
-CI runs only on pull requests, and a newer push cancels the run still in progress. A PR that touches only `README.md` or `CLAUDE.md` skips the build, test and smoke jobs, and the installer job runs only when `install.sh` changes. The required `ci` check reports either way.
+CI runs only on pull requests, and a newer push cancels the run still in progress. A PR that touches only `README.md` or `CLAUDE.md` skips the build, test and smoke jobs, and the installer job runs only when `framework/scripts/install.ts` changes. The required `ci` check reports either way.
 
 ## License
 
