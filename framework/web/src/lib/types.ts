@@ -47,6 +47,7 @@ export interface ApplicationEvent {
   stage_type: string | null
   scheduled_at: string | null
   outcome: string | null
+  occurred_at: string | null
   created_at: string
 }
 

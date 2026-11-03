@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { type Db, nowIso, one, transaction } from './client'
+import { checkEventDate } from './dates'
 
 export const APPLICATION_STATUSES = [
   'saved', 'pending', 'applied', 'interviewing', 'offered',
@@ -13,6 +14,12 @@ export type EventSource = (typeof EVENT_SOURCES)[number]
 
 export const isTerminal = (status: ApplicationStatus) => (TERMINAL_STATUSES as readonly string[]).includes(status)
 const isUnsubmitted = (status: ApplicationStatus) => status === 'saved' || status === 'pending'
+
+export const STATUS_RANK: Record<ApplicationStatus, number> = {
+  saved: 0, pending: 0, applied: 1, interviewing: 2, offered: 3,
+  accepted: 4, deny_by_employer: 4, deny_by_candidate: 4, no_response: 4,
+}
+export const UNDO_LATEST_ONLY = 'only the latest status entry can be undone'
 
 export const PENDING_REASON_MAX = 500
 export const PENDING_REASON_REQUIRED = 'pending_reason is required when status is pending'
@@ -73,6 +80,7 @@ export interface ApplicationEvent {
   stage_type: string | null
   scheduled_at: string | null
   outcome: string | null
+  occurred_at: string | null
   created_at: string
 }
 
@@ -93,16 +101,40 @@ export interface SetStatusOptions {
   note?: string
   closedBy?: string
   metadata?: unknown
+  occurredAt?: string
+}
+
+export interface EventPatch {
+  occurredAt?: string
+  note?: string | null
 }
 
 const toJson = (value: unknown) => (value === undefined || value === null ? null : JSON.stringify(value))
 
 function insertEvent(db: Db, applicationId: number, from: ApplicationStatus | null, to: ApplicationStatus,
-  source: EventSource, note: string | null, metadata: unknown, createdAt: string): void {
+  source: EventSource, note: string | null, metadata: unknown, createdAt: string, occurredAt: string | null = null): void {
   db.prepare(`INSERT INTO application_events
-      (application_id, from_status, to_status, note, source, metadata, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`)
-    .run(applicationId, from, to, note, source, toJson(metadata), createdAt)
+      (application_id, from_status, to_status, note, source, metadata, occurred_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(applicationId, from, to, note, source, toJson(metadata), occurredAt, createdAt)
+}
+
+const hasEventTo = (db: Db, applicationId: number, status: ApplicationStatus) =>
+  one(db.prepare('SELECT 1 FROM application_events WHERE application_id = ? AND to_status = ? LIMIT 1'),
+    applicationId, status) !== undefined
+
+const latestEventId = (db: Db, applicationId: number, status?: ApplicationStatus) =>
+  one<{ id: number | null }>(db.prepare(`SELECT MAX(id) AS id FROM application_events
+      WHERE application_id = ? AND (? IS NULL OR to_status = ?)`), applicationId, status ?? null, status ?? null)?.id ?? null
+
+function checkForward(db: Db, current: Application, target: ApplicationStatus): void {
+  const { id, status } = current
+  if (isTerminal(status)) throw new Error(`application ${id} is closed (${status}); undo its latest entry instead`)
+  if (target === status && target !== 'pending') throw new Error(`application ${id} is already ${status}`)
+  if (STATUS_RANK[target] < STATUS_RANK[status]) {
+    throw new Error(`cannot move application ${id} back from ${status} to ${target}; undo the later entry instead`)
+  }
+  if (target === 'applied' && hasEventTo(db, id, 'applied')) throw new Error(`application ${id} is already applied`)
 }
 
 export function getApplication(db: Db, id: number): Application | undefined {
@@ -145,23 +177,108 @@ export function createApplication(db: Db, input: CreateApplicationInput): Applic
 export function setStatus(db: Db, id: number, status: ApplicationStatus, options: SetStatusOptions = {}): Application {
   const source = options.source ?? 'agent'
   const pendingReason = checkPendingReason(status, options.pendingReason)
+  const occurredAt = options.occurredAt === undefined ? null : checkEventDate(options.occurredAt, 'occurred_at')
   return transaction(db, () => {
     const current = getApplication(db, id)
     if (!current) throw new Error(`application ${id} not found`)
+    checkForward(db, current, status)
     const now = nowIso()
     const terminal = isTerminal(status)
-    const appliedAt = current.applied_at ?? (isUnsubmitted(status) ? null : now)
+    const appliedAt = current.applied_at ?? (isUnsubmitted(status) ? null : (occurredAt ?? now))
     const note = options.note ?? null
     const row = one<Application>(db.prepare(`UPDATE applications
         SET status = ?, pending_reason = ?, applied_at = ?, closed_at = ?, closed_by = ?, updated_at = ?,
           note = CASE WHEN ? IS NULL THEN note WHEN note IS NULL THEN ? ELSE note || char(10) || ? END
         WHERE id = ?
         RETURNING *`),
-      status, pendingReason, appliedAt, terminal ? now : null, terminal ? (options.closedBy ?? source) : null, now,
-      note, note, note, id)
+      status, pendingReason, appliedAt, terminal ? (occurredAt ?? now) : null,
+      terminal ? (options.closedBy ?? source) : null, now, note, note, note, id)
     if (!row) throw new Error(`application ${id} not found`)
-    insertEvent(db, id, current.status, status, source, note, options.metadata, now)
+    insertEvent(db, id, current.status, status, source, note, options.metadata, now, occurredAt)
     return row
+  })
+}
+
+export function getEvent(db: Db, eventId: number): ApplicationEvent | undefined {
+  return one<ApplicationEvent>(db.prepare(`SELECT e.* FROM application_events e
+      JOIN applications a ON a.id = e.application_id
+      WHERE e.id = ? AND a.deleted_at IS NULL`), eventId)
+}
+
+function requireEvent(db: Db, eventId: number): ApplicationEvent {
+  const event = getEvent(db, eventId)
+  if (!event) throw new Error(`event ${eventId} not found`)
+  return event
+}
+
+export function updateEvent(db: Db, eventId: number, patch: EventPatch): ApplicationEvent {
+  const occurredAt = patch.occurredAt === undefined ? undefined : checkEventDate(patch.occurredAt, 'occurred_at')
+  return transaction(db, () => {
+    const event = requireEvent(db, eventId)
+    if (event.stage_type !== null) throw new Error(`event ${eventId} is an interview or offer stage; edit it as a stage`)
+    const assignments: string[] = []
+    const params: unknown[] = []
+    if (occurredAt !== undefined) {
+      assignments.push('occurred_at = ?')
+      params.push(occurredAt)
+    }
+    if (patch.note !== undefined) {
+      assignments.push('note = ?')
+      params.push(patch.note)
+    }
+    if (assignments.length === 0) return event
+    const updated = one<ApplicationEvent>(db.prepare(`UPDATE application_events SET ${assignments.join(', ')}
+        WHERE id = ?
+        RETURNING *`), ...params, eventId)
+    if (!updated) throw new Error(`event ${eventId} not found`)
+    const application = getApplication(db, event.application_id)
+    if (!application) throw new Error(`application ${event.application_id} not found`)
+    const syncApplied = occurredAt !== undefined && event.to_status === 'applied'
+    const syncClosed = occurredAt !== undefined && isTerminal(application.status) && event.to_status === application.status
+      && latestEventId(db, application.id, application.status) === event.id
+    db.prepare(`UPDATE applications
+        SET applied_at = CASE WHEN ? THEN ? ELSE applied_at END,
+          closed_at = CASE WHEN ? THEN ? ELSE closed_at END,
+          updated_at = ?
+        WHERE id = ?`)
+      .run(syncApplied ? 1 : 0, occurredAt ?? null, syncClosed ? 1 : 0, occurredAt ?? null, nowIso(), application.id)
+    return updated
+  })
+}
+
+export function revertRemovedEvent(db: Db, removed: ApplicationEvent): void {
+  const application = getApplication(db, removed.application_id)
+  if (!application) throw new Error(`application ${removed.application_id} not found`)
+  const now = nowIso()
+  if (removed.from_status === null || application.status !== removed.to_status
+    || hasEventTo(db, application.id, removed.to_status)) {
+    db.prepare('UPDATE applications SET updated_at = ? WHERE id = ?').run(now, application.id)
+    return
+  }
+  const from = removed.from_status !== removed.to_status ? removed.from_status
+    : one<{ to_status: ApplicationStatus }>(db.prepare(`SELECT to_status FROM application_events
+        WHERE application_id = ? ORDER BY id DESC LIMIT 1`), application.id)?.to_status ?? 'saved'
+  const status = from === 'pending' ? 'saved' : from
+  const leavingTerminal = isTerminal(application.status) && !isTerminal(status)
+  db.prepare(`UPDATE applications
+      SET status = ?, pending_reason = NULL,
+        closed_at = CASE WHEN ? THEN NULL ELSE closed_at END,
+        closed_by = CASE WHEN ? THEN NULL ELSE closed_by END,
+        applied_at = CASE WHEN ? THEN NULL ELSE applied_at END,
+        updated_at = ?
+      WHERE id = ?`)
+    .run(status, leavingTerminal ? 1 : 0, leavingTerminal ? 1 : 0, status === 'saved' ? 1 : 0, now, application.id)
+}
+
+export function deleteEvent(db: Db, eventId: number): ApplicationEvent {
+  return transaction(db, () => {
+    const event = requireEvent(db, eventId)
+    if (event.stage_type !== null || event.from_status === null || latestEventId(db, event.application_id) !== event.id) {
+      throw new Error(UNDO_LATEST_ONLY)
+    }
+    db.prepare('DELETE FROM application_events WHERE id = ?').run(eventId)
+    revertRemovedEvent(db, event)
+    return event
   })
 }
 
