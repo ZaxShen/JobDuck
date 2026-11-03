@@ -113,6 +113,18 @@ async function replaceDashboard(record: DashboardRecord, stop: Stopper, timeoutM
   }
 }
 
+async function spawnDashboard(home: string, args: string[], spawn: Spawner, timeoutMs: number): Promise<DashboardRecord> {
+  const [command, ...script] = selfCommand()
+  const { pid } = spawn(command!, [...script, 'dashboard', '--no-open', ...args], { ...process.env, JOBDUCK_HOME: home })
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    await Bun.sleep(100)
+    const started = await liveDashboard(home, pid)
+    if (started) return started
+  }
+  throw new Error(`the dashboard did not start within ${timeoutMs / 1000}s; run jobduck dashboard to see why`)
+}
+
 export async function launchDashboard(options: BackgroundOptions = {}): Promise<string> {
   const workspace = resolveWorkspace(options.workspace ?? process.cwd())
   const home = options.home ?? jobduckHome(workspace)
@@ -131,18 +143,20 @@ export async function launchDashboard(options: BackgroundOptions = {}): Promise<
     await replaceDashboard(running, options.stopDashboard ?? terminate, timeoutMs)
   }
 
-  const [command, ...script] = selfCommand()
-  const args = [...script, 'dashboard', '--no-open', '--workspace', workspace]
+  const args = ['--workspace', workspace]
   if (options.port !== undefined) args.push('--port', String(options.port))
-  const { pid } = (options.spawn ?? spawnDetached)(command!, args, { ...process.env, JOBDUCK_HOME: home })
+  return show(await spawnDashboard(home, args, options.spawn ?? spawnDetached, timeoutMs))
+}
 
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
-    await Bun.sleep(100)
-    const started = await liveDashboard(home, pid)
-    if (started) return show(started)
-  }
-  throw new Error(`the dashboard did not start within ${timeoutMs / 1000}s; run jobduck dashboard to see why`)
+export async function restartDashboard(
+  home: string, options: { spawn?: Spawner; stopDashboard?: Stopper; timeoutMs?: number } = {},
+): Promise<DashboardRecord | null> {
+  const record = await liveDashboard(home)
+  if (!record) return null
+  const timeoutMs = options.timeoutMs ?? START_MS
+  await replaceDashboard(record, options.stopDashboard ?? terminate, timeoutMs)
+  const args = ['--workspace', record.workspace, '--port', String(record.port)]
+  return spawnDashboard(home, args, options.spawn ?? spawnDetached, timeoutMs)
 }
 
 function waitForSignal(): Promise<void> {
