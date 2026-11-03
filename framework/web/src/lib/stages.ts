@@ -2,20 +2,20 @@ import type { StageKind } from '@/lib/types'
 
 const STAGE_LABELS: Record<string, string> = {
   information: 'Information',
-  phone_screen: 'Phone screen',
-  online_assessment: 'Online assessment',
-  hiring_manager: 'Hiring manager',
+  phone_screen: 'Phone Screen',
+  online_assessment: 'Online Assessment',
+  hiring_manager: 'Hiring Manager',
   technical: 'Technical',
   behavioral: 'Behavioral',
-  system_design: 'System design',
+  system_design: 'System Design',
   onsite: 'Onsite',
-  take_home: 'Take home',
+  take_home: 'Take Home',
   other: 'Other',
   verbal: 'Verbal',
   written: 'Written',
 }
 
-const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slice(1).replace(/_/g, ' ')
+const capitalize = (value: string) => value.split('_').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
 
 export const stageTypeLabel = (stageType: string) => STAGE_LABELS[stageType] ?? capitalize(stageType)
 export const outcomeLabel = capitalize

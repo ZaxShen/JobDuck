@@ -1,6 +1,7 @@
 import { isToggle, QUIZ, type Question, type Quiz } from '@/lib/wizard'
 import { cn } from '@/lib/utils'
-import { SegmentedToggle, StepActions, StepIntro, stepMotion } from '@/views/welcome/step-parts'
+import { SegmentedToggle } from '@/components/fields/segmented-toggle'
+import { StepActions, StepIntro, stepMotion } from '@/views/welcome/step-parts'
 
 interface QuizStepProps {
   quiz: Quiz

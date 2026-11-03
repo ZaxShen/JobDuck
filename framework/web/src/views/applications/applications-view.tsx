@@ -324,7 +324,7 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
 
       {outcomes.length > 0 && (
         <SectionCard
-          title="Needs a match"
+          title="Needs A Match"
           description="Rejection emails that could not be matched to an application automatically."
         >
           <ul>

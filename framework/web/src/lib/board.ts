@@ -18,7 +18,7 @@ export interface StatusActions {
 }
 
 export const stageColumns = (terminal: readonly string[]): StageColumn[] => [
-  { key: 'pre_interview', label: 'Pre-interview', statuses: ['saved', 'pending', 'applied'] },
+  { key: 'pre_interview', label: 'Pre-Interview', statuses: ['saved', 'pending', 'applied'] },
   { key: 'interviewing', label: 'Interviewing', statuses: ['interviewing'] },
   { key: 'offer', label: 'Offer', statuses: ['offered'] },
   { key: 'closed', label: 'Closed', statuses: terminal },

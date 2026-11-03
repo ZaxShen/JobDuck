@@ -51,7 +51,7 @@ export function StatusActionsMenu({ row, busy, onAction, className }: StatusActi
         <DropdownMenuContent align="end" className="w-72">
           {advance.length > 0 && (
             <DropdownMenuGroup>
-              <DropdownMenuLabel>Next step</DropdownMenuLabel>
+              <DropdownMenuLabel>Next Step</DropdownMenuLabel>
               {advance.map((action) => item(action, 'default'))}
             </DropdownMenuGroup>
           )}

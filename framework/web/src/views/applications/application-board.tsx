@@ -142,7 +142,7 @@ export function ApplicationBoard({ rows, terminal, onMove, ...actions }: Applica
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {pending?.confirm === 'back' ? 'Move back' : 'Move'} to {pending ? labels[pending.to] : ''}?
+              {pending?.confirm === 'back' ? 'Move Back' : 'Move'} To {pending ? labels[pending.to] : ''}?
             </AlertDialogTitle>
             <AlertDialogDescription>
               This will set the status of {pending?.row.company} to {pending ? statusLabel(pending.target) : ''}.

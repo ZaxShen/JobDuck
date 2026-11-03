@@ -4,9 +4,10 @@ import { TagInput } from '@/components/fields/tag-input'
 import { Label } from '@/components/ui/label'
 import { inferTrack, pruneToTrack, TRACKS, type Track } from '@/lib/seniority'
 import { cn } from '@/lib/utils'
-import { LocationPicker } from '@/views/welcome/location-picker'
-import { SeniorityPicker } from '@/views/welcome/seniority-picker'
-import { SegmentedToggle, StepActions, StepIntro, stepMotion } from '@/views/welcome/step-parts'
+import { LocationPicker } from '@/components/fields/location-picker'
+import { SegmentedToggle } from '@/components/fields/segmented-toggle'
+import { SeniorityPicker } from '@/components/fields/seniority-picker'
+import { StepActions, StepIntro, stepMotion } from '@/views/welcome/step-parts'
 
 export interface Targets {
   target_titles: string[]

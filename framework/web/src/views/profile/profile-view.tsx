@@ -23,7 +23,7 @@ import { FACTS_SLUG, profileSections, type SectionBody, type SectionGroup, type 
 function Intake() {
   return (
     <SectionCard
-      title="Fill in your profile"
+      title="Fill In Your Profile"
       description="Pick whichever is quickest. For the first two, your agent fills this form and you review it here."
       className="bg-muted/40"
     >
@@ -212,7 +212,7 @@ function AddSection({ draft, onChange }: { draft: Draft; onChange: (draft: Draft
   }
 
   return (
-    <Section title={<label htmlFor="profile-new-section">Add section</label>} help="Add a section of your own to profile.md, e.g. Publications or Awards.">
+    <Section title={<label htmlFor="profile-new-section">Add Section</label>} help="Add a section of your own to profile.md, e.g. Publications or Awards.">
       <form
         className="flex gap-2"
         onSubmit={(event) => {

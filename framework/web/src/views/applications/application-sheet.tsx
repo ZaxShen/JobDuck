@@ -340,7 +340,7 @@ export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }:
         <AlertDialogContent>
           <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); void markPending() }}>
             <AlertDialogHeader>
-              <AlertDialogTitle>What is it waiting on?</AlertDialogTitle>
+              <AlertDialogTitle>What Is It Waiting On?</AlertDialogTitle>
               <AlertDialogDescription>
                 Pending means the application is stopped until someone acts. Say what has to happen next.
               </AlertDialogDescription>
@@ -366,7 +366,7 @@ export function ApplicationSheet({ id, statuses, terminal, onClose, onChanged }:
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete this application?</AlertDialogTitle>
+            <AlertDialogTitle>Delete This Application?</AlertDialogTitle>
             <AlertDialogDescription>It disappears from the board.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
