@@ -1,6 +1,6 @@
 # Job Duck — Gmail automation (Apps Script)
 
-Script v5.4. Rejections are queued inside the script and served to `jobduck sync` by the script itself, deployed as a
+Script v5.5. Rejections are queued inside the script and served to `jobduck sync` by the script itself, deployed as a
 web app; `jobduck sync` records them in your local Job Duck database. Nothing is pushed anywhere.
 
 A Google Apps Script that runs in the user's own Google account. Every 10 minutes it reads each job thread in the
@@ -108,7 +108,7 @@ job link; nothing else leaves Gmail.
 recorded; acknowledged outcomes are deleted from the script. The agent never gets mail access.
 
 1. Open [script.google.com](https://script.google.com/home) and click **New project**; rename it
-   `Job Duck - Gmail Rejection Sync v5.4`. In **Project Settings**, tick **Show "appsscript.json" manifest file in
+   `Job Duck - Gmail Rejection Sync v5.5`. In **Project Settings**, tick **Show "appsscript.json" manifest file in
    editor**. Back in the **Editor**, replace the contents of `appsscript.json` with
    [`appsscript.json`](https://github.com/ZaxShen/JobDuck/blob/main/integrations/gmail-apps-script/appsscript.json)
    and of `Code.gs` with
@@ -138,7 +138,7 @@ On a large Inbox: the trigger only reads Inbox mail from the last 3 days (`CONFI
 once for older mail. Only rejections received in the last 30 days (`CONFIG.SYNC_SINCE`) are queued for
 `jobduck sync`; older ones are labeled and archived but not queued.
 
-The URL alone exposes nothing: a `GET` returns the one line `Job Duck Gmail script v5.4 — POST only`, and every request
+The URL alone exposes nothing: a `GET` returns the one line `Job Duck Gmail script v5.5 — POST only`, and every request
 for data is a `POST` whose JSON body carries the token (`{ token, action, messageIds? }`, actions `pending`, `ack`,
 `status`). The token never goes into a URL. After editing the script, **Deploy → Manage deployments → Edit → Version:
 New version** so the `/exec` URL serves the new code; a deployment keeps running the version it was created with.
@@ -196,6 +196,14 @@ trigger are kept.
 
 ## Changelog
 
+- **v5.5**: A rejection is denied only when every sentence, once the greeting, sign-off and standard footer are set
+  aside, is an allowlisted shape: the decision itself, thanks or appreciation for the application, a wish of luck, a
+  pointer to the careers page or future openings that names no person, call or specific role, a status disclaimer for
+  other applications, the applicant-pool courtesy, a privacy or recruiting-fraud notice, or a frame line (greeting,
+  team signature, link row, requisition number). Each shape is an enumerated, anchored pattern; its name slots hold at
+  most 80 characters with no scheduling word and nothing from the veto list. Any other sentence ("Our recruiter Jane
+  will email you to set up time", "The weather in Denver is lovely this week") keeps the thread in the Inbox. The v5.4
+  contact vetoes still apply on top.
 - **v5.4**: The script archives or denies only when it is certain the mail is an application confirmation or a
   rejection; anything else stays in the Inbox untouched. New confirmation rule: a message is archived only when every
   sentence is an acknowledgement or belongs to an enumerated boilerplate category (equal opportunity and diversity,

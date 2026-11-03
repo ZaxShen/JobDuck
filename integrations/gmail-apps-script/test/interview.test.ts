@@ -94,7 +94,7 @@ function load(threads: FakeThread[], scriptProps: Record<string, string> = {}, e
   vm.createContext(sandbox);
   vm.runInContext(
     readFileSync(join(import.meta.dir, '..', 'Code.gs'), 'utf8') +
-      '\nthis.__api = { processThread_, reauditApplications, previewReaudit, preview, isInterview };',
+      '\nthis.__api = { processThread_, reauditApplications, previewReaudit, preview, isInterview, unexplainedRejection_ };',
     sandbox,
   );
   const api = sandbox.__api as {
@@ -103,6 +103,7 @@ function load(threads: FakeThread[], scriptProps: Record<string, string> = {}, e
     previewReaudit(): void;
     preview(): void;
     isInterview(body: string): boolean;
+    unexplainedRejection_(body: string): string | null;
   };
   return { api, logs, scriptStore, created };
 }
@@ -477,6 +478,61 @@ describe('v5.4: archive only what is certainly a plain confirmation', () => {
     const { action, t } = untouched('Thank you for applying to Acme', body, 'Acme Recruiting <no-reply@greenhouse.io>');
     expect(action).toBe('keep');
     expect(t.calls).toEqual([]);
+  });
+});
+
+describe('v5.5: a rejection is denied only when every sentence is an allowlisted shape', () => {
+  const D = 'Unfortunately, we have decided not to move forward with your application.';
+  const run = (sentence: string) => {
+    const body = 'Hi Dan,\n\nThank you for your interest in the Backend Engineer role at Acme. ' + D + ' ' + sentence + '\n\nBest,\nAcme Recruiting';
+    const t = thread([], [message('Your application to Acme', body, 'Acme Recruiting <no-reply@greenhouse.io>')]);
+    const { api } = load([t]);
+    return { action: api.processThread_(t), t };
+  };
+
+  test.each([
+    'The weather in Denver is lovely this week.',
+    'Our recruiter Jane will email you to set up time.',
+    "I'd be happy to introduce you to the Platform hiring manager.",
+    'We would like to consider you for other roles that fit your applications.',
+    "Thanks for your time; I'd love to stay in touch about a Staff role opening next month.",
+    'We have a lot of exciting things happening at Acme and would like to tell you about one of them.',
+    'Please update your candidate profile so our recruiter can reach you.',
+    'Always confirm or apply for any open roles directly with Jane.',
+  ])('a rejection with an unrecognised sentence stays untouched in the Inbox: %s', (sentence) => {
+    const { action, t } = run(sentence);
+    expect(action).toBe('keep');
+    expect(t.calls).toEqual([]);
+    expect(t.inInbox).toBe(true);
+  });
+
+  test('a careful-consideration rejection with an unrelated office-closure sentence stays untouched in the Inbox', () => {
+    const body = 'Hi Dan,\n\nThank you for your interest in the Backend Engineer role at Acme. After careful consideration, we have decided not to move forward with your application at this time. ' +
+      'Please note our office will be closed on Monday for the holiday.\n\nBest,\nAcme Recruiting';
+    const t = thread([], [message('Your application to Acme', body, 'Acme Recruiting <no-reply@greenhouse.io>')]);
+    const { api } = load([t]);
+    expect(api.processThread_(t)).toBe('keep');
+    expect(t.calls).toEqual([]);
+    expect(t.inInbox).toBe(true);
+  });
+
+  test.each([
+    'We wish you the best of luck in your job search.',
+    'We encourage you to visit our careers page periodically for other roles that might interest you.',
+    'This was not an easy decision, as we received a number of strong applications.',
+    'We will keep your information on file for future opportunities.',
+    'Stay in the loop and join our talent community.',
+    'Thank you again for your interest in joining our team.',
+    'We truly appreciate the time and effort you put into your application.',
+    'Your applicant information will be stored and processed in accordance with our privacy policy.',
+  ])('a rejection whose extra sentence is an allowlisted courtesy shape is denied: %s', (sentence) => {
+    expect(run(sentence).action).toBe('deny');
+  });
+
+  test('unexplainedRejection_ names the first unrecognised sentence and returns null for a plain rejection', () => {
+    const { api } = load([]);
+    expect(api.unexplainedRejection_('Hi Dan,\n\n' + D + ' We wish you the best in your search.\n\nBest,\nAcme Recruiting')).toBeNull();
+    expect(api.unexplainedRejection_('Hi Dan,\n\n' + D + ' The weather in Denver is lovely this week.\n\nBest,\nAcme Recruiting')).toContain('weather in Denver');
   });
 });
 
