@@ -1191,7 +1191,7 @@ function dropSignature_(lines, drop, from, nameAllowed, above) {
 }
 
 /** The body once the greeting, the sign-off with its signature and the footer lines are set aside:
- *  { line: a set-aside greeting or signature line holding a scheduling word (or null), sentences[] }. */
+ *  { line: a set-aside greeting or signature line holding a scheduling word (or null), sentences[], paragraphs[] }. */
 function bodyParts_(body) {
   var text = String(body || '').replace(/\r/g, '').replace(/&nbsp;| /g, ' ').replace(/[‘’]/g, "'").replace(/[“”]/g, '"')
     .replace(/^[ \t|]*\|[ \t]*|[ \t]*\|[ \t|]*$/gm, '').replace(/[ \t]*\|(?:[ \t]*\|)+[ \t]*/g, '\n')
@@ -1239,7 +1239,7 @@ function bodyParts_(body) {
   if (current.length) paragraphs.push(current.join(' '));
   var sentences = [];
   paragraphs.forEach(function (p) { sentences = sentences.concat(lineSentences_(p)); });
-  return { line: odd, sentences: sentences };
+  return { line: odd, sentences: sentences, paragraphs: paragraphs };
 }
 
 /** The first body sentence that is neither a known acknowledgement nor a standard footer once the greeting, the
@@ -1642,7 +1642,8 @@ var RJ_POINTER = '(?:' + RJ_INVITE + ')?' +
   '|' + RJ_SOCIAL + ')';
 var RJ_KEEP_FOR = '(?: for ' + RJ_FUTURE + RJ_SUITS + '?)?(?:,? (?:in case|in the event that|should|if|as) (?:our needs change|our team continues to grow|your experience is a fit for future roles|' + RJ_ROLE_FITS + '))?';
 var RJ_FUTURE_SENTENCES = [
-  RJ_POINTER + '(?:(?:,| and|,? or|,? and/or) ' + RJ_POINTER + ')*(?:,? (?:as|since) ' + RJ_GROWING + ')?',
+  // Two pointers at most: unrollRepeats_ writes out each one in full, and a third would double the compile time.
+  RJ_POINTER + '(?:(?:,| and|,? or|,? and/or) ' + RJ_POINTER + ')?(?:,? (?:as|since) ' + RJ_GROWING + ')?',
   RJ_GROWING,
   'we(?:\'ve| have) (?:a lot of|lots of|many|so many) exciting things happening(?: (?:at|with) ' + RJ_NAME + ')?',
   'we (?:make a point of revisiting|regularly revisit|periodically revisit|regularly review|periodically review) (?:past|previous|prior) applications(?: on a regular basis)?(?: to match them (?:to|with) (?:newly opened|new|open) (?:jobs|roles|positions|openings))?',
@@ -1714,7 +1715,6 @@ var RJ_FRAME = [
   '(?:' + RJ_NAME + ' )?jobs(?: \\( URL \\)| URL)?',
   RJ_PLACE,
   '[a-z0-9-]+\\.(?:com|io|ai|co|org|net)(?: \\( URL \\)| URL)?',
-  "((?:(?!(?:" + ACK_VETO + "|at)\\b)[a-z'.-]+(?![a-z'.-]) ?){1,2})",
   '(?:[\\[\\](){}*#|·•>_-]|\\d{1,2}\\.?|URL|visible links| )+',
   '(?:' + RJ_NAME + '|URL)(?: ?\\( URL \\))?(?: ?[|·•] ?(?:' + RJ_NAME + '|URL)(?: ?\\( URL \\))?)+',
   '(?:' + RJ_NAME + ' ?)?[a-z]{0,3}-?\\d{4,9}',
@@ -1737,14 +1737,44 @@ var RJ_NOTICES = [
 ];
 var RJ_CLAUSES = [RJ_DECISION_SENTENCE, RJ_REVIEWED_CLAUSE, RJ_PRAISE_CLAUSE, RJ_OPENING, RJ_THANKS, RJ_THANKS_MORE, RJ_APPRECIATE, RJ_APPRECIATE_WHAT, RJ_WISH,
   ACK_THANKS, ACK_APPRECIATE, ACK_WISH, ACK_THANKS_TIME].concat(RJ_FUTURE_SENTENCES, RJ_STATUS, RJ_POOL, RJ_NOTICES, NOTICE_CLAUSES);
+var RJ_MAX_REPEAT = 8;
+
+/** The pattern with every repeated group that holds a name slot written out copy by copy, an unbounded one up to
+ *  RJ_MAX_REPEAT times. A capture inside a repeat keeps only its last match, so acknowledges_ could not check the
+ *  slots of the earlier repeats; each copy captures its own. */
+function unrollRepeats_(src) {
+  for (;;) {
+    var stack = [], site = null, inClass = false;
+    for (var i = 0; i < src.length && !site; i++) {
+      var c = src[i];
+      if (c === '\\') { i++; continue; }
+      if (inClass) { inClass = c !== ']'; continue; }
+      if (c === '[') { inClass = true; continue; }
+      if (c === '(') { stack.push({ start: i, capture: src[i + 1] !== '?' || src[i + 2] === '<' && /[A-Za-z]/.test(src[i + 3]), holds: false }); continue; }
+      if (c !== ')') continue;
+      var group = stack.pop(), q = /^(?:\*|\+|\{(\d+)(?:(,)(\d*))?\})(\??)/.exec(src.slice(i + 1));
+      var min = !q ? 1 : q[0][0] === '*' ? 0 : q[0][0] === '+' ? 1 : Number(q[1]);
+      var max = !q ? 1 : q[0][0] === '*' || q[0][0] === '+' || (q[2] && !q[3]) ? RJ_MAX_REPEAT : q[2] ? Number(q[3]) : min;
+      if (max > 1 && group.holds) site = { start: group.start, end: i + 1, after: i + 1 + q[0].length, min: min, max: max, lazy: q[4] };
+      if (stack.length) stack[stack.length - 1].holds = stack[stack.length - 1].holds || group.holds || group.capture;
+    }
+    if (!site) return src;
+    var copy = src.slice(site.start, site.end), optional = '';
+    for (var k = site.min; k < site.max; k++) optional = '(?:' + copy + optional + ')?' + site.lazy;
+    src = src.slice(0, site.start) + new Array(site.min + 1).join(copy) + optional + src.slice(site.after);
+  }
+}
+
+function rejectionRegExp_(pattern) { return new RegExp(unrollRepeats_(pattern), 'i'); }
+
 // One expression per clause, and the leads apart: a single alternation of them all backtracks for seconds on a long
 // near-miss sentence, and the leads repeated in every clause cost seconds to compile.
-var REJECTION_CLAUSES = RJ_CLAUSES.map(function (clause) { return new RegExp('^(?:' + clause + ')$', 'i'); });
+var REJECTION_CLAUSES = RJ_CLAUSES.map(function (clause) { return rejectionRegExp_('^(?:' + clause + ')$'); });
 var RJ_ANY_LEAD = RJ_LEADS + '|' + RJ_TEAM_NAME + ' team' + RJ_TEAM_AT + '|' + RJ_LINK_ROW + '|(?:hi|hello|dear|hey) ' + RJ_NAME + ' ?';
-var REJECTION_LEADS = new RegExp('^(?:' + RJ_ANY_LEAD + ')(?:,? (?:' + RJ_ANY_LEAD + ')){0,2},?$', 'i');
+var REJECTION_LEADS = rejectionRegExp_('^(?:' + RJ_ANY_LEAD + ')(?:,? (?:' + RJ_ANY_LEAD + ')){0,2},?$');
 // A frame line stands alone as a whole sentence, never as one clause of a longer one; an emoji may trail it.
 var REJECTION_FRAME = RJ_FRAME.map(function (line) {
-  return new RegExp('^(?:' + line + ')(?: ?(?:[\\uD83C-\\uD83E][\\uDC00-\\uDFFF]|[\\u2600-\\u27BF]))*$', 'i');
+  return rejectionRegExp_('^(?:' + line + ')(?: ?(?:[\\uD83C-\\uD83E][\\uDC00-\\uDFFF]|[\\u2600-\\u27BF]))*$');
 });
 
 function rejectionClause_(text) {
@@ -1775,12 +1805,32 @@ function rejectionSentence_(sentence, depth) {
 function unexplainedRejection_(body) {
   var parts = bodyParts_(body);
   if (parts.line) return parts.line;
-  for (var s = 0; s < parts.sentences.length; s++) {
-    var sentence = parts.sentences[s], bare = sentence.replace(/^[-*•·]\s+/, '').replace(/[,:;]+$/, '');
-    if (footer_(sentence) || REJECTION_FRAME.some(function (re) { return acknowledges_(re, bare, RJ_VETO_WORD); })) continue;
-    if (!rejectionSentence_(bare)) return sentence;
+  var paragraphs = parts.paragraphs, last = paragraphs.length - 1;
+  while (last >= 0 && lineSentences_(paragraphs[last]).every(frameSentence_)) last--;
+  for (var p = 0; p < paragraphs.length; p++) {
+    if (p === last && signedName_(paragraphs[p])) continue;
+    var sentences = lineSentences_(paragraphs[p]);
+    for (var s = 0; s < sentences.length; s++) {
+      if (!frameSentence_(sentences[s]) && !rejectionSentence_(bareSentence_(sentences[s]))) return sentences[s];
+    }
   }
   return null;
+}
+
+function bareSentence_(sentence) { return sentence.replace(/^[-*•·]\s+/, '').replace(/[,:;]+$/, ''); }
+
+function frameSentence_(sentence) {
+  var bare = bareSentence_(sentence);
+  return footer_(sentence) || REJECTION_FRAME.some(function (re) { return acknowledges_(re, bare, RJ_VETO_WORD); });
+}
+
+// The one capitalised word a letter may be signed with ("Best,\nJane", "- Shopify"), as the last paragraph before the
+// footer and frame lines. A word that asks for contact ("Email.", "Holler.") is no signature.
+var RJ_SIGNED_NAME = /^[A-Z][A-Za-z'&-]*\.?$/;
+var RJ_CONTACT_WORD = /^(?:e-?mail|contact|text|txt|ping|call|ring|phone|message|msg|dm|write|reach|holler|chat|talk|speak|meet|ask|tell|connect|reply|interested)\b/i;
+
+function signedName_(paragraph) {
+  return RJ_SIGNED_NAME.test(paragraph) && !ACK_VETO_WORD.test(paragraph) && !SCHEDULING_WORDS.test(paragraph) && !RJ_CONTACT_WORD.test(paragraph);
 }
 
 function rejectionStands_(body) {

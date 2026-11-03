@@ -200,8 +200,10 @@ trigger are kept.
   aside, is an allowlisted shape: the decision itself, thanks or appreciation for the application, a wish of luck, a
   pointer to the careers page or future openings that names no person, call or specific role, a status disclaimer for
   other applications, the applicant-pool courtesy, a privacy or recruiting-fraud notice, or a frame line (greeting,
-  team signature, link row, requisition number). Each shape is an enumerated, anchored pattern; its name slots hold at
-  most 80 characters with no scheduling word and nothing from the veto list. Any other sentence ("Our recruiter Jane
+  team signature, link row, requisition number). A lone capitalised word counts as a signature ("Best,\nJane") only as
+  the last paragraph before the footer, so a short "Email Jane." or "Reach out." keeps the thread. Each shape is an
+  enumerated, anchored pattern; its name slots, every item of a repeated list included, hold at most 80 characters
+  with no scheduling word and nothing from the veto list. Any other sentence ("Our recruiter Jane
   will email you to set up time", "The weather in Denver is lovely this week") keeps the thread in the Inbox. The v5.4
   contact vetoes still apply on top.
 - **v5.4**: The script archives or denies only when it is certain the mail is an application confirmation or a

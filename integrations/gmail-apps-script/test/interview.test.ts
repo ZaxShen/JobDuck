@@ -529,6 +529,58 @@ describe('v5.5: a rejection is denied only when every sentence is an allowlisted
     expect(run(sentence).action).toBe('deny');
   });
 
+  const CAREFUL = 'After careful consideration, we have decided not to move forward with your application at this time.';
+  const runBody = (body: string) => {
+    const t = thread([], [message('Your application to Acme', body, 'Acme Recruiting <no-reply@greenhouse.io>')]);
+    const { api } = load([t]);
+    return { action: api.processThread_(t), t, api };
+  };
+  const SHORT_CONTACT = ['Email Jane.', 'Contact Jane.', 'Text Jane.', 'Reach out.', 'Write back.', 'Ping Jane.', 'Holler anytime.'];
+
+  test.each(SHORT_CONTACT)('a short contact sentence after a careful-consideration rejection stays untouched in the Inbox (F50-1): %s', (sentence) => {
+    const { action, t } = runBody('Hi Dan,\n\n' + CAREFUL + ' ' + sentence + '\n\nBest,\nAcme Recruiting');
+    expect(action).toBe('keep');
+    expect(t.calls).toEqual([]);
+    expect(t.inInbox).toBe(true);
+  });
+
+  test.each(SHORT_CONTACT)('a short contact sentence after a plain rejection stays untouched in the Inbox (F50-1): %s', (sentence) => {
+    expect(run(sentence).action).toBe('keep');
+  });
+
+  test.each(['Email Jane.', 'Reach out.', 'Holler.'])('a short contact line on its own before the sign-off stays untouched in the Inbox: %s', (line) => {
+    expect(runBody('Hi Dan,\n\n' + CAREFUL + '\n\n' + line + '\n\nBest,\nAcme Recruiting').action).toBe('keep');
+  });
+
+  test.each([
+    'Website · Phone screen with Jane ( URL ) · Blog',
+    'Website · Phone screen with Jane URL · Blog',
+    'Careers · Book a call with Jane ( URL ) · LinkedIn',
+    "Careers · Jane's calendar ( URL ) · LinkedIn",
+    'Follow us on LinkedIn, Jane Smith phone screen Monday, and Instagram.',
+    'We have decided to move forward with other candidates for the Backend - Phone Interview Monday - Platform role.',
+  ])('a repeated slot holding a scheduling word before the last repeat stays untouched in the Inbox (F50-2): %s', (sentence) => {
+    const { action, t, api } = runBody('Hi Dan,\n\n' + CAREFUL + ' ' + sentence + '\n\nBest,\nAcme Recruiting');
+    expect(action).toBe('keep');
+    expect(t.inInbox).toBe(true);
+    expect(api.unexplainedRejection_('Hi Dan,\n\n' + CAREFUL + ' ' + sentence + '\n\nBest,\nAcme Recruiting')).not.toBeNull();
+  });
+
+  test.each([
+    'Website · LinkedIn ( URL ) · Blog',
+    'Follow us on LinkedIn, Twitter and Instagram.',
+  ])('a repeated slot of plain names still denies: %s', (sentence) => {
+    expect(runBody('Hi Dan,\n\n' + CAREFUL + ' ' + sentence + '\n\nBest,\nAcme Recruiting').action).toBe('deny');
+  });
+
+  test.each([
+    ['a bare first name under the sign-off', 'Best,\nJane'],
+    ['a bare first name a blank line under the sign-off', 'Best,\n\nJane'],
+    ['a dashed company line with no sign-off', '- Acme'],
+  ])('a plain rejection signed with %s still denies', (_, signature) => {
+    expect(runBody('Hi Dan,\n\n' + CAREFUL + ' We wish you the best of luck in your job search.\n\n' + signature).action).toBe('deny');
+  });
+
   test('unexplainedRejection_ names the first unrecognised sentence and returns null for a plain rejection', () => {
     const { api } = load([]);
     expect(api.unexplainedRejection_('Hi Dan,\n\n' + D + ' We wish you the best in your search.\n\nBest,\nAcme Recruiting')).toBeNull();
