@@ -215,7 +215,11 @@ trigger are kept.
   set up a call about our Staff role?"), another role, team or opening not pointed to on the careers site, interest
   in you for a role, a resume passed along, an unconditional promise that someone will reach out, a date or time, a
   meeting tool, a request or imperative, or a booking or meeting link anywhere ("Unfortunately we don't see a direct
-  fit. Are you free Tuesday to chat about a different position?") keeps it in the Inbox. A row of
+  fit. Are you free Tuesday to chat about a different position?") keeps it in the Inbox. Only a job-board pointer or
+  a status disclaimer ("if you have applied for other roles", "should your qualifications fit") excuses another role;
+  thanks for past time does not excuse a call still to come ("Thank you for your time; our VP would like to call
+  you"); and a handoff (reply if interested, a recruiter reaching out if a role interests you, a profile shared with a
+  team, being put in touch, an email to schedule next steps) keeps the rejection in the Inbox. A row of
   bare links is never a footer, so a confirmation carrying links stays in the Inbox. Fixtures F4 to F9 cover
   these. `bun test` adds interview, assessment, verification, security-code, application-limit, unfinished-application,
   phone-screen and recruiter-chat mail that stays untouched, Ashby, Greenhouse, Lever and Workday-style confirmations

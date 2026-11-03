@@ -403,6 +403,8 @@ describe('v5.4: archive only what is certainly a plain confirmation', () => {
   );
 
   const D = 'Unfortunately, we have decided not to move forward with your application.';
+  const signedRejectionWith = (sentence: string) =>
+    'Hi Dan,\n\nThank you for your interest in the Backend Engineer role at Acme. ' + D + ' ' + sentence + '\n\nBest,\nAcme Recruiting';
   test.each([
     ['a signature line offering a call', 'Hi Dan,\n\nThank you for your interest in the Backend Engineer role at Acme. ' + D + '\n\nBest,\nJane Doe\nRecruiter at Acme\nBook a call with me anytime\n'],
     ['a question in the greeting', 'Hi Dan, are you free Tuesday?\n\nThank you for your interest in the Backend Engineer role at Acme. ' + D + '\n\nBest,\nAcme Recruiting'],
@@ -410,6 +412,32 @@ describe('v5.4: archive only what is certainly a plain confirmation', () => {
     const { action, t } = untouched('Your application to Acme', body, 'Acme Recruiting <no-reply@greenhouse.io>');
     expect(action).not.toBe('deny');
     expect(t.calls).toEqual([]);
+  });
+
+  test.each([
+    ['F49-2', 'We would like to consider you for another role on our team that better matches your application.'],
+    ['F49-2', 'We would love to consider you for the Staff Engineer role instead, should you be interested.'],
+    ['F49-3', 'Thank you for your time, and our VP would like to call you about a Staff opening.'],
+    ['F49-3', 'Thanks for speaking with us; we would love to chat again next week about our Platform team.'],
+    ['F49-4', 'If you are interested in our Staff role, just reply to this email.'],
+    ['F49-4', 'Our recruiter will reach out if the Staff role interests you, so watch your inbox.'],
+    ['F49-4', 'Your profile has been shared with our Platform team; expect to hear from them soon.'],
+    ['F49-4', 'The hiring manager asked me to put you in touch with the Platform team.'],
+    ['F49-4', 'Expect an email from the Platform team coordinator to schedule next steps.'],
+  ])('a rejection that offers another role, a call or a handoff stays untouched (%s): %s', (_id, invite) => {
+    const { action, t } = untouched('Your application to Acme', signedRejectionWith(invite), 'Acme Recruiting <no-reply@greenhouse.io>');
+    expect(action).toBe('keep');
+    expect(t.calls).toEqual([]);
+    expect(t.inInbox).toBe(true);
+  });
+
+  test.each([
+    'We wish you the best in your search.',
+    'However, we will be in touch should your qualifications be a good fit for other opportunities.',
+    'Thank you for taking the time to speak with our team.',
+  ])('a signed courtesy rejection is still denied (F49-2, F49-3, F49-4): %s', (courtesy) => {
+    const { action } = untouched('Your application to Acme', signedRejectionWith(courtesy), 'Acme Recruiting <no-reply@greenhouse.io>');
+    expect(action).toBe('deny');
   });
 
   test.each([

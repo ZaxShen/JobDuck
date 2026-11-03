@@ -1416,19 +1416,26 @@ var REPLY_REQUEST = /\bplease (let us know|let me know|reply|respond|get back to
 
 // A rejection that might invite further contact is no plain rejection, so it stays in the Inbox ("Unfortunately we
 // don't see a direct fit. Can we talk?"). Outside the footer, any of these keeps it: a question that does more than
-// offer help with questions; a call, chat, talk, meeting or conversation not thanked for as past; another role, team
-// or opening, an interest in you for a role or a resume passed along, unless the sentence points to the job board; a
-// promise that someone will reach out that is not tied to a future opening; a contact ACTION_SIGNALS kind (a question to you, a conversation, a date or time, a
-// meeting tool, a request or an imperative); or a booking or meeting link anywhere.
+// offer help with questions; a call, chat, talk, meeting or conversation not only thanked for as past; another role,
+// team or opening, an interest in you for a role or a resume passed along, unless the sentence points to the job board;
+// a handoff to another team or role; a promise that someone will reach out that is not tied to a future opening; a
+// contact ACTION_SIGNALS kind (a question to you, a conversation, a date or time, a meeting tool, a request or an
+// imperative); or a booking or meeting link anywhere.
 var CONTACT_KINDS = ['question', 'conversation', 'date or time', 'tool', 'request', 'imperative'];
 var CONTACT_SIGNALS = ACTION_SIGNALS.filter(function (sig) { return CONTACT_KINDS.indexOf(sig[0]) >= 0; });
 var CONTACT_WORDS = /\b(call|chat|chats|chatting|talk|talks|talking|speak|speaking|meet|meeting|meetings|conversations?|discuss|discussing|discussions?|catch up|hop on|jump on|connect (with )?you)\b/i;
 var CONTACT_PAST = /\bthank(s| you)\b[^.!?]*\b(for|of)\b[^.!?]*\b(time|speaking|talking|meeting|chatting|conversations?|calls?|chats?|discussions?)\b|\b(spoke|talked|met|chatted|discussed)\b|\bpleasure (of )?(speaking|meeting|talking|chatting|getting to know)\b|\b(enjoyed|appreciated|appreciate|valued) (\w+ ){0,3}(speaking|meeting|talking|chatting|conversations?|calls?|discussions?)\b/i;
+// Thanks for past time does not cancel a call still to come ("Thank you for your time; our VP would like to call you").
+var FORWARD_MODAL = /\b(would|['’]d) (like|love)\b|\b(will|['’]ll|can|could|let['’]s)\b/i;
 var OTHER_ROLE = /\b(other|another|different|alternative|alternate|additional|new|separate|similar|related|open) (\w+ ){0,2}(roles?|positions?|openings?|opportunit(y|ies)|teams?|jobs?|reqs?|requisitions?|vacanc(y|ies)|departments?|groups?)\b|\binstead\b/i;
-// "We encourage you to check our careers page for other openings" points to the job board, not to a conversation.
-var JOB_BOARD = /\b(re)?appl(y|ying|ied|ication|ications)\b|\bcareers?\b|\b(site|page|website|postings?|job board|listings?)\b|\b(visit|view|check|monitor|explore|exploring|browse|follow|keep an eye)\b|\bstay (informed|connected|in touch)\b|\binterviewing\b|\bcandidates?\b|\b(arise|comes? up|open up|opens up|become available|becomes available|posted)\b|\b(future|should)\b/i;
+// "We encourage you to check our careers page for other openings" points to the job board, not to a conversation, and
+// so does a status disclaimer ("if you have applied for other roles", "should your qualifications fit").
+var JOB_BOARD = /\b(re)?appl(y|ying|ied|ications)\b|\bcareers?\b|\b(site|page|website|postings?|job board|listings?)\b|\b(visit|view|check|monitor|explore|exploring|browse|follow|keep an eye)\b|\bstay (informed|connected|in touch)\b|\b(if|whether) you(['’]re| are| have|['’]ve)? (currently )?(applied|interviewing)\b|\b(arise|comes? up|open up|opens up|become available|becomes available|posted)\b|\bfuture\b|\bshould (your|we|there|a|an|any|the)\b/i;
 var WANTS_YOU = /\b(consider|considering) you\b|\byou (could|would|might|may|will) be (a |an )?(\w+ )?fit\b|\b(interested in|keen on|excited about) (you|your (profile|background|experience))\b|\b(we|I)(['’]ve| have| will|['’]ll| would|['’]d| are|['’]re| am|['’]m)? (also )?(pass|passed|passing|forward|forwarded|forwarding|share|shared|sharing|refer|referred|referring)( along)? your\b/i;
 var CONDITIONAL_CONTACT = /\b(if|should|when|whenever|once|in case|in the event|as soon as)\b/i;
+// A handoff to another team or role: reply if interested, a reach-out tied to your interest, a profile shared with a
+// team, being put in touch, or an email to schedule next steps.
+var HANDOFF = /\breply to (this|our|my) (e-?mail|message|note)\b|\bto schedule (next steps|a |an |time)|\bhear from (them|him|her|the|our)\b|\b(put|get|got) you in touch\b|\byour (profile|resume|r[ée]sum[ée]|cv|details|information) (has|have) been (shared|forwarded|passed|referred)\b|\bif (the|this|that|our) [^.!?]{0,40}interests you\b|\byou(['’]re| are) interested\b/i;
 
 function contactSentence_(sentence) {
   var questions = ABOUT_QUESTIONS.test(sentence);
@@ -1437,7 +1444,8 @@ function contactSentence_(sentence) {
   if ((WANTS_YOU.test(sentence) || OTHER_ROLE.test(sentence)) && !FUTURE_ONLY.test(sentence) && !JOB_BOARD.test(sentence)) {
     return true;
   }
-  if (CONTACT_WORDS.test(sentence) && !CONTACT_PAST.test(sentence)) return true;
+  if (HANDOFF.test(sentence)) return true;
+  if (CONTACT_WORDS.test(sentence) && (!CONTACT_PAST.test(sentence) || FORWARD_MODAL.test(sentence))) return true;
   return FUTURE_CONTACT.test(sentence) && !FUTURE_ONLY.test(sentence) && !CONDITIONAL_CONTACT.test(sentence);
 }
 
