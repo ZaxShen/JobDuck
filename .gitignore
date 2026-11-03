@@ -9,3 +9,10 @@ dist/
 
 # Local dev sandbox (bun run dev)
 framework/.dev/
+
+# Real mail for local Gmail tests: never commit (public repo)
+integrations/gmail-apps-script/test/email/
+*.mbox
+*.eml
+*.emlx
+*.msg

@@ -189,6 +189,10 @@ To push your own copy of the script with [clasp](https://github.com/google/clasp
 
 The included `.claspignore` keeps the `test/` harness out of the push, so only `appsscript.json` and `Code.gs` upload.
 
+Real mail for local testing (for example a Google Takeout mbox) and anything derived from it goes only in `test/email/`,
+which is gitignored and never committed. This repo is public: never copy real mail elsewhere in the repo or quote it in
+commits, PRs or issues. The other files in `test/` are synthetic.
+
 Every version bump renames the project `vN` (or `vN.M`), so a copy's name says which version it runs.
 Copies never auto-update: to update, paste the new `Code.gs` over yours, **Save**, then **Deploy → Manage
 deployments → Edit → Version: New version** so the `/exec` URL serves it. Script properties, the token and the
