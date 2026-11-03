@@ -208,8 +208,12 @@ trigger are kept.
   changes anything. Rejection fixes (#51): curly quotes are normalised before sentences are read; new explicit
   rejection statements ("we've filled the position", "won't be able to invite you to the next round", "don't see the
   right fit", "made the decision to pursue other candidates", "not moving you forward to an interview"); "not" or
-  "never" before "move you forward" no longer reads as advancing you; a negated offer is no offer; and a rejection that
-  asks you to reply ("please let us know if you are willing to relocate") stays in the Inbox. Fixtures F4 to F9 cover
+  "never" before "move you forward" no longer reads as advancing you; a negated offer is no offer; a rejection that
+  asks you to reply ("please let us know if you are willing to relocate") stays in the Inbox; and a rejection is
+  denied only when no sentence invites further contact, so a question to you, a conversation, a date or time, a
+  meeting tool, a request or imperative, or a booking or meeting link anywhere outside the footer ("Unfortunately we
+  don't see a direct fit. Are you free Tuesday to chat about a different position?") keeps it in the Inbox. A row of
+  bare links is never a footer, so a confirmation carrying links stays in the Inbox. Fixtures F4 to F9 cover
   these. `bun test` adds interview, assessment, verification, security-code, application-limit, unfinished-application,
   phone-screen and recruiter-chat mail that stays untouched, Ashby, Greenhouse, Lever and Workday-style confirmations
   with boilerplate footers that archive, and an otherwise plain confirmation with one unknown sentence that stays.

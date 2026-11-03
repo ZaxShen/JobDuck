@@ -1059,7 +1059,6 @@ var FOOTER_CLAUSES = [
   '(?:this|the) ' + FOOTER_MAIL + ' (?:was|is) (?:intended for|sent to|delivered to|addressed to) EMAIL',
   'we (?:can\'t|cannot|can not|are unable to|aren\'t able to|are not able to|do not|don\'t) (?:review|read|monitor|respond|reply)(?: (?:or|and) (?:review|read|respond|reply))?(?: to)? (?:messages|e-?mails|replies|responses)(?: (?:sent )?(?:to|at) this (?:address|mailbox|e-?mail address))?',
   '(?:ref|reference|message id|msg id)(?: ?(?:no|number|#))?[.:#]? ?[a-z0-9_-]{6,}',
-  'URL(?: ?[*|•·,] ?URL){1,9}',
   // Sent by / powered by an ATS
   '(?:(?:this|the) ' + FOOTER_MAIL + ' (?:was|is|has been) )?(?:sent|powered|delivered|generated) (?:by|via|with|through|from|using) (?:the )?' + FOOTER_ATS + '(?: (?:platform|system))?(?: on behalf of ' + FOOTER_NAME + ')?',
   // Unsubscribe, manage preferences, privacy policy
@@ -1415,8 +1414,23 @@ var FUTURE_ONLY = /\b(in the future|future (opportunities|roles|openings|positio
 // A rejection that asks the candidate to reply ("please let us know if you are willing to relocate") needs an answer.
 var REPLY_REQUEST = /\bplease (let us know|let me know|reply|respond|get back to (us|me)|confirm)\b[^.?!]{0,80}\b(if|whether) you(['’]re| are| would| were| can)\b/i;
 
+// A rejection that invites further contact ("Are you free Tuesday to chat about a different position?") is no plain
+// rejection: a question to you, a conversation, a date or time, a meeting tool, a request or an imperative, or a
+// booking or meeting link keeps it. Footer sentences are set aside as in actionIn_.
+var CONTACT_KINDS = ['question', 'conversation', 'date or time', 'tool', 'request', 'imperative'];
+var CONTACT_SIGNALS = ACTION_SIGNALS.filter(function (sig) { return CONTACT_KINDS.indexOf(sig[0]) >= 0; });
+
+function invitesContact_(body) {
+  if (ACTION_LINK.test(String(body || ''))) return true;
+  return bodyParts_(body).sentences.some(function (sentence) {
+    if (footer_(sentence)) return false;
+    var questions = ABOUT_QUESTIONS.test(sentence);
+    return CONTACT_SIGNALS.some(function (sig) { return !(questions && sig[2]) && sig[1].test(sentence); });
+  });
+}
+
 function rejectionStands_(body) {
-  return !splitSentences(body).some(function (sentence) {
+  return !invitesContact_(body) && !splitSentences(body).some(function (sentence) {
     return REPLY_REQUEST.test(sentence) || (directOffer_(sentence) && !FUTURE_ONLY.test(sentence));
   });
 }

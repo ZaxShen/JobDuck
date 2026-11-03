@@ -495,11 +495,11 @@
     "expect": "keep"
   },
   {
-    "name": "Wonka rejection with a courtesy offer to connect about future opportunities",
+    "name": "Wonka rejection that would love to connect about future opportunities stays in the Inbox (contact veto)",
     "from": "Wonka Recruiting <no-reply@greenhouse.io>",
     "subject": "Your application to Wonka",
     "body": "Hi Danlin,\n\nThank you for applying to the Senior Engineer role at Wonka. We have decided not to move forward with your application. We'd love to connect with you about future opportunities.\n\nWonka Recruiting",
-    "expect": "rejection"
+    "expect": "keep"
   },
   {
     "name": "F4 Acme filled the position, curly apostrophes (#51 R1)",

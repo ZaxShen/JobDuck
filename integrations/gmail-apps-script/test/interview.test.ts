@@ -178,15 +178,16 @@ describe('processThread_ leaves kept mail untouched in the Inbox', () => {
     expect(Object.keys(scriptStore.data).filter((k) => k.startsWith('outcome:'))).toHaveLength(0);
   });
 
-  test('a rejection that only thanks you for interviewing, or offers to keep in touch, stays deny', () => {
+  test('a rejection that only thanks you for interviewing stays deny; one that would love to connect stays untouched', () => {
     const keepInTouch =
       "Hi Danlin,\n\nUnfortunately, we have decided not to move forward. We'd love to connect with you about future opportunities.\n\nHooli Recruiting";
     const plain = thread([], [message('Your interview with Hooli', REJECTION_BODY)]);
     const courtesy = thread([], [message('Your interview with Hooli', keepInTouch)]);
     const { api } = load([plain, courtesy]);
     expect(api.processThread_(plain)).toBe('deny');
-    expect(api.processThread_(courtesy)).toBe('deny');
-    expect(courtesy.calls).toEqual(['add ' + REJECTIONS, 'archive']);
+    expect(plain.calls).toEqual(['add ' + REJECTIONS, 'archive']);
+    expect(api.processThread_(courtesy)).toBe('keep');
+    expect(courtesy.calls).toEqual([]);
   });
 
   test('a rejection that is not the latest job message keeps the thread in the Inbox', () => {
@@ -344,6 +345,50 @@ describe('v5.4: archive only what is certainly a plain confirmation', () => {
     const { action, t } = untouched('Thank you for applying to Acme', body, from);
     expect(action).toBe('job');
     expect(t.calls).toEqual(['add ' + APPLICATIONS, 'archive']);
+  });
+
+  const DECLINES = [
+    "Unfortunately we don't see a direct fit for this role.",
+    'Unfortunately, we are not able to move forward with your application.',
+    'We will not be hiring for this position.',
+    'Unfortunately, we have decided not to move forward with your application.',
+  ];
+  const CONTACT_INVITES = [
+    'Are you free Tuesday to chat about a different position?',
+    'Would you be open to a quick call next week about our Staff role?',
+    "We'd love to chat about our Platform team.",
+    'Please book a time here: https://calendly.com/acme-recruiting/intro',
+    'Reply with a few times that work for a call on Thursday.',
+  ];
+  const rejectionWith = (decline: string, invite: string) =>
+    'Hi Dan,\n\nThank you for your interest in the Backend Engineer role at Acme. ' + decline + ' ' + invite + '\n\nAcme Recruiting';
+
+  test.each(DECLINES.flatMap((d) => CONTACT_INVITES.map((q) => [d, q])))(
+    'a rejection that invites further contact stays untouched (F48-1): %s %s',
+    (decline, invite) => {
+      const { action, t } = untouched('Your application to Acme', rejectionWith(decline, invite), 'Acme Recruiting <no-reply@greenhouse.io>');
+      expect(action).not.toBe('deny');
+      expect(t.calls).toEqual([]);
+      expect(t.inInbox).toBe(true);
+    },
+  );
+
+  test.each(DECLINES)('a plain rejection with equal opportunity and do-not-reply footers is still denied: %s', (decline) => {
+    const body = 'Hi Dan,\n\nThank you for your interest in the Backend Engineer role at Acme. ' + decline +
+      ' We wish you the best in your search.\n\nBest,\nAcme Recruiting\n\nAcme is an equal opportunity employer. All qualified applicants will receive consideration for employment without regard to race, color, religion, sex, national origin, disability or protected veteran status.\n\nPlease do not reply to this email. This email is sent from an unattended mailbox.';
+    const { action } = untouched('Your application to Acme', body, 'Acme Recruiting <no-reply@greenhouse.io>');
+    expect(action).toBe('deny');
+  });
+
+  test.each([
+    ['bullet-separated', 'https://acme.com/offer/sign • https://acme.com/careers'],
+    ['comma-separated', 'https://acme.com/onboarding/documents, https://acme.com/careers'],
+    ['pipe-separated', 'https://acme.com/portal/tasks | https://acme.com/careers'],
+  ])('a confirmation with a %s row of links stays untouched (F48-2)', (_name, links) => {
+    const body = 'Hi Dan,\n\nThank you for applying to the Backend Engineer role at Acme. We have received your application.\n\n' + links + '\n\nAcme Recruiting';
+    const { action, t } = untouched('Thank you for applying to Acme', body, 'Acme Recruiting <no-reply@greenhouse.io>');
+    expect(action).toBe('keep');
+    expect(t.calls).toEqual([]);
   });
 });
 
