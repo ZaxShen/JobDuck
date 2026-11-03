@@ -43,7 +43,7 @@ fixtures.filter((f) => f.negative).forEach((f) => {
   const reasons = api.jobScore(f.from, f.subject, f.body).reasons;
   if (!reasons.includes('not application mail: ' + f.negative)) { failures++; console.log(f.name + ' expected reason "not application mail: ' + f.negative + '", got', reasons); }
 });
-if (!/SCRIPT_VERSION = '5\.4'/.test(fs.readFileSync(path.join(__dirname, '..', 'Code.gs'), 'utf8'))) { failures++; console.log('SCRIPT_VERSION is not 5.4'); }
+if (!/SCRIPT_VERSION = '5\.5'/.test(fs.readFileSync(path.join(__dirname, '..', 'Code.gs'), 'utf8'))) { failures++; console.log('SCRIPT_VERSION is not 5.5'); }
 
 console.log(failures ? failures + ' failure(s)' : 'all ' + rows.length + ' fixtures pass');
 process.exit(failures ? 1 : 0);

@@ -94,7 +94,7 @@ function load(threads: FakeThread[], scriptProps: Record<string, string> = {}, e
   vm.createContext(sandbox);
   vm.runInContext(
     readFileSync(join(import.meta.dir, '..', 'Code.gs'), 'utf8') +
-      '\nthis.__api = { processThread_, reauditApplications, previewReaudit, preview, isInterview };',
+      '\nthis.__api = { processThread_, reauditApplications, previewReaudit, preview, isInterview, unexplainedRejection_ };',
     sandbox,
   );
   const api = sandbox.__api as {
@@ -103,6 +103,7 @@ function load(threads: FakeThread[], scriptProps: Record<string, string> = {}, e
     previewReaudit(): void;
     preview(): void;
     isInterview(body: string): boolean;
+    unexplainedRejection_(body: string): string | null;
   };
   return { api, logs, scriptStore, created };
 }
@@ -434,7 +435,6 @@ describe('v5.4: archive only what is certainly a plain confirmation', () => {
   test.each([
     'We wish you the best in your search.',
     'However, we will be in touch should your qualifications be a good fit for other opportunities.',
-    'Thank you for taking the time to speak with our team.',
   ])('a signed courtesy rejection is still denied (F49-2, F49-3, F49-4): %s', (courtesy) => {
     const { action } = untouched('Your application to Acme', signedRejectionWith(courtesy), 'Acme Recruiting <no-reply@greenhouse.io>');
     expect(action).toBe('deny');
@@ -445,8 +445,6 @@ describe('v5.4: archive only what is certainly a plain confirmation', () => {
     'We wish you the best in your search.',
     'We encourage you to visit our careers page for other opportunities that match your interests.',
     'Please continue to check our career site for new openings and apply if a role catches your eye.',
-    'Thank you for taking the time to speak with our team.',
-    'This was not an easy decision, and we had to make some difficult calls.',
     'However, we will be in touch should your qualifications be a good fit for other opportunities.',
   ])('a rejection with a courtesy sentence and no contact invite is still denied (F49-1): %s', (courtesy) => {
     const { action } = untouched('Your application to Acme', rejectionWith(D, courtesy), 'Acme Recruiting <no-reply@greenhouse.io>');
@@ -477,6 +475,160 @@ describe('v5.4: archive only what is certainly a plain confirmation', () => {
     const { action, t } = untouched('Thank you for applying to Acme', body, 'Acme Recruiting <no-reply@greenhouse.io>');
     expect(action).toBe('keep');
     expect(t.calls).toEqual([]);
+  });
+});
+
+describe('v5.5: a rejection is denied only when every sentence is an allowlisted shape', () => {
+  const D = 'Unfortunately, we have decided not to move forward with your application.';
+  const run = (sentence: string) => {
+    const body = 'Hi Dan,\n\nThank you for your interest in the Backend Engineer role at Acme. ' + D + ' ' + sentence + '\n\nBest,\nAcme Recruiting';
+    const t = thread([], [message('Your application to Acme', body, 'Acme Recruiting <no-reply@greenhouse.io>')]);
+    const { api } = load([t]);
+    return { action: api.processThread_(t), t };
+  };
+
+  test.each([
+    'The weather in Denver is lovely this week.',
+    'Our recruiter Jane will email you to set up time.',
+    "I'd be happy to introduce you to the Platform hiring manager.",
+    'We would like to consider you for other roles that fit your applications.',
+    "Thanks for your time; I'd love to stay in touch about a Staff role opening next month.",
+    'We have a lot of exciting things happening at Acme and would like to tell you about one of them.',
+    'Please update your candidate profile so our recruiter can reach you.',
+    'Always confirm or apply for any open roles directly with Jane.',
+  ])('a rejection with an unrecognised sentence stays untouched in the Inbox: %s', (sentence) => {
+    const { action, t } = run(sentence);
+    expect(action).toBe('keep');
+    expect(t.calls).toEqual([]);
+    expect(t.inInbox).toBe(true);
+  });
+
+  test('a careful-consideration rejection with an unrelated office-closure sentence stays untouched in the Inbox', () => {
+    const body = 'Hi Dan,\n\nThank you for your interest in the Backend Engineer role at Acme. After careful consideration, we have decided not to move forward with your application at this time. ' +
+      'Please note our office will be closed on Monday for the holiday.\n\nBest,\nAcme Recruiting';
+    const t = thread([], [message('Your application to Acme', body, 'Acme Recruiting <no-reply@greenhouse.io>')]);
+    const { api } = load([t]);
+    expect(api.processThread_(t)).toBe('keep');
+    expect(t.calls).toEqual([]);
+    expect(t.inInbox).toBe(true);
+  });
+
+  test.each([
+    'We wish you the best of luck in your job search.',
+    'We encourage you to visit our careers page periodically for other roles that might interest you.',
+    'This was not an easy decision, as we received a number of strong applications.',
+    'We will keep your information on file for future opportunities.',
+    'Stay in the loop and join our talent community.',
+    'Thank you again for your interest in joining our team.',
+    'We truly appreciate the time and effort you put into your application.',
+    'Your applicant information will be stored and processed in accordance with our privacy policy.',
+  ])('a rejection whose extra sentence is an allowlisted courtesy shape is denied: %s', (sentence) => {
+    expect(run(sentence).action).toBe('deny');
+  });
+
+  const CAREFUL = 'After careful consideration, we have decided not to move forward with your application at this time.';
+  const runBody = (body: string) => {
+    const t = thread([], [message('Your application to Acme', body, 'Acme Recruiting <no-reply@greenhouse.io>')]);
+    const { api } = load([t]);
+    return { action: api.processThread_(t), t, api };
+  };
+  const SHORT_CONTACT = ['Email Jane.', 'Contact Jane.', 'Text Jane.', 'Reach out.', 'Write back.', 'Ping Jane.', 'Holler anytime.'];
+
+  test.each(SHORT_CONTACT)('a short contact sentence after a careful-consideration rejection stays untouched in the Inbox (F50-1): %s', (sentence) => {
+    const { action, t } = runBody('Hi Dan,\n\n' + CAREFUL + ' ' + sentence + '\n\nBest,\nAcme Recruiting');
+    expect(action).toBe('keep');
+    expect(t.calls).toEqual([]);
+    expect(t.inInbox).toBe(true);
+  });
+
+  test.each(SHORT_CONTACT)('a short contact sentence after a plain rejection stays untouched in the Inbox (F50-1): %s', (sentence) => {
+    expect(run(sentence).action).toBe('keep');
+  });
+
+  test.each(['Contact Recruiting.', 'Email Recruiting.', 'Call Recruiting.'])('a contact verb before a team name after a careful-consideration rejection stays untouched in the Inbox: %s', (sentence) => {
+    const { action, t } = runBody('Hi Dan,\n\n' + CAREFUL + ' ' + sentence + '\n\nBest,\nAcme Recruiting');
+    expect(action).toBe('keep');
+    expect(t.calls).toEqual([]);
+    expect(t.inInbox).toBe(true);
+  });
+
+  test.each(['Email Jane.', 'Reach out.', 'Holler.'])('a short contact line on its own before the sign-off stays untouched in the Inbox: %s', (line) => {
+    expect(runBody('Hi Dan,\n\n' + CAREFUL + '\n\n' + line + '\n\nBest,\nAcme Recruiting').action).toBe('keep');
+  });
+
+  test.each([
+    'Website · Phone screen with Jane ( URL ) · Blog',
+    'Website · Phone screen with Jane URL · Blog',
+    'Careers · Book a call with Jane ( URL ) · LinkedIn',
+    "Careers · Jane's calendar ( URL ) · LinkedIn",
+    'Follow us on LinkedIn, Jane Smith phone screen Monday, and Instagram.',
+    'We have decided to move forward with other candidates for the Backend - Phone Interview Monday - Platform role.',
+  ])('a repeated slot holding a scheduling word before the last repeat stays untouched in the Inbox (F50-2): %s', (sentence) => {
+    const { action, t, api } = runBody('Hi Dan,\n\n' + CAREFUL + ' ' + sentence + '\n\nBest,\nAcme Recruiting');
+    expect(action).toBe('keep');
+    expect(t.inInbox).toBe(true);
+    expect(api.unexplainedRejection_('Hi Dan,\n\n' + CAREFUL + ' ' + sentence + '\n\nBest,\nAcme Recruiting')).not.toBeNull();
+  });
+
+  test.each(['Contacting.', 'Emailed.', 'Emailing.', 'Contacted.', 'Messaging.', 'Callback.', 'Reaching out.', 'Reaching.', 'Pinging.', 'Texted.'])(
+    'an inflected contact word as the last paragraph stays untouched in the Inbox (F51-1): %s', (line) => {
+      const { action, t } = runBody('Hi Dan,\n\n' + CAREFUL + '\n\n' + line);
+      expect(action).toBe('keep');
+      expect(t.inInbox).toBe(true);
+    });
+
+  test.each([
+    'Website · Emailing Jane ( URL ) · Blog',
+    'Website · Messaging Jane ( URL ) · Blog',
+    'Follow us on LinkedIn, Twitter and Messaging Jane.',
+    'Emailed Jane 12345.',
+    'Contacting jobs.',
+  ])('an inflected contact word in a name slot stays untouched in the Inbox (F51-1): %s', (sentence) => {
+    const { action, t } = runBody('Hi Dan,\n\n' + CAREFUL + ' ' + sentence + '\n\nBest,\nAcme Recruiting');
+    expect(action).toBe('keep');
+    expect(t.inInbox).toBe(true);
+  });
+
+  test.each([
+    'We will keep your information on file and reach out if future opportunities arise that match your background.',
+    'We will keep your resume on file and contact you should a suitable position open.',
+    'We encourage you to stay connected with us through our website for future openings.',
+    'Thank you for your interest in Acme and for connecting with us.',
+    'We wish you the best of luck in your job search; feel free to book time with Jane.',
+    'Thank you for your time, and please schedule a chat with Jane.',
+    'Thank you for taking the time to speak with our team.',
+    'This was not an easy decision, and we had to make some difficult calls.',
+  ])('a courtesy sentence holding a contact word stays untouched in the Inbox: %s', (sentence) => {
+    const { action, t } = runBody('Hi Dan,\n\n' + CAREFUL + ' ' + sentence + '\n\nBest,\nAcme Recruiting');
+    expect(action).toBe('keep');
+    expect(t.inInbox).toBe(true);
+  });
+
+  test.each(['Voicemail.', 'WhatsApp.', 'Hired.', 'Acme'])('a lone capitalised word with no sign-off above it stays untouched in the Inbox: %s', (line) => {
+    const { action, t } = runBody('Hi Dan,\n\n' + CAREFUL + ' We wish you the best of luck in your job search.\n\n' + line);
+    expect(action).toBe('keep');
+    expect(t.inInbox).toBe(true);
+  });
+
+  test.each([
+    'Website · LinkedIn ( URL ) · Blog',
+    'Follow us on LinkedIn, Twitter and Instagram.',
+  ])('a repeated slot of plain names still denies: %s', (sentence) => {
+    expect(runBody('Hi Dan,\n\n' + CAREFUL + ' ' + sentence + '\n\nBest,\nAcme Recruiting').action).toBe('deny');
+  });
+
+  test.each([
+    ['a bare first name under the sign-off', 'Best,\nJane'],
+    ['a bare first name a blank line under the sign-off', 'Best,\n\nJane'],
+    ['a dashed company line with no sign-off', '- Acme'],
+  ])('a plain rejection signed with %s still denies', (_, signature) => {
+    expect(runBody('Hi Dan,\n\n' + CAREFUL + ' We wish you the best of luck in your job search.\n\n' + signature).action).toBe('deny');
+  });
+
+  test('unexplainedRejection_ names the first unrecognised sentence and returns null for a plain rejection', () => {
+    const { api } = load([]);
+    expect(api.unexplainedRejection_('Hi Dan,\n\n' + D + ' We wish you the best in your search.\n\nBest,\nAcme Recruiting')).toBeNull();
+    expect(api.unexplainedRejection_('Hi Dan,\n\n' + D + ' The weather in Denver is lovely this week.\n\nBest,\nAcme Recruiting')).toContain('weather in Denver');
   });
 });
 

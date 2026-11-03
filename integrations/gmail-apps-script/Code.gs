@@ -24,7 +24,7 @@
  * Optional properties: PROTECTED_LABELS and EXCLUDED_DOMAINS (comma-separated), KEEP_ACTION_MAIL_IN_INBOX=true.
  */
 
-var SCRIPT_VERSION = '5.4';
+var SCRIPT_VERSION = '5.5';
 
 var LABEL_PARENT = 'Job Duck';
 
@@ -899,10 +899,16 @@ var ACK_JOIN_COMMUNITY = '(?:join|sign up for|subscribe to|opt into|opt in to|se
   '(?: (?:to|and) stay (?:connected|in touch|informed|up to date)(?: with us)?(?: (?:about|on|regarding|for) (?:future|new|other|upcoming) (?:openings|opportunities|roles|positions|jobs))?)?';
 var ACK_PORTAL = '(?:your|our|the) (?:candidate |applicant |careers? |job seeker )?(?:portal|account|profile|dashboard|home|site)';
 var ACK_STATUS = '(?:the status of your application|your application(?:\'s)?(?: status)?|the progress of your application)';
+// Thank you for applying to the Backend Engineer role at Acme / for your interest in a career with Acme
+var ACK_THANKS = '(?:thank you|thanks|many thanks)(?: so much| very much)?(?: again)?,? for (?:(?:applying|your (?:recent |online |job )?(?:application|submission)(?: and (?:your )?interest)?|your interest and (?:your )?application|submitting (?:your|an|the) application|taking the time to apply|the time to apply)' + ACK_FOR_ROLE +
+  '|your interest(?: in (?:joining |working (?:at|with|for) |(?:a career|a position|a role|employment|opportunities|career opportunities) (?:at|with) )?(?:us|our team|' + ACK_ROLE_AT + '))?)(?:,? and (?:for )?(?:taking the time to apply|your interest))?';
+// We encourage you to join our talent community or opt into a job alert
+var ACK_COMMUNITY = '(?:we )?(?:(?:also )?(?:encourage|invite) you to|(?:please )?feel free to|be sure to|you (?:can|may)(?: also)?) ' + ACK_JOIN_COMMUNITY + '(?:,? (?:or|and) ' + ACK_JOIN_COMMUNITY + ')?';
+var ACK_APPRECIATE = '(?:we )?(?:truly |really |sincerely |greatly |do )?appreciate (?:your interest(?: in (?:joining |working (?:at|with|for) |(?:a career|employment|opportunities) (?:at|with) )?(?:us|our team|' + ACK_ROLE + '))?|(?:you |your )?taking the time to apply' + ACK_FOR_ROLE + '|the time you (?:took|have taken|spent) (?:to apply|applying|on your application)|the time and effort you (?:put|have put|invested|spent) (?:into|in|on) (?:your application|applying))(?: and (?:for )?your interest(?: in (?:joining )?(?:us|our team))?)?';
+var ACK_WISH = '(?:we )?(?:wish(?:ing)? you|good luck|best of luck)(?: (?:the (?:very )?best(?: of luck)?|all the best|good luck|luck|success|the best of success|every success))?(?: (?:in|with|on) your (?:job |career )?(?:search|career|future endeavou?rs))?';
+var ACK_THANKS_TIME = '(?:thank you|thanks)(?: again)?(?: for (?:your (?:time|patience|interest)|thinking of us|considering (?:joining )?(?:us|our team|' + ACK_NAME + ')))?';
 var ACK_CLAUSES = [
-  // Thank you for applying to the Backend Engineer role at Acme / for your interest in a career with Acme
-  '(?:thank you|thanks|many thanks)(?: so much| very much)?(?: again)?,? for (?:(?:applying|your (?:recent |online |job )?(?:application|submission)(?: and (?:your )?interest)?|your interest and (?:your )?application|submitting (?:your|an|the) application|taking the time to apply|the time to apply)' + ACK_FOR_ROLE +
-    '|your interest(?: in (?:joining |working (?:at|with|for) |(?:a career|a position|a role|employment|opportunities|career opportunities) (?:at|with) )?(?:us|our team|' + ACK_ROLE_AT + '))?)(?:,? and (?:for )?(?:taking the time to apply|your interest))?',
+  ACK_THANKS,
   // We have received your application for the Backend Engineer role / This email confirms receipt of your application
   '(?:(?:this (?:e-?mail|message|note) (?:is to )?)?confirms? (?:that )?|(?:this is to )?confirm(?:ing)? (?:that )?|we(?:\'d| would)? (?:(?:just )?(?:want|wanted|like|are writing)(?: to)? )?(?:let you know|confirm|acknowledge)(?: that)? )?(?:we(?:\'ve| have)?(?: successfully| now| already| just)? received|we are in receipt of|(?:the )?receipt of) (?:your|the) (?:job |online |recent )?(?:application|submission|resume|cv|materials|information)(?: for the following (?:role|position|job|opening)s?:? ' + ACK_ROLE + ACK_REQ + '|' + ACK_FOR_ROLE + ')',
   // Your application for the Backend Engineer role has been received
@@ -926,7 +932,7 @@ var ACK_CLAUSES = [
   // Our interview process typically consists of a recruiter screen, a technical interview and an onsite
   '(?:our|the|a typical|this) (?:interview|hiring|recruiting|recruitment|selection) process (?:typically |usually |generally |will |may |can )?(?:consists? of|includes?|involves?|is made up of|comprises?)' + ' ' + ACK_STAGES,
   // We encourage you to join our talent community or opt into a job alert / stay connected
-  '(?:we )?(?:(?:also )?(?:encourage|invite) you to|(?:please )?feel free to|be sure to|you (?:can|may)(?: also)?) ' + ACK_JOIN_COMMUNITY + '(?:,? (?:or|and) ' + ACK_JOIN_COMMUNITY + ')?',
+  ACK_COMMUNITY,
   '(?:we )?(?:(?:also )?encourage you to|(?:please )?feel free to) stay connected(?: with us)?(?: and (?:consider applying|apply|keep an eye out) (?:for|to) (?:future|other|new) (?:openings|opportunities|roles|positions)(?: that (?:match|fit|align with) your (?:skills|experience|interests|background)(?: and (?:skills|experience|interests|background))?)?)?',
   ACK_KEEP_ON_FILE,
   // Due to the high volume of applications, we are only able to respond to candidates selected for an interview
@@ -937,10 +943,10 @@ var ACK_CLAUSES = [
   'you (?:can|may)(?: also)? (?:view|track|check|monitor|see|follow) ' + ACK_STATUS + '(?: at any time| anytime)?(?:,? (?:by (?:logging|signing) in(?:to| to)?|in|on|through|via|from|at) ' + ACK_PORTAL + ')?(?: at any time| anytime)?(?:(?::| here:?| at:?) URL)?',
   'to (?:view|track|check|monitor|see) ' + ACK_STATUS + ',? (?:please )?(?:log|sign) in(?:to| to)? ' + ACK_PORTAL + '(?:(?::| here:?| at:?) URL)?',
   // We appreciate your interest / are excited that you applied / wish you luck
-  '(?:we )?(?:truly |really |sincerely |greatly |do )?appreciate (?:your interest(?: in (?:joining |working (?:at|with|for) |(?:a career|employment|opportunities) (?:at|with) )?(?:us|our team|' + ACK_ROLE + '))?|(?:you |your )?taking the time to apply' + ACK_FOR_ROLE + '|the time you (?:took|have taken|spent) (?:to apply|applying|on your application)|the time and effort you (?:put|have put|invested|spent) (?:into|in|on) (?:your application|applying))(?: and (?:for )?your interest(?: in (?:joining )?(?:us|our team))?)?',
+  ACK_APPRECIATE,
   'we(?:\'re| are) (?:so |very |really |truly |genuinely )?(?:excited|thrilled|delighted|glad|happy|pleased)(?: that)? (?:(?:to hear (?:that )?)?you(?:\'re| are) interested in|you(?: would)? (?:consider(?:ed)?|are considering)|you\'re considering|you (?:applied|chose to apply)(?: (?:to|for))?|to (?:learn of|hear about|see|receive|have received) your (?:interest|application)(?: in| for| to)?)(?: (?:joining|working (?:at|with|for)))?(?: (?:us|our team|' + ACK_ROLE + '))?',
-  '(?:we )?(?:wish(?:ing)? you|good luck|best of luck)(?: (?:the (?:very )?best(?: of luck)?|all the best|good luck|luck|success|the best of success|every success))?(?: (?:in|with|on) your (?:job |career )?(?:search|career|future endeavou?rs))?',
-  '(?:thank you|thanks)(?: again)?(?: for (?:your (?:time|patience|interest)|thinking of us|considering (?:joining )?(?:us|our team|' + ACK_NAME + ')))?',
+  ACK_WISH,
+  ACK_THANKS_TIME,
   'welcome',
   // We can't respond to every applicant individually, so please know that we read each one
   '(?:(?:unfortunately|please (?:note|know)(?: that)?|due to (?:the |an? )?(?:incredibly |extremely |very |particularly )?(?:high|large) (?:volume|number|numbers) of (?:applications|applicants|candidates|interest)(?: (?:we receive|we(?:\'ve| have) been receiving|we(?:\'re| are) receiving))?),? ){0,2}(?:we )?(?:can\'t|cannot|can not|are unable to|aren\'t able to|are not able to|may not be able to|won\'t be able to|do not|don\'t) (?:personally |individually )?(?:respond|reply) (?:individually |personally )?to (?:every|each|all)(?: (?:applicant|application|candidate|submission)s?)?(?: (?:individually|personally))?',
@@ -1185,14 +1191,15 @@ function dropSignature_(lines, drop, from, nameAllowed, above) {
 }
 
 /** The body once the greeting, the sign-off with its signature and the footer lines are set aside:
- *  { line: a set-aside greeting or signature line holding a scheduling word (or null), sentences[] }. */
+ *  { line: a set-aside greeting or signature line holding a scheduling word (or null), sentences[], paragraphs[] }. */
 function bodyParts_(body) {
   var text = String(body || '').replace(/\r/g, '').replace(/&nbsp;| /g, ' ').replace(/[‘’]/g, "'").replace(/[“”]/g, '"')
     .replace(/^[ \t|]*\|[ \t]*|[ \t]*\|[ \t|]*$/gm, '').replace(/[ \t]*\|(?:[ \t]*\|)+[ \t]*/g, '\n')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1 URL')
     .replace(/<?(?:https?:\/\/|www\.)[^\s>]*[^\s>.,;:!?)]>?/gi, ' URL ')
     .replace(/<?[\w.+-]+@[\w-]+(?:\.[\w-]+)+>?/g, ' EMAIL ');
-  var lines = text.split('\n').map(function (l) { return l.replace(/\s+/g, ' ').replace(/^(?:[*•·>-]+ ?)+/, '').trim(); });
+  var raw = text.split('\n');
+  var lines = raw.map(function (l) { return l.replace(/\s+/g, ' ').replace(/^(?:[*•·>-]+ ?)+/, '').trim(); });
   var footerLine = lines.map(function (l) { return !!l && lineSentences_(l).every(footer_); });
   var drop = footerLine.slice();
   var i, j, signedOff = false, greeted = false;
@@ -1225,15 +1232,22 @@ function bodyParts_(body) {
   for (i = 0; i < lines.length && !odd; i++) {
     if (drop[i] && !footerLine[i] && SCHEDULING_WORDS.test(lines[i].replace(/\b(?:Phone|Tel|Mobile|Cell)\b[:.]?/g, ''))) odd = lines[i];
   }
-  var paragraphs = [], current = [];
+  // A paragraph of one line may be a signed name only under a sign-off line or as a "- Name" line.
+  var paragraphs = [], signable = [], current = [], signed = false, before = '';
+  var close = function () {
+    if (current.length) { paragraphs.push(current.join(' ')); signable.push(current.length === 1 && signed); }
+    current = [];
+  };
   lines.forEach(function (l, k) {
-    if (!l || drop[k]) { if (current.length) paragraphs.push(current.join(' ')); current = []; return; }
+    if (!l || drop[k]) { close(); if (l) before = l; return; }
+    if (!current.length) signed = /^\s*-\s*\S/.test(raw[k]) || RJ_SIGN_OFF_LINE.test(before);
     current.push(l);
+    before = l;
   });
-  if (current.length) paragraphs.push(current.join(' '));
+  close();
   var sentences = [];
   paragraphs.forEach(function (p) { sentences = sentences.concat(lineSentences_(p)); });
-  return { line: odd, sentences: sentences };
+  return { line: odd, sentences: sentences, paragraphs: paragraphs, signable: signable };
 }
 
 /** The first body sentence that is neither a known acknowledgement nor a standard footer once the greeting, the
@@ -1256,14 +1270,16 @@ function lineSentences_(text) {
   return out.map(function (x) { return x.trim(); }).filter(Boolean);
 }
 
-function acknowledges_(re, sentence) {
+function acknowledges_(re, sentence, vetoWord) {
   var greeting = GREETING_PREFIX.exec(sentence);
   var s = (greeting && greetingName_(greeting[0]) ? sentence.slice(greeting[0].length) : sentence)
     .replace(/\s+/g, ' ').replace(/[.!]+$/, '').trim();
   if (!s) return true;
   if (s.length > 300) return false;
   var m = re.exec(s);
-  return !!m && m.slice(1).every(function (g) { return !g || (g.length <= 80 && !SCHEDULING_WORDS.test(g)); });
+  return !!m && m.slice(1).every(function (g) {
+    return !g || (g.length <= 80 && !SCHEDULING_WORDS.test(g) && !(vetoWord && vetoWord.test(g)));
+  });
 }
 
 // Text from the first of these onward is hypothetical ("If you are not selected...") and is ignored.
@@ -1460,8 +1476,388 @@ function invitesContact_(body) {
   return null;
 }
 
+// The rejection allowlist. A rejection is denied only when every sentence left once the greeting, the sign-off with its
+// signature and the standard footer are set aside is one of these enumerated whole-sentence shapes: the decision, thanks
+// or appreciation for the application, a wish of luck, a pointer to future openings that names no person, call or
+// specific role, a status disclaimer for other applications, the applicant-pool courtesy, or the boilerplate a
+// confirmation may also hold. A name slot holds at most 80 characters, with no scheduling word and no word from the veto list. Any other sentence ("Our recruiter will email
+// you to set up time") keeps the thread in the Inbox, and the contact vetoes above are read on top.
+// A name slot stops at the words that join clauses and is then held to the whole veto list once matched: ACK_NAME's
+// inline veto, repeated in every slot, makes these expressions megabytes long and seconds to compile. A word may hold a
+// digit after its first letter ("Q2"), and "repl" vetoes only the reply verbs so a name may start with it. A verb asking
+// for contact in any form ("Contact Recruiting", "Emailing Jane") is never a name.
+var RJ_CONTACT_VERB = 'e-?mail|contact|text|txt|ping|call|ring|phone|messag|msg|dm|write|reach|holler|chat|talk|speak|meet|ask|tell|connect|reply|interested';
+// A word any contact request starts with. Outside the decision clause, the footer lines and the footer notices, one in a
+// sentence keeps the thread in the Inbox.
+var RJ_CONTACT_STEMS = 'e-?mail|contact|call|reach|phon|schedul|connect|chat|meet|messag|text|ping|dm|talk|speak|ring|book|calendar';
+var RJ_CONTACT_STEM = new RegExp('\\b(?:' + RJ_CONTACT_STEMS + ')\\w*', 'i');
+var RJ_NAME_STOP = 'at|and|or|but|so|then|to|if|when|once|while|not|this|that|these|those|time|times|here|there|now|open|you|your|yours|we|us|our|i|me|my|is|are|was|were|be|been|will|would|can|could|may|might|should|shall|has|have|had|do|does|did|please|kindly|(?:' + RJ_CONTACT_VERB + ')\\w*';
+var RJ_NAME = "((?:(?!(?:" + RJ_NAME_STOP + ")\\b)[a-z&'()/+#.-][a-z0-9&'()/+#.-]*(?![a-z0-9&'()/+#.-])(?:,? (?=[a-z&'()/+#.-]))?){1,10})";
+var RJ_VETO_WORD = new RegExp('(?:^|\\s)(?:' + ACK_VETO.replace('repl\\w*', 'repl(?:y|ies|ied|ying)') + '|at|(?:' + RJ_CONTACT_VERB + '|' + RJ_CONTACT_STEMS + ')\\w*)\\b', 'i');
+var RJ_POST ='(?:role|position|opening|opportunity|job|req|requisition|vacancy)';
+var RJ_JOB = '(?:(?:the|this|our|that|your) (?:(?:particular|specific|current|open) )?' + RJ_POST + '(?: you applied (?:to|for))?' +
+  '|(?:(?:the|this) (?:position|role|job)[:,]? )?(?:the |our |this |a |an )?(?:current )?(?:[a-z]{0,3}_?\\d{3,9} )?' + RJ_NAME + '(?: (?:[|/–-]|--) ' + RJ_NAME + '){0,2}(?: ' + RJ_POST + ')?' + ACK_REQ + '(?: (?:at|with|here at) (?:us|' + RJ_NAME + '))?)';
+var RJ_TARGET1 = '(?:us|our (?:team|company|mission)|the work we(?:\'re| are) (?:doing|building)|the team(?: here)?(?: at ' + RJ_NAME + ')?|(?:a |an |the )?(?:career|position|role|employment|potential employment|opportunities|career opportunities|opportunity) (?:at|with|in) (?:us|' + RJ_NAME + ')|working (?:at|with|for|within) (?:us|' + RJ_NAME + ')|joining (?:us|our team|the team)(?: (?:here )?at ' + RJ_NAME + ')?|' + RJ_JOB + ')';
+var RJ_TARGET = '(?:(?:pursuing|exploring|joining|applying (?:to|for)) )?' + RJ_TARGET1 + '(?:,? and (?:in |for )?' + RJ_TARGET1 + ')?';
+var RJ_DOC = '(?:application|applications|candidacy|resume|cv|submission|profile|background|experience|experiences|qualifications|skills|skill ?set|work|credentials|materials|expertise|alignment with the (?:job |role )?requirements)';
+var RJ_DOCS = '(?:(?:your|the|all|our) )?(?:(?:previous|past|prior|relevant) )?' + RJ_DOC + '(?:(?:,|,? and|,? &) (?:your |the )?' + RJ_DOC + '){0,3}';
+var RJ_WHEN = '(?: (?:at this (?:time|point|stage|moment)(?: (?:of|in) the process)?|at the moment|at this early stage of the process|right now|for now|currently|this time|at present))';
+var RJ_FOR_JOB = '(?: (?:for|with|in|on|to) ' + RJ_JOB + ')';
+// Why the others were chosen: "whose experience more closely aligns with our current needs".
+var RJ_FIT = '(?:(?:more |most |better |closely |best )*(?:align|aligns|aligned|match|matches|matched|fit|fits)(?: (?:more|most) (?:closely|specifically)| better| best| closely)?(?: (?:with|to|for))?|(?:are |is )?(?:a )?(?:better|stronger|closer) (?:match|fit)(?: for| with| to)?|(?:are |is )?(?:more |most )?closely aligned (?:with|to))';
+var RJ_NEEDS = '(?:(?:our|the|this) (?:team\'s |company\'s )?(?:(?:current|specific|immediate|particular) )*(?:(?:hiring|business) )?(?:needs|requirements|role requirements|role)(?: (?:of|for) (?:the|this|our) (?:(?:particular|specific) )?(?:role|position|team))?|the (?:(?:specific|current) )?(?:needs|requirements) (?:of|for) (?:the|this) (?:(?:particular|specific) )?(?:role|position|team)|(?:the|this) (?:role|position)|what (?:we(?:\'re| are)|the (?:hiring )?team is) looking for|what we need(?: for this role)?)';
+var RJ_WHOSE = '(?:,? (?:whose|who|that|which|with) (?:we feel )?(?:' + RJ_DOC + '(?: (?:and|&) ' + RJ_DOC + ')? )?(?:that |which )?(?:are |is )?' + RJ_FIT + ' ' + RJ_NEEDS + '|,? who are based (?:in|within) ' + RJ_NAME + ')';
+var RJ_OTHERS = '(?:(?:other|another|different|a different|a smaller group of|the|a few|several)(?: (?:qualified|strong))? )?(?:candidates?(?:\\(s\\))?|applicants?|folks|profiles)(?: (?:for|to move forward with))?' + RJ_WHOSE + '?';
+var RJ_FORWARD = '(?:move|moving|proceed|proceeding|go|going|continue|continuing|progress|progressing|advance|advancing)(?: forward| ahead| further)?(?: (?:with|in|on|for) (?:your (?:application|candidacy)(?: for ' + RJ_JOB + ')?|the (?:interview |hiring |recruiting )?process))?(?: (?:to|in) the next (?:stage|round|step)(?: of (?:the|our) (?:hiring |interview |recruiting )?process)?)?';
+var RJ_SUBJECT = '(?:we|the (?:hiring |recruiting |talent )?team|our (?:hiring |recruiting |talent )?team|the hiring manager(?: and (?:i|myself))?)';
+var RJ_HAVE = '(?:\'ve| have| has| had)?';
+var RJ_ARE = '(?:\'re| are| is| were| was)';
+var RJ_ADV = '(?: (?:unfortunately|regretfully|sadly|ultimately|now|currently|therefore))?';
+var RJ_NOT = '(?: (?:will|would) not| won\'t| (?:are|is|were) not| aren\'t|\'re not| did not| didn\'t)';
+var RJ_DECIDED = '(?:decided|chosen|elected|opted|determined|made the (?:difficult |tough )?(?:decision|choice)|had to make the (?:difficult |tough )?decision)';
+var RJ_NO_FIT = 'there (?:isn\'t|is not|wasn\'t|was not) (?:quite )?(?:an ideal |a |the right |a direct |a strong |a good )?(?:fit|match)(?: for (?:our current needs|' + RJ_JOB + '|what we are looking for))?';
+var RJ_SPONSOR = '(?:we' + RJ_ARE + ' (?:unable|not able) to (?:provide|offer|support) (?:the )?(?:visa |immigration )?sponsorship(?: required)?(?: for (?:this|the) (?:position|role))?|' + RJ_NAME + ' does not (?:offer|provide) (?:visa )?sponsorships?)';
+var RJ_DECISION = '(?:' + [
+  '(?:' + RJ_SUBJECT + RJ_HAVE + '|(?:have|has))' + RJ_ADV + ' ' + RJ_DECIDED + ' (?:that (?:we will not|we won\'t|we would not) be ' + RJ_FORWARD + '|that ' + RJ_NO_FIT + '|(?:not to|to not) ' + RJ_FORWARD + '|to (?:move|proceed|go|continue)(?: forward| ahead)? with ' + RJ_OTHERS + '|to (?:pursue|consider|focus on) ' + RJ_OTHERS + '|not to fill (?:the|this) (?:role|position)|to (?:close|cancel|pause) (?:the|this) (?:role|position|requisition))',
+  RJ_SUBJECT + RJ_HAVE + RJ_ADV + ' (?:feel|felt|believe|determined) that ' + RJ_NO_FIT,
+  RJ_SUBJECT + '(?:\'ve| have| has| are|\'re| is| will|\'ll)?' + RJ_ADV + '(?: be)? (?:(?:moving|proceeding|going|move) forward|proceeding|pursuing) with ' + RJ_OTHERS,
+  RJ_SUBJECT + RJ_ADV + RJ_NOT + '(?: be)? (?:moving|proceeding|progressing|advancing|continuing|move|proceed|advance)(?: forward| ahead)?(?: (?:with|in) (?:your (?:application|candidacy)(?: for ' + RJ_JOB + ')?|the (?:interview |hiring )?process))?' + '(?: (?:to|in) the next (?:stage|round|step)(?: of (?:the|our) (?:hiring |interview )?process)?)?',
+  RJ_SUBJECT + RJ_ADV + RJ_NOT + '(?: be)? moving (?:you|your application) (?:forward|ahead)(?: (?:in|to) (?:the process|the next (?:stage|round)|an interview))?',
+  RJ_SUBJECT + RJ_ADV + RJ_ARE + ' (?:unable|not able) to (?:move forward|proceed|advance|offer you a position|find a (?:good |strong |suitable )?match for your ' + RJ_DOCS + '|pursue (?:this|the) (?:employment )?opportunity with you|provide you with a suitable position(?: at the moment)?(?: (?:with|at) ' + RJ_NAME + ')?)(?: with your (?:application|candidacy))?',
+  RJ_SUBJECT + '(?: won\'t| will not) be able to invite you to the next (?:round|stage|step)(?: of (?:our|the) (?:hiring |interview )?process| of interviews)?',
+  '(?:you|your (?:application|candidacy))(?: have|\'ve| has| were| was) not (?:been )?(?:selected|chosen|successful|shortlisted)(?: (?:for|to move forward (?:for|with)) ' + RJ_JOB + ')?',
+  'your ' + RJ_DOCS + ' (?:are|is) not (?:a |quite a |the right )?(?:match|fit) for ' + RJ_JOB,
+  '(?:it|this) (?:isn\'t|is not|wasn\'t|was not) (?:quite )?(?:an ideal |a |the right |a direct |a strong |a good )?(?:fit|match)(?: for (?:our current needs|' + RJ_JOB + '|what we are looking for))?',
+  RJ_NO_FIT,
+  RJ_SUBJECT + '(?: do not| don\'t| did not| didn\'t) (?:see|have|believe there is) (?:a|the right|a strong|a direct|a good) (?:match|fit)(?: (?:for|with) (?:our current needs|your profile|' + RJ_JOB + '))?' + RJ_FOR_JOB + '?',
+  RJ_SUBJECT + '(?: do not| don\'t| did not| didn\'t) (?:believe|think|feel)(?: that)? (?:this|the) (?:position|role|opportunity) (?:is|was|would be) (?:the right|a good|a strong) (?:match|fit)(?: for you)?',
+  RJ_SUBJECT + '(?: do not| don\'t) (?:currently )?have (?:a|an|any) (?:position|role|opening) that is a (?:strong |good )?(?:match|fit) (?:with|for) your (?:profile|background|experience)',
+  RJ_SUBJECT + RJ_ARE + ' (?:considering|pursuing) ' + RJ_OTHERS + RJ_FOR_JOB + '?',
+  RJ_SUBJECT + RJ_HAVE + ' identified (?:other|another) candidates?(?: to move forward with)?',
+  RJ_SUBJECT + RJ_ADV + ' (?:have|has) ' + RJ_OTHERS,
+  RJ_SUBJECT + RJ_HAVE + '(?: now| already| recently)? filled (?:the|this) (?:role|position|opening)(?: with (?:another|a different|an internal) candidate' + RJ_WHOSE + '?)?',
+  '(?:the|this|our) (?:(?:particular|specific|current) )?(?:(?:[a-z]{0,3}_?\\d{3,9} )?' + RJ_NAME + ' )?(?:role|position|opening|requisition|job)(?: you applied (?:to|for))? (?:has|have|had)? ?(?:now |already |recently )?(?:been )?(?:filled|closed|cancel+ed|put on hold)(?:,? and (?:we are|we\'re) no longer accepting applications)?',
+  '(?:the|this|our) (?:(?:particular|specific|current) )?(?:(?:[a-z]{0,3}_?\\d{3,9} )?' + RJ_NAME + ' )?(?:role|position|opening|requisition|job)(?: you applied (?:to|for))? (?:is|was) no longer (?:available|open|a priority(?: for ' + RJ_NAME + ')?)(?:,? and will be taken down shortly)?',
+  RJ_SUBJECT + RJ_ARE + ' no longer (?:hiring|accepting applications|reviewing applicants|reviewing applications|considering applicants) for ' + RJ_JOB,
+  RJ_SUBJECT + '(?: will|\'ll) (?:therefore )?not be hiring for (?:this|the) (?:role|position)',
+  RJ_SPONSOR
+].join('|') + ')';
+// What may come before the decision, and the tails that may follow it.
+var RJ_REVIEWED = '(?:after|upon|following|based on) (?:(?:a|an|our) )?(?:(?:careful|thorough|thoughtful|further|close|full|detailed|closer|much) )?(?:review|consideration|deliberation|evaluation|look)(?: (?:and|&) (?:careful )?consideration)?(?: of (?:' + RJ_DOCS + '|all (?:candidates|applications|applicants)|applications for this (?:role|position)))?' +
+  '|after (?:(?:careful(?:ly)?|thorough(?:ly)?) )?(?:reviewing|considering|evaluating|assessing|looking (?:at|over|through)) (?:' + RJ_DOCS + '|applications for this (?:role|position)|all (?:candidates|applications|applicants))(?: for (?:this|the) (?:role|position))?';
+var RJ_PRAISE = '(?:while|although|though) (?:we (?:are|were) (?:(?:very|truly) )?impressed (?:with|by) ' + RJ_DOCS + '|your ' + RJ_DOCS + ' (?:are|is|were|was) (?:(?:very|truly|really) )?(?:excellent|impressive|strong|great)|you have (?:many|a lot of) (?:valuable|great|impressive) (?:skills|qualifications)|it didn\'t work out this time|this (?:role|position) (?:wasn\'t|was not|isn\'t|is not|may not have been) (?:quite )?(?:the right|a) (?:fit|match)' + RJ_WHEN + '?|this (?:wasn\'t|was not|is never|isn\'t) (?:an easy decision|easy news to share))';
+var RJ_LEADS = 'again|once again|also|additionally|in addition|in the meantime|meanwhile|unfortunately|please note(?: that)?|however|sadly|regrettably|with regret|that said|for this reason|as a result|for now|at this (?:time|point|stage|moment)|at the moment|right now|upon further review|until then|at the same time|and|while|although|though|please know(?: that)?|' +
+  'as (?:we|our team|' + RJ_NAME + ') (?:continues? to grow|grows?)(?: and has (?:future|new) (?:openings|opportunities))?|with only (?:one|a single|a few|a limited number of) (?:openings?|positions?|roles?|spots?) available|' +
+  '(?:we )?(?:regret|are sorry|\'re sorry|have) to (?:inform(?: you)?|let you know|share|say|advise you)(?: that)?|we wanted to (?:let you know|share|follow up)(?: that)?|' + RJ_REVIEWED + '|' + RJ_PRAISE;
+var RJ_JOIN = new RegExp('(?:,? (?:and|but|so|however,?|though|as|while)|;|,| -) | ?[—–] ?', 'gi');
+var RJ_DECISION_SENTENCE = RJ_DECISION + RJ_WHEN + '?' + RJ_FOR_JOB + '?' + RJ_WHEN + '?' + '(?:,? (?:as|because) (?:' + RJ_SPONSOR + '|we(?:\'re| are) (?:moving forward|proceeding) with ' + RJ_OTHERS + '|we focus on ' + RJ_OTHERS + '))?';
+// Having looked at the application: "We've reviewed your application", "We have carefully reviewed your application".
+var RJ_REVIEWED_CLAUSE = RJ_SUBJECT + '(?:\'ve| have| has)? (?:(?:now |carefully |thoroughly |closely )*)(?:reviewed|considered|had a chance to review) ' + RJ_DOCS + '(?: carefully)?' + RJ_FOR_JOB + '?';
+// Praise that softens the decision: "We felt that your background is impressive".
+var RJ_PRAISE_CLAUSE = '(?:we (?:felt|feel|think|believe) (?:that )?)?your ' + RJ_DOCS + ' (?:is|are|was|were) (?:(?:very|truly|really|quite) )?(?:impressive|strong|excellent|great)' +
+  '|we(?:\'re| are| were) (?:(?:very|truly|really) )?impressed (?:with|by) ' + RJ_DOCS +
+  '|we (?:genuinely )?believe you have a lot to offer';
+// Opening courtesy: "We hope you're doing well", "We wanted to share an update regarding your application".
+var RJ_OPENING = '(?:we |i )?hope (?:you(?:\'re| are) (?:doing )?well|this (?:e-?mail|message|note) finds you well)' +
+  '|(?:we )?(?:wanted|want|would like|are writing) to (?:share|provide you with|give you) an update (?:regarding|on|about) your (?:recent )?application(?: for ' + RJ_JOB + ')?' +
+  '|we(?:\'re| are) (?:following up|writing) (?:on|regarding|about) your (?:recent )?application(?: for ' + RJ_JOB + ')?';
+
+// Thanks and appreciation for applying, interest or time already spent.
+var RJ_EFFORT = '(?:time|patience|interest|consideration|understanding|application|submission|effort|efforts|energy|passion|thought|care|enthusiasm|trust you have shown)';
+var RJ_EFFORTS = '(?:(?:your|the|all (?:of )?your|all the) )?(?:(?:recent|online|thoughtful|continued|kind) )?' + RJ_EFFORT + '(?:(?:,|,? and) (?:your |the )?' + RJ_EFFORT + '){0,3}';
+var RJ_INTO_WHAT = '(?:your application|apply(?:ing)?(?: (?:for|to|with) (?:us|' + RJ_JOB + '))?(?: and (?:share|sharing) your (?:experience|background|story|qualifications)(?: with us)?)?|the application process|this process|the (?:hiring )?process|preparing (?:your|an|the) application|connect(?:ing)? with us(?: and apply(?: (?:for|to) (?:us|' + RJ_JOB + '))?)?|exploring opportunities with us)';
+var RJ_INTO = '(?: (?:you(?:\'ve)?|that you(?:\'ve)?) (?:have )?(?:put|invested|spent|took|taken|have shown|showed|gave)(?: (?:(?:in|into|on|to|with) )?' + RJ_INTO_WHAT + ')?)';
+var RJ_FOR_WHAT = '(?:' + RJ_EFFORTS + RJ_INTO + '?(?: (?:in|for|to|with|of|at) (?:applying (?:to|for) )?' + RJ_TARGET + ')?(?: (?:and|in) applying)?' +
+  '|(?:applying|interviewing|your application|submitting (?:your|an|the) application)(?: (?:to|for|with) (?:join )?' + RJ_TARGET + ')?' +
+  '|(?:taking|investing) (?:the |your )?time(?: and effort)?(?: (?:to|and) (?:apply|interview|submit (?:your|an) application|learn more about ' + RJ_TARGET + '|share your (?:background|experience|interest|story|qualifications) with us|speak with (?:us|our team))(?: (?:to|for|with|in) ' + RJ_TARGET + ')?| in applying)?' +
+  '|(?:investing|putting) your time and effort (?:in|into) applying' +
+  '|the time(?: and effort)? you (?:took|spent|invested|put) (?:to (?:apply|consider ' + RJ_TARGET + ')|in(?:to)? (?:applying|your application|preparing your application))' +
+  '|considering (?:' + RJ_TARGET + '|' + RJ_NAME + ' as (?:a |your )?(?:potential|possible) employer)(?: as (?:a |your )?(?:potential|possible) (?:employer|next step in your career))?' +
+  '|(?:expressing|showing|sharing your) interest(?: in ' + RJ_TARGET + ')?' +
+  '|giving us the (?:opportunity|chance) to (?:learn more about|get to know) you' + RJ_FOR_JOB + '?' +
+  '|sharing your (?:story|background|experience|qualifications|interest) with us' +
+  '|your patience (?:as|while) we (?:progress|work|move)(?:ed)? through (?:the|our) (?:hiring |interview |recruiting )?process' +
+  '|your interest in ' + RJ_TARGET + ')';
+var RJ_THANKS = '(?:(?:we |i )?(?:want|wanted|would like) to |we )?(?:thank you|thanks|many thanks)(?: (?:so|very) much)?(?: again| once again)?,? for ' + RJ_FOR_WHAT;
+// What follows a split thanks or appreciation: "Thank you for your time, and for your interest in the team".
+var RJ_THANKS_MORE = '(?:(?:as well as|also) )?(?:for )?(?:' + RJ_FOR_WHAT + ')';
+var RJ_APPRECIATE_WHAT = '(?:' + RJ_EFFORTS + RJ_INTO + '?(?: (?:in|for|of|to) (?:applying (?:to|for) )?' + RJ_TARGET + ')?(?: in applying)?' +
+  '|you (?:taking the time to apply|applying|sharing your (?:qualifications|background|experience|interest|story)(?: with us)?|considering ' + RJ_TARGET + '|taking the time to (?:apply|share your interest))(?: (?:to|for|with) ' + RJ_TARGET + ')?' +
+  '|your considering ' + RJ_TARGET + '|the (?:opportunity|chance) to (?:learn more about|get to know) (?:you|your ' + RJ_DOCS + ')|the consideration)';
+var RJ_APPRECIATE = '(?:(?:we|our team|the team)(?:\'re| are)? ?)?(?:(?:truly|really|sincerely|genuinely|greatly|deeply|very much|do|always|also) )*(?:appreciate|appreciates|value|values|grateful for|thankful for) ' + RJ_APPRECIATE_WHAT +
+  '|' + RJ_EFFORTS + ' (?:is|are) (?:always |greatly |truly )?appreciated' +
+  '|we know (?:applying|exploring new opportunities) takes (?:time|thought|effort)(?: and (?:time|thought|effort))?' +
+  '|we know a lot of (?:thought|time|effort)(?: and (?:consideration|effort|thought))? went into your application' +
+  '|we know there are (?:many|so many|a lot of) (?:great )?companies to choose from' +
+  '|it hasn\'t gone unnoticed' +
+  '|we(?:\'re| are) (?:truly )?grateful (?:that you included us in your search|for the time you(?:\'ve)? spent with us)' +
+  '|it (?:has been|was) (?:great|a pleasure) (?:learning|getting to know|to learn) more about you' +
+  '|we (?:have )?(?:enjoyed|genuinely enjoyed) learning more about (?:you|your ' + RJ_DOCS + ')' +
+  '|(?:for )?giving us a chance to get to know you' +
+  '|(?:we )?(?:appreciate|thank you for) your understanding' +
+  '|your (?:interest|application) means a lot to us' +
+  '|it means a lot that you considered (?:joining )?(?:us|our team|(?:our )?' + RJ_NAME + ')' +
+  '|we(?:\'re| are) (?:truly |always )?inspired by the (?:talented |amazing |incredible )?(?:people|candidates|individuals) (?:who find their way to us|interested in ' + RJ_NAME + ')';
+// Wishing you well or luck.
+var RJ_WISH_OBJ = '(?:(?:current|ongoing|continued|future|next|job|career|professional|new) )*(?:search|job search|career|careers|endeavou?rs|journey|career journey|adventures?|career adventure|traveling adventures|steps|move|chapter|search for a (?:suitable|new) (?:position|role)|next phase in your career|work ahead|what comes next)';
+var RJ_WISH = '(?:we(?:\'re| are)? )?(?:(?:sincerely|truly) )?(?:(?:wish|wishing) you|good luck|(?:the )?best of luck|all the best|best wishes)(?: (?:the (?:very )?best(?: of luck)?|all the best|good luck|luck|success|continued success|every success|the best of success|well|the best of luck))?' +
+  '(?: (?:in|with|on|for) (?:both )?(?:your )?' + RJ_WISH_OBJ + '(?:(?:,| and|,? and) (?:in |with )?(?:your |the )?' + RJ_WISH_OBJ + '){0,3})?(?: (?:ahead|going forward|in the meantime|in (?:the )?future|as you continue your search))?' +
+  "(?:, ((?:(?!(?:" + ACK_VETO + ")\\b)[a-z'-]+)))?" +
+  '|(?:we )?hope (?:we|our paths) (?:may |will )?(?:connect|cross)(?: paths)?(?: again)?(?: (?:in the future|soon|down the road))?' +
+  '|(?:we )?hope (?:we will|we\'ll|to) have the (?:chance|opportunity) to consider you for (?:another|a future|a different) (?:role|position|opportunity) in the future' +
+  '|(?:i|we) know this (?:isn\'t|is not|wasn\'t|was not) (?:exactly |quite )?the (?:news|outcome) you were hoping for' +
+  '|we look forward to (?:the possibility of )?(?:connecting|crossing paths)(?: again)? in the future';
+
+// Future openings, the careers page, the talent community, keeping the application on file: no person, call or role.
+var RJ_PLACE = '(?:\\[\\d{1,2}\\] )?(?:(?:(?:our|the|a) )?(?:' + RJ_NAME + ' )?(?:careers? (?:page|site|website)|career site|jobs? (?:board|page|postings|openings|listings)|open (?:positions|roles)|website|page|postings|new job openings|URL)(?: \\( URL \\)| URL)?' +
+  '|[a-z0-9-]+\\.(?:com|io|ai|co|org|net)/(?:careers|jobs))';
+var RJ_FUTURE = '(?:(?:any|other|future|new|additional|open|upcoming|relevant|available|current|exciting) )*(?:opportunities|openings|roles|positions|job openings|jobs|vacancies)';
+var RJ_FUTURE_ONLY = '(?:(?:any|other|new|additional|exciting) )*(?:future|upcoming) (?:opportunities|openings|roles|positions|job openings|vacancies)';
+var RJ_BG = '(?:your )?(?:(?:particular|specific|unique) )?(?:' + RJ_DOC + '|interests|career goals|location)(?:(?:,| and|,? and|/or| and/or) (?:your )?(?:' + RJ_DOC + '|interests|career goals|location))*';
+var RJ_FITS_YOU = '(?:(?:be|is|are) (?:a )?(?:(?:good|better|strong|great|potential) )?(?:fit|match)(?: (?:for|with) (?:you|' + RJ_BG + '))?' +
+  '|(?:is |are )?in alignment with ' + RJ_BG +
+  '|(?:better |more closely )?(?:match|matches|align with|aligns with|fit|fits|suit|suits) (?:you|' + RJ_BG + ')(?: (?:more closely|better))?' +
+  '|(?:more closely |better )?(?:align|aligns) (?:more closely |better )?with ' + RJ_BG +
+  '|(?:feels?|seems?|looks?) like a (?:good |better |great )?fit|(?:be|is|are) of interest(?: to you)?|interests? you|sparks? your interest|catch(?:es)? your eye|excites? you)';
+var RJ_SUITS = '(?:,? (?:that|which) (?:may |might |could |would )?' + RJ_FITS_YOU + '|(?: in| that) the future)';
+var RJ_LATER = '(?: (?:in the future|down the (?:line|road)|as (?:they become available|(?:we|our team) (?:continues? to )?grows?|new (?:opportunities|roles|positions) (?:are often shared|are posted|open up|become available))|regularly|periodically|soon|again|should (?:your|the) (?:situation|circumstances) change|if (?:your|the) (?:situation|circumstances) changes?))';
+// A role that may suit you later: "another role comes up that might be a fit", "a position opens up that may be a good fit".
+var RJ_ROLE_FITS = '(?:a|an|another|any|other) (?:(?:future|new|other|different|open|relevant|suitable) )?(?:role|position|opportunity|opening)s?(?: \\( URL \\))?(?: (?:at|with) ' + RJ_NAME + ')?(?: (?:comes|opens) up| (?:becomes|is) available| (?:arises|arise))?(?: (?:now or )?in the future)?' +
+  '(?: that\'s in alignment with ' + RJ_BG + '|(?: that| which)?(?: (?:might|may|could|would))? ' + RJ_FITS_YOU + ')?(?: in the future)?';
+var RJ_IF_ROLE = '(?:if|when|should|if/when|in the event(?: that)?)(?: in the future)? (?:you (?:see|find) |we (?:identify|find|see|come across) |there (?:is|are) )?' + RJ_ROLE_FITS;
+var RJ_LOOK = '(?:keep (?:an eye|your eyes?)(?: out)? (?:on|for)|keep an eye out(?: (?:on|for))?|continue (?:to )?(?:check(?:ing)?|visit(?:ing)?|review(?:ing)?|explor(?:e|ing)|monitor(?:ing)?|look(?:ing)? at)|check(?: back)?(?: in)?(?: on)?|check out|visit|review|explore|peruse|browse|monitor|look at|stay engaged on|view)';
+var RJ_INVITE = '(?:(?:we(?:\'d| would)? )?(?:also )?(?:would )?(?:like to )?(?:encourage|invite) you to(?: also)?|(?:please )?feel free to(?: also)?|(?:we )?(?:do )?(?:hope|recommend)(?: that)? you(?:\'ll| will)?|be sure to|please(?: do)?|you (?:can|may)(?: also)?|you(?:\'re| are) (?:also )?welcome to|(?:we(?:\'d| would) )?love for you to) ';
+// Following the company on social media: "Feel free to follow us on LinkedIn for company updates".
+var RJ_SOCIAL = '(?:(?:follow(?: along with)?|connect with) (?:us|our (?:URL|' + RJ_NAME + ')(?: page)?|' + RJ_NAME + ')(?: (?:on|at|via) (?:social media|(?:our )?URL|' + RJ_NAME + '(?: \\( URL \\)| URL)?)){0,2}' +
+  '(?:(?:,| and|,? or) (?:on |at )?(?:our )?(?:URL|' + RJ_NAME + '(?: \\( URL \\)| URL)?)){0,4}' +
+  '(?: (?:to (?:stay up(?: |-)to(?: |-)date|keep up|stay informed|learn more)(?: (?:on|with|about) (?:all things ' + RJ_NAME + '|our (?:growth|culture|news|company|team)(?: and (?:culture|growth|news|updates))?|company (?:news|updates)))?|for (?:company )?(?:updates|news)|for ' + RJ_FUTURE + RJ_SUITS + '?))?' +
+  '|keep up with (?:the )?(?:latest )?(?:happenings|news|updates) (?:at|from) ' + RJ_NAME + ' by (?:reading our blog|following us)(?: \\( URL \\)| URL)?(?: and (?:staying connected|following us) on ' + RJ_NAME + '(?: \\( URL \\)| URL)?)?)';
+// A list of links, as some letters close: "LinkedIn ( URL ) Blog ( URL )".
+var RJ_LINK_ROW = '(?:' + RJ_NAME + ' \\( URL \\))(?: ' + RJ_NAME + ' \\( URL \\)){0,7}';
+var RJ_GROWING = '(?:as )?(?:we(?:\'re| are| will)?|our team (?:is|will)|' + RJ_NAME + ' (?:is|will)) (?:always |constantly |continually |rapidly |quickly )?' +
+  '(?:growing(?: our team)?(?: quickly| rapidly)?|hiring|evolving|continue to grow|continuing to grow|(?:looking to connect with|looking for|seeking) (?:new |great |top )?talent(?: across our business)?|updating our (?:website|careers page) with new opportunities)' +
+  '(?: and (?:changing|scaling|scale|evolving|will be adding new (?:opportunities|roles|positions)(?: in the future)?))?(?: this year and beyond)?';
+var RJ_FUTURE_JOIN = RJ_FUTURE + '(?: to join (?:our|the) team)?' + RJ_SUITS + '?';
+var RJ_LOOK_TAIL = '(?: (?:on|at|via|through|by visiting|by checking) ' + RJ_PLACE + '| (?:(?:for (?:information (?:regarding|about|on) )?|to (?:apply for|find|see|explore) ))?' + RJ_FUTURE_JOIN +
+  '| (?:at|with) (?:us|' + RJ_NAME + ')| to (?:explore|see) what(?:\'s| is) (?:currently )?(?:available|open)|' + RJ_LATER + ')';
+var RJ_POINTER = '(?:' + RJ_INVITE + ')?' +
+  '(?:' + RJ_LOOK + ' (?:' + RJ_PLACE + '|' + RJ_FUTURE_JOIN + ')' + RJ_LOOK_TAIL + '{0,4}' +
+  '|searching for ' + RJ_FUTURE +
+  '|stay in the loop(?: with us)?' +
+  '|(?:to )?(?:also )?(?:update|keep) your (?:candidate |applicant )?profile(?: \\( URL \\)| URL)?(?: (?:and|&) (?:your )?(?:job )?preferences)?(?: up(?: |-)to(?: |-)date)?(?: to (?:stay up(?: |-)to(?: |-)date|stay informed|be notified) (?:on|about|of) ' + RJ_FUTURE + ')?' +
+  '|(?:apply(?:ing)?|re-?apply(?:ing)?)(?: again)?(?: (?:to|for) ' + RJ_FUTURE + RJ_SUITS + '?)?' + RJ_LATER + '?(?: ' + RJ_IF_ROLE + ')?' +
+  '|consider (?:re-?applying|applying(?: again)?)(?: (?:to|for|with) (?:us|' + RJ_NAME + ')| (?:to|for) ' + RJ_FUTURE + RJ_SUITS + '?|' + RJ_LATER + '){0,3}' +
+  '|(?:consider|explore|pursue) ' + RJ_FUTURE + '(?: (?:at|with) (?:us|' + RJ_NAME + '))?' + RJ_SUITS + '?' + RJ_LATER + '?' +
+  '|(?:stay|keep) (?:in touch|connected)(?: with us)?(?: (?:through|via|on) (?:our )?(?:website|social (?:media|channels)|URL)(?: (?:or|and) (?:our )?(?:website|social (?:media|channels)|URL))?)?(?: (?:for|about) ' + RJ_FUTURE_ONLY + RJ_SUITS + '?)?' + RJ_LATER + '?' +
+  '|(?:keep|consider) (?:us|' + RJ_NAME + ') (?:in mind )?for ' + RJ_FUTURE + RJ_LATER + '?' +
+  '|check back(?: in)?(?: with us)?' + RJ_LATER + '?' +
+  '|learn more about (?:us|URL|' + RJ_NAME + ')(?: from our (?:employees|team|people))?(?: on ' + RJ_NAME + '(?: \\( URL \\)| URL)?(?:(?:,| and|,? or) ' + RJ_NAME + '(?: \\( URL \\)| URL)?){0,4})?(?: \\(and mark "?i\'m interested"? to (?:keep|stay) in touch\\))?' +
+  '|(?:' + ACK_JOIN_COMMUNITY + '|sign up for (?:our )?URL)(?: \\( URL \\))?(?: (?:on|at|via|through) ' + RJ_PLACE + ')?(?: to (?:get|be) notified(?: (?:when|as) (?:new )?(?:roles|positions|opportunities|openings|jobs) (?:are posted|open up|become available))?)?' +
+  '|' + RJ_SOCIAL + ')';
+var RJ_KEEP_FOR = '(?: for ' + RJ_FUTURE + RJ_SUITS + '?)?(?:,? (?:in case|in the event that|should|if|as) (?:our needs change|our team continues to grow|your experience is a fit for future roles|' + RJ_ROLE_FITS + '))?';
+var RJ_FUTURE_SENTENCES = [
+  // Two pointers at most: unrollRepeats_ writes out each one in full, and a third would double the compile time.
+  RJ_POINTER + '(?:(?:,| and|,? or|,? and/or) ' + RJ_POINTER + ')?(?:,? (?:as|since) ' + RJ_GROWING + ')?',
+  RJ_GROWING,
+  'we(?:\'ve| have) (?:a lot of|lots of|many|so many) exciting things happening(?: (?:at|with) ' + RJ_NAME + ')?',
+  'we (?:make a point of revisiting|regularly revisit|periodically revisit|regularly review|periodically review) (?:past|previous|prior) applications(?: on a regular basis)?(?: to match them (?:to|with) (?:newly opened|new|open) (?:jobs|roles|positions|openings))?',
+  '(?:there may be|new) ' + RJ_FUTURE + '(?: (?:may|might) (?:arise|open up|become available))?' + RJ_SUITS + '?' + RJ_LATER + '?',
+  '(?:as an evolving company,? )?(?:new |other )?(?:positions|roles|opportunities)' + RJ_SUITS + '? (?:may|might|will) (?:arise|open up|become available)' + RJ_SUITS + '?' + RJ_LATER + '?',
+  '(?:please note,? )?our needs are always evolving',
+  '(?:we )?(?:will|\'ll|would like to|may|also)(?: also)?(?: continue to)? (?:keep|retain) your (?:resume|application|profile|information|details|cv)(?: (?:on file|in our (?:active )?(?:database|system|files|talent (?:community|pool|network))|handy))?' + RJ_KEEP_FOR,
+  'your (?:resume|application|profile|information|details) will be kept (?:on file|in our (?:active )?(?:database|system|files))' + RJ_KEEP_FOR,
+  ACK_KEEP_ON_FILE,
+  ACK_COMMUNITY,
+  // "We'd love to stay in touch", "we'd be glad to consider you for future opportunities": never "consider you for other roles".
+  '(?:we(?:\'d| would)?|would) (?:still |also |absolutely )?(?:love|like|be (?:glad|happy|more than happy)) to (?:(?:stay in touch|keep in touch(?: with you)?|stay connected|reconnect|hear from you|keep your (?:details|information|resume) on file and stay in touch)(?: (?:for|about|with) ' + RJ_FUTURE_ONLY + '(?: (?:at|with) ' + RJ_NAME + ')?' + RJ_SUITS + '?)?|consider you(?: for ' + RJ_FUTURE_ONLY + '(?: (?:at|with) ' + RJ_NAME + ')?' + RJ_SUITS + '?| for ' + RJ_FUTURE + RJ_SUITS + '?' + RJ_LATER + '))' + RJ_LATER + '?(?:(?:,? and|,) reconnect' + RJ_LATER + '?)?' +
+    '(?: (?:as|when|once|in the event|if|should) (?:the timing is right|' + RJ_FUTURE + ' (?:open up|become available)(?: that (?:may|might) align (?:more closely)?)?|any suitable roles open up(?: on our team)?(?: in the future)?|our team continues to grow|' + RJ_ROLE_FITS + '))?',
+  'we(?:\'d| would) (?:absolutely )?welcome (?:a new application|the opportunity to reconnect)',
+  'we(?:\'d| would) love to keep in touch with you for ' + RJ_FUTURE,
+  '(?:we|I) hope (?:that )?you (?:do not|don\'t) mind if (?:we|I) reach (?:back )?out (?:to you )?in the future (?:when|if) a (?:position|role) opens up that (?:may be|is|might be) a (?:good |better )?fit(?: for you)?',
+  // Contact only on a future opening: "we will reach out if a position opens up that may be a good fit".
+  '(?:(?:we(?: will|\'ll| may| hope to| would|\'d)|will|may|would)(?: also)?(?: (?:love|like|be happy) to)? )?reach (?:back )?out(?: to you)?(?: in the future)? (?:if|when|should|if/when|in the event(?: that)?) (?:' + RJ_ROLE_FITS + '|' + RJ_FUTURE + ' (?:arise|open up|become available)' + RJ_SUITS + '?|our needs change|anything changes?(?: on our end)?)' + RJ_LATER + '?',
+  '(?:' + RJ_IF_ROLE + '|should there be ' + RJ_ROLE_FITS + ')(?:,? we (?:hope to|will|\'ll|would love to|would be happy to|may) (?:reach (?:back )?out(?: to you)?|contact you)(?: for more (?:details|information))?)?',
+  '(?:should|if) (?:things|anything|circumstances|our needs) changes?(?: though)?,? we (?:may|might|will|would)(?: be able to)? (?:reconsider your application(?: and reach (?:back )?out(?: to you)?)?|reach (?:back )?out(?: to you)?)',
+  '(?:and )?with (?:that|this|it) comes? ' + RJ_FUTURE + RJ_SUITS + '?' + RJ_LATER + '?',
+  '(?:URL|' + RJ_NAME + ')(?:(?:,| and|,? or) (?:URL|' + RJ_NAME + '))* (?:are|is) (?:also )?(?:a )?great (?:places?|ways?) to (?:keep up|stay up to date|stay connected) with (?:all things ' + RJ_NAME + '|us|our (?:news|team))',
+  'we(?: will|\'ll) be in touch (?:should|if) your ' + RJ_DOCS + ' (?:be|are) a (?:good |strong )?(?:fit|match) for ' + RJ_FUTURE,
+  'to stay (?:informed|up to date|up-to-date|updated) (?:about|on) ' + RJ_FUTURE + RJ_SUITS + '?',
+  '(?:if you\'d like,? )?(?:you can )?stay (?:informed|up to date|up-to-date) (?:about|on) ' + RJ_FUTURE + '(?: and all things ' + RJ_NAME + ')? by following us(?: on (?:the following platforms|social media))?',
+  'we (?:hope|would love for) you (?:will |\'ll )?(?:continue to explore|consider|keep exploring) ' + RJ_FUTURE + '(?: with us)?' + RJ_LATER + '?',
+  'we hope (?:you\'ll|you will) (?:continue to )?(?:explore|consider) (?:' + RJ_FUTURE + '|opportunities) (?:with us|at ' + RJ_NAME + ')' + RJ_LATER + '?',
+  'we hope you(?:\'ll| will)? (?:keep us in mind|consider applying again)(?: for ' + RJ_FUTURE + ')?' + RJ_LATER + '?'
+];
+// A status disclaimer: this decision is only about this role.
+var RJ_STATUS = [
+  '(?:ps:? )?if you(?:\'ve| have) applied (?:for|to) (?:other|multiple|additional) (?:positions|roles|opportunities)(?: at ' + RJ_NAME + ')?,? (?:you(?:\'ll| will) (?:receive separate updates|still be considered for those)(?: regarding those applications| until otherwise noted)?|you may hear from us more than once|we will be in touch separately about the other roles|(?:please note that )?this (?:message|e-?mail|decision) (?:is|applies) only (?:in reference to|to) (?:the|this) (?:' + RJ_NAME + ' )?(?:role|position))',
+  '(?:please note,? )?if you(?:\'re| are) currently (?:interviewing|being considered) for (?:another|other) (?:roles?|positions?)(?: with us)?,? this (?:doesn\'t|does not) affect (?:that|those) (?:process|processes|applications?)',
+  'this (?:e-?mail|message) is only intended to address the status of your application for ' + RJ_JOB,
+  'if you have other applications in process or are currently interviewing for other positions,? this is not a representation of your status for those roles'
+];
+// The applicant pool and the difficulty of the decision.
+var RJ_POOL = [
+  '(?:we(?:\'ve| have)? )?(?:received|were fortunate to receive|had) (?:a|an) (?:(?:very|extremely|incredibly) )?(?:(?:large|high|strong|great|significant|overwhelming|huge) )?(?:number|volume|pool|response)(?: of (?:(?:qualified|strong|talented|exceptional) )?(?:applications|applicants|candidates))?(?: (?:to|for) (?:this|our) (?:role|position|opportunity))?',
+  '(?:we(?:\'ve| have)? )?(?:receive|received) (?:many|a lot of|so many) (?:(?:qualified|strong|talented) )?(?:applications|applicants|candidates)(?: (?:for|to) (?:this|the) (?:role|position))?',
+  '(?:making )?(?:these |our |hiring )?decisions? (?:often )?(?:comes?|came) down to (?:very )?specific needs (?:for|of) (?:this|the) (?:particular )?(?:role|position|team)(?:,? (?:rather than|and is not|not) a reflection (?:of|on) your (?:experience|skills|background|potential)(?: (?:or|and) (?:your )?(?:experience|skills|background|potential))?)?',
+  '(?:we(?:\'ve| have) been|we were|we\'re|we are) (?:extremely |very |so )?fortunate to (?:have|receive|have received) (?:a|an) (?:(?:fantastic|great|strong|tremendous|large|overwhelming|incredible) )?response(?: from (?:(?:accomplished|talented|qualified|many|exceptional) )?(?:candidates|applicants)(?: such as yourself| like you(?:rself)?)?)?(?: (?:for|to) (?:this|our|the) (?:role|position))?',
+  '(?:we(?:\'re| are|\'ve| have) (?:fortunate to have )?)?(?:received|have received|had|have had) a lot of (?:applicant )?interest(?: in (?:this|the) (?:role|position))?(?:,? resulting in a (?:very |highly )?competitive (?:candidate pool|process|selection process))?',
+  '(?:we(?:\'re| are) )?(?:flattered|humbled) by the (?:huge |large |high )?(?:number|volume) of applications we (?:receive|received|have received)(?: from (?:exceptional|talented|qualified|strong) candidates)?',
+  '(?:while exciting,? )?this (?:also )?makes the (?:hiring|selection) process (?:that much |even )?more (?:challenging|difficult|competitive)',
+  '(?:this|it) was (?:a |an )?(?:(?:very|extremely|highly) )?(?:competitive|difficult|tough) (?:process|decision|search)',
+  '(?:this|it) was not an easy decision',
+  '(?:this|the) (?:decision|selection process) (?:was|is) (?:(?:very|highly|extremely) )?(?:competitive|difficult|not easy)',
+  'competition for (?:the|this) (?:position|role) was (?:very )?strong',
+  'please know that (?:we don\'t make these decisions lightly|this decision was not made lightly)',
+  'this decision (?:does not|doesn\'t) (?:diminish|reflect on) (?:the value we saw in your application(?: and background)?|your potential(?: or the value of your experience)?)',
+  '(?:that|this|the) decision (?:doesn\'t|does not) take away from (?:the (?:great )?(?:skills|experience)(?: and (?:experiences?|skills))? you bring|your (?:skills|experience|qualifications))',
+  'it (?:simply )?reflects how competitive (?:this|the) process (?:has been|was|is)',
+  '(?:we )?(?:had|have) to make (?:some )?(?:very )?difficult (?:choices|decisions|calls)(?: among an exceptional group of candidates)?',
+  'these are never easy (?:messages|emails|decisions) to (?:send|make)',
+  'we were faced with (?:several|many|some|a number of) (?:very )?(?:difficult|tough|hard) (?:decisions|choices)(?: during (?:the|our) (?:selection|hiring|review) process)?',
+  'we understand how important timely (?:communication|updates) (?:is|are)(?: during a job search)?(?: and (?:wanted|want) to (?:ensure|make sure) (?:that )?we (?:provided|provide|gave|give) you (?:with )?a (?:clear|timely) update)?',
+  'we understand (?:this|that this) may be disappointing(?:,? and we apologize for any inconvenience (?:this|it) may cause)?',
+  '(?:due to the (?:(?:high|large) (?:volume|number) of applications(?: we receive)?|number of candidates we(?:\'re| are) reviewing),? )?we(?:\'re| are) (?:unable|not able) to (?:offer|provide) (?:individual|custom|personal|specific) feedback(?: (?:on your application|at this (?:point|stage) (?:in|of) the process|at this early stage of the process|due to the (?:(?:high|large) )?(?:volume|number) of (?:applications|candidates)(?: we(?:\'re| are) reviewing| we receive)?))*'
+];
+// The lines around the letter: a greeting, the team that signs it, a lone name, a link row, a requisition number.
+var RJ_TEAM_NAME = '(?:the )?(?:' + RJ_NAME + ' )?(?:recruiting|recruitment|talent|talent acquisition|talent attraction|people|people & culture|hiring|hr)';
+var RJ_TEAM_AT = '(?: (?:at|@) ' + RJ_NAME + ')?';
+var RJ_TEAM = RJ_TEAM_NAME + '(?: team)?' + RJ_TEAM_AT;
+var RJ_FRAME = [
+  '(?:hi|hello|dear|hey) ' + RJ_NAME,
+  RJ_TEAM,
+  '(?:the )?team (?:at|@) ' + RJ_NAME,
+  '(?:' + RJ_NAME + ' )?jobs(?: \\( URL \\)| URL)?',
+  RJ_PLACE,
+  '[a-z0-9-]+\\.(?:com|io|ai|co|org|net)(?: \\( URL \\)| URL)?',
+  '(?:[\\[\\](){}*#|·•>_-]|\\d{1,2}\\.?|URL|visible links| )+',
+  '(?:' + RJ_NAME + '|URL)(?: ?\\( URL \\))?(?: ?[|·•] ?(?:' + RJ_NAME + '|URL)(?: ?\\( URL \\))?)+',
+  '(?:' + RJ_NAME + ' ?)?[a-z]{0,3}-?\\d{4,9}',
+  '[a-z0-9]{24,}',
+  '(?:©|\\(c\\)|copyright) ?\\d{4}(?: ' + RJ_NAME + ')?(?: ?[|.,] ?all rights reserved)?',
+  '(?:please note (?:that )?)?this (?:e-?mail|mailbox|inbox|e-?mail box) is not monitored(?:,? and replies will not be (?:seen|read)(?: or responded to)?)?',
+  'replies to this (?:e-?mail|message) are undeliverable',
+  'this (?:e-?mail|message) was (?:sent|distributed) (?:by|on behalf of) (?:the )?' + RJ_NAME,
+  'in accordance with our (?:' + RJ_NAME + ' )?privacy (?:statement|policy|notice)(?: \\( URL \\)| URL)?,? we (?:will|may) (?:continue to )?(?:process|retain) your personal (?:information|data)(?:,? including to consider you for an? (?:alternative|future|other)(?: or (?:alternative|future|other))? (?:position|role)s?)?',
+  'if you have any questions about our (?:candidate )?data practices(?: or (?:you )?would like to exercise your (?:rights|privacy rights)(?: and choices)?)?,? please (?:email|contact) us at EMAIL',
+  '(?:for (?:more )?information (?:about|on) how we (?:handle|process|use|collect) (?:your |applicant )?(?:data|personal data|information),? )?(?:you (?:can|may) |please )?(?:review|read|see|view) our (?:' + RJ_NAME + ' )?(?:(?:and|&) ' + RJ_NAME + ' )?privacy (?:policy|notice)(?: here)?(?: \\( URL(?: \\))?| URL)?'
+];
+// How the applicant's data is kept, and the recruiting-fraud warning some letters carry.
+var RJ_PRIVACY_POLICY = 'our ?(?:' + RJ_NAME + ' )?(?:(?:and|&) ' + RJ_NAME + ' )?privacy (?:policy|notice|statement)(?: \\( URL \\)| URL)?';
+var RJ_NOTICES = [
+  'your (?:applicant |personal |candidate )?(?:information|data) will (?:always )?be (?:stored|kept|retained)(?: and processed)? in accordance with ' + RJ_PRIVACY_POLICY,
+  RJ_NAME + ' will retain and process your personal (?:data|information)(?: submitted (?:via|with|through) your application)?(?: for a limited period)? in accordance with ' + RJ_PRIVACY_POLICY,
+  'if contacted by a suspicious (?:profile|person|account|message|recruiter)(?:,? or if something (?:feels|seems) off)?,? (?:don\'t|do not) engage(?: ?[—–-] ?|, | )email us (?:at )?(?:URL|EMAIL) to verify',
+  'always (?:confirm|verify)(?: or apply for)? (?:any )?(?:open )?(?:roles|positions|jobs|opportunities) directly (?:on|through|via) (?:the |our )?(?:official )?' + RJ_PLACE
+];
+var RJ_CLAUSES = [RJ_DECISION_SENTENCE, RJ_REVIEWED_CLAUSE, RJ_PRAISE_CLAUSE, RJ_OPENING, RJ_THANKS, RJ_THANKS_MORE, RJ_APPRECIATE, RJ_APPRECIATE_WHAT, RJ_WISH,
+  ACK_THANKS, ACK_APPRECIATE, ACK_WISH, ACK_THANKS_TIME].concat(RJ_FUTURE_SENTENCES, RJ_STATUS, RJ_POOL, RJ_NOTICES, NOTICE_CLAUSES);
+var RJ_MAX_REPEAT = 8;
+
+/** The pattern with every repeated group that holds a name slot written out copy by copy, an unbounded one up to
+ *  RJ_MAX_REPEAT times. A capture inside a repeat keeps only its last match, so acknowledges_ could not check the
+ *  slots of the earlier repeats; each copy captures its own. */
+function unrollRepeats_(src) {
+  for (;;) {
+    var stack = [], site = null, inClass = false;
+    for (var i = 0; i < src.length && !site; i++) {
+      var c = src[i];
+      if (c === '\\') { i++; continue; }
+      if (inClass) { inClass = c !== ']'; continue; }
+      if (c === '[') { inClass = true; continue; }
+      if (c === '(') { stack.push({ start: i, capture: src[i + 1] !== '?' || src[i + 2] === '<' && /[A-Za-z]/.test(src[i + 3]), holds: false }); continue; }
+      if (c !== ')') continue;
+      var group = stack.pop(), q = /^(?:\*|\+|\{(\d+)(?:(,)(\d*))?\})(\??)/.exec(src.slice(i + 1));
+      var min = !q ? 1 : q[0][0] === '*' ? 0 : q[0][0] === '+' ? 1 : Number(q[1]);
+      var max = !q ? 1 : q[0][0] === '*' || q[0][0] === '+' || (q[2] && !q[3]) ? RJ_MAX_REPEAT : q[2] ? Number(q[3]) : min;
+      if (max > 1 && group.holds) site = { start: group.start, end: i + 1, after: i + 1 + q[0].length, min: min, max: max, lazy: q[4] };
+      if (stack.length) stack[stack.length - 1].holds = stack[stack.length - 1].holds || group.holds || group.capture;
+    }
+    if (!site) return src;
+    var copy = src.slice(site.start, site.end), optional = '';
+    for (var k = site.min; k < site.max; k++) optional = '(?:' + copy + optional + ')?' + site.lazy;
+    src = src.slice(0, site.start) + new Array(site.min + 1).join(copy) + optional + src.slice(site.after);
+  }
+}
+
+function rejectionRegExp_(pattern) { return new RegExp(unrollRepeats_(pattern), 'i'); }
+
+// One expression per clause, and the leads apart: a single alternation of them all backtracks for seconds on a long
+// near-miss sentence, and the leads repeated in every clause cost seconds to compile.
+var REJECTION_CLAUSES = RJ_CLAUSES.map(function (clause) { return rejectionRegExp_('^(?:' + clause + ')$'); });
+var RJ_CONTACT_EXEMPT = [RJ_DECISION_SENTENCE].concat(RJ_NOTICES);
+var RJ_CONTACT_CHECKED = RJ_CLAUSES.map(function (clause) { return RJ_CONTACT_EXEMPT.indexOf(clause) < 0; });
+var RJ_ANY_LEAD = RJ_LEADS + '|' + RJ_TEAM_NAME + ' team' + RJ_TEAM_AT + '|' + RJ_LINK_ROW + '|(?:hi|hello|dear|hey) ' + RJ_NAME + ' ?';
+var REJECTION_LEADS = rejectionRegExp_('^(?:' + RJ_ANY_LEAD + ')(?:,? (?:' + RJ_ANY_LEAD + ')){0,2},?$');
+// A frame line stands alone as a whole sentence, never as one clause of a longer one; an emoji may trail it.
+var REJECTION_FRAME = RJ_FRAME.map(function (line) {
+  return rejectionRegExp_('^(?:' + line + ')(?: ?(?:[\\uD83C-\\uD83E][\\uDC00-\\uDFFF]|[\\u2600-\\u27BF]))*$');
+});
+
+function rejectionClause_(text) {
+  var bare = function (s) {
+    var contact = RJ_CONTACT_STEM.test(s);
+    return REJECTION_CLAUSES.some(function (re, i) { return !(contact && RJ_CONTACT_CHECKED[i]) && acknowledges_(re, s, RJ_VETO_WORD); });
+  };
+  if (bare(text)) return true;
+  var s = text.replace(/\s+/g, ' ').trim();
+  for (var p = s.indexOf(' '); p > 0 && p < 200; p = s.indexOf(' ', p + 1)) {
+    var lead = s.slice(0, p);
+    if (!RJ_CONTACT_STEM.test(lead) && acknowledges_(REJECTION_LEADS, lead, RJ_VETO_WORD) && bare(s.slice(p + 1))) return true;
+  }
+  return false;
+}
+
+/** True when the sentence is one allowlisted rejection clause, or up to four of them joined by a comma, a semicolon,
+ *  a dash or a conjunction. */
+function rejectionSentence_(sentence, depth) {
+  if (rejectionClause_(sentence)) return true;
+  if ((depth || 0) >= 3) return false;
+  var join = new RegExp(RJ_JOIN.source, 'gi'), m;
+  while ((m = join.exec(sentence))) {
+    var head = sentence.slice(0, m.index).trim();
+    if (head && rejectionClause_(head) && rejectionSentence_(sentence.slice(m.index + m[0].length), (depth || 0) + 1)) return true;
+  }
+  return false;
+}
+
+/** The first sentence, or set-aside greeting or signature line holding a scheduling word, that is neither a standard
+ *  footer nor an allowlisted rejection or courtesy shape, or null when every sentence is one. */
+function unexplainedRejection_(body) {
+  var parts = bodyParts_(body);
+  if (parts.line) return parts.line;
+  var paragraphs = parts.paragraphs, last = paragraphs.length - 1;
+  while (last >= 0 && lineSentences_(paragraphs[last]).every(frameSentence_)) last--;
+  for (var p = 0; p < paragraphs.length; p++) {
+    if (p === last && parts.signable[p] && signedName_(paragraphs[p])) continue;
+    var sentences = lineSentences_(paragraphs[p]);
+    for (var s = 0; s < sentences.length; s++) {
+      if (!frameSentence_(sentences[s]) && !rejectionSentence_(bareSentence_(sentences[s]))) return sentences[s];
+    }
+  }
+  return null;
+}
+
+function bareSentence_(sentence) { return sentence.replace(/^[-*•·]\s+/, '').replace(/[,:;]+$/, ''); }
+
+function frameSentence_(sentence) {
+  var bare = bareSentence_(sentence);
+  return footer_(sentence) || REJECTION_FRAME.some(function (re) { return acknowledges_(re, bare, RJ_VETO_WORD); });
+}
+
+// The one capitalised word a letter may be signed with ("Best,\nJane", "- Shopify"), as the last paragraph before the
+// footer and frame lines, right under a sign-off line or on a "- " line. A word that asks for contact ("Emailed.",
+// "Holler.") is no signature.
+var RJ_SIGNED_NAME = /^[A-Z][A-Za-z'&-]*\.?$/;
+var RJ_SIGN_OFF_LINE = /^(?:best|(?:(?:best|kind|warm|warmest) )?regards|(?:many )?thanks|sincerely|cheers|warmly)\s*[,.!]?$/i;
+var RJ_CONTACT_WORD = new RegExp('^(?:' + RJ_CONTACT_VERB + ')\\w*', 'i');
+
+function signedName_(paragraph) {
+  return RJ_SIGNED_NAME.test(paragraph) && !ACK_VETO_WORD.test(paragraph) && !SCHEDULING_WORDS.test(paragraph) &&
+    !RJ_CONTACT_WORD.test(paragraph) && !RJ_CONTACT_STEM.test(paragraph);
+}
+
 function rejectionStands_(body) {
-  return invitesContact_(body) === null && !splitSentences(body).some(function (sentence) {
+  return unexplainedRejection_(body) === null && invitesContact_(body) === null && !splitSentences(body).some(function (sentence) {
     return REPLY_REQUEST.test(sentence) || (directOffer_(sentence) && !FUTURE_ONLY.test(sentence));
   });
 }
