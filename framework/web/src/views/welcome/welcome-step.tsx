@@ -20,7 +20,7 @@ function InboxHelp() {
       description="This dashboard is not running in a Job Duck workspace, so it cannot take the file here.">
       <ol className="list-decimal space-y-2 pl-5 text-sm">
         <li>Save your resume into the <code className="rounded bg-muted px-1">inbox/</code> folder of your Job Duck workspace.</li>
-        <li>Back in your agent, say "import my resume".</li>
+        <li>Open any agent in that workspace. It imports the file automatically.</li>
       </ol>
     </SectionCard>
   )

@@ -4,7 +4,7 @@ import { SENIORITY } from '../web/src/lib/forms'
 import { LOCATION_LIMIT, LOCATIONS, searchLocations } from '../web/src/lib/locations'
 import { inferTrack, levelsFor, pruneToTrack, SENIORITY_LABELS, toggleLevel, TRACKS } from '../web/src/lib/seniority'
 import { careerDna, DEFAULT_QUIZ, isToggle, modeOf, QUIZ, workModesOf } from '../web/src/lib/wizard'
-import { doneSummary, NOTHING_SAVED } from '../web/src/lib/wizard-done'
+import { doneSummary, nextStep, NOTHING_SAVED } from '../web/src/lib/wizard-done'
 
 const titleCased = (text: string) =>
   text.split(/[\s-]+/).filter((word) => /^\p{L}/u.test(word)).every((word) => /^\p{Lu}/u.test(word))
@@ -34,8 +34,10 @@ describe('quiz', () => {
     const texts = [
       ...TRACKS.map(([, label]) => label),
       ...Object.values(SENIORITY_LABELS),
-      doneSummary({ uploaded: false, saved: NOTHING_SAVED, modulesOn: 0 }).title,
-      doneSummary({ uploaded: true, saved: { quiz: true, targets: true, modules: true }, modulesOn: 1 }).title,
+      doneSummary({ uploaded: null, saved: NOTHING_SAVED, modulesOn: 0 }).title,
+      doneSummary({ uploaded: 'resume.pdf', saved: { quiz: true, targets: true, modules: true }, modulesOn: 1 }).title,
+      nextStep('resume.pdf').title,
+      nextStep(null).title,
     ]
     expect(texts.filter((text) => !titleCased(text))).toEqual([])
   })

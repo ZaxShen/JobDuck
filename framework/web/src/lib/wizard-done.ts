@@ -1,3 +1,5 @@
+import { AGENTS, listOf } from './onboarding'
+
 export interface SavedSteps {
   quiz: boolean
   targets: boolean
@@ -5,26 +7,41 @@ export interface SavedSteps {
 }
 
 export interface DoneInput {
-  uploaded: boolean
+  uploaded: string | null
   saved: SavedSteps
   modulesOn: number
+}
+
+export interface NextStep {
+  title: string
+  body: string
 }
 
 export interface DoneSummary {
   title: string
   body: string
-  nextStep: string
+  next: NextStep
 }
 
 export const NOTHING_SAVED: SavedSteps = { quiz: false, targets: false, modules: false }
 
-const listOf = (items: string[]) =>
-  items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
+export function nextStep(uploaded: string | null): NextStep {
+  if (uploaded !== null) {
+    return {
+      title: 'Open Your Agent In This Folder',
+      body: `Any agent you use here (${AGENTS}) will read inbox/${uploaded} and fill in your profile automatically.`,
+    }
+  }
+  return {
+    title: 'Add Your LinkedIn Or A Resume',
+    body: `On LinkedIn, choose More, then Save to PDF, and put the file in inbox/. Any agent you use here (${AGENTS}) will read it and fill in your profile automatically.`,
+  }
+}
 
 export function doneSummary({ uploaded, saved, modulesOn }: DoneInput): DoneSummary {
-  const nextStep = uploaded ? 'import my resume' : 'import my LinkedIn'
+  const next = nextStep(uploaded)
   const items = [
-    uploaded && 'your resume',
+    uploaded !== null && 'your resume',
     saved.quiz && 'your Career DNA answers',
     saved.targets && "what you're looking for",
     saved.modules && 'what Job Duck should do',
@@ -34,7 +51,7 @@ export function doneSummary({ uploaded, saved, modulesOn }: DoneInput): DoneSumm
     return {
       title: 'Nothing Saved Yet.',
       body: 'You skipped every step. You can fill in your profile any time.',
-      nextStep,
+      next,
     }
   }
 
@@ -44,6 +61,6 @@ export function doneSummary({ uploaded, saved, modulesOn }: DoneInput): DoneSumm
   return {
     title: "You're Set Up.",
     body: `Saved ${listOf(items)}.${nothingOn} Change anything later in Profile or Settings.`,
-    nextStep,
+    next,
   }
 }

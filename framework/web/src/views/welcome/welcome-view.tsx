@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useFlash } from '@/hooks/use-flash'
-import { errorMessage, fetchJSON, isConflict, postJSON, putJSON } from '@/lib/api'
+import { errorMessage, fetchJSON, isConflict, putJSON } from '@/lib/api'
 import { MODULES } from '@/lib/forms'
 import { clone } from '@/lib/paths'
 import type { FrontMatter, InboxUpload, PermissionsView, ProfileView } from '@/lib/types'
-import { base64Of } from '@/lib/base64'
+import { uploadToInbox } from '@/lib/upload'
 import { careerDna, companyStages, DEFAULT_QUIZ, modeOf, WIZARD_STEPS, workModesOf, type Quiz } from '@/lib/wizard'
 import { doneSummary, NOTHING_SAVED, type SavedSteps } from '@/lib/wizard-done'
 import { cn } from '@/lib/utils'
@@ -113,8 +113,7 @@ export function WelcomeView({ active, onProfileSaved, onSettingsSaved }: Welcome
   const uploadAndContinue = async () => {
     if (!file || noInbox) return goTo(1)
     try {
-      const data = await base64Of(file)
-      const result = await postJSON<InboxUpload>('/api/inbox', { name: file.name, data })
+      const result = await uploadToInbox(file)
       setUploaded(result)
       setFile(null)
       flash(`Saved to inbox/${result.name}.`)
@@ -177,7 +176,7 @@ export function WelcomeView({ active, onProfileSaved, onSettingsSaved }: Welcome
               <DoneStep
                 uploaded={uploaded}
                 summary={doneSummary({
-                  uploaded: uploaded !== null,
+                  uploaded: uploaded?.name ?? null,
                   saved,
                   modulesOn: MODULES.filter(([key]) => modules?.[key]).length,
                 })}

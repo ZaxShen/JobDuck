@@ -20,6 +20,8 @@ import {
 } from '../db/profile-facts'
 import { type FetchLike, searchJobs } from '../freehire/client'
 import { toPostingInput } from '../freehire/map'
+import { markImported } from '../onboarding/ledger'
+import { onboardingStatus } from '../onboarding/status'
 import { permissionsPath, profilePath } from '../paths'
 import { type LookupLike, MAX_BODY_BYTES } from '../posting/fetch'
 import { htmlToText } from '../posting/html'
@@ -28,6 +30,7 @@ import { resolutionView, resolveForPosting, withFullDescription } from './resolu
 export interface ToolDeps {
   db: Db
   home: string
+  workspace: string
   fetch?: FetchLike
   lookup?: LookupLike
   sleep?: (ms: number) => Promise<void>
@@ -38,7 +41,10 @@ export const TOOL_NAMES = [
   'record_application', 'resolve_posting', 'update_status', 'list_applications', 'get_application', 'update_application',
   'record_interview', 'update_interview', 'delete_interview',
   'list_profile_facts', 'save_profile_facts', 'update_profile_fact', 'delete_profile_fact',
+  'get_onboarding_status', 'mark_imported',
 ] as const
+
+export const MAX_MARK_FILES = 50
 
 export const TRACK_DISABLED = 'track module is disabled in permissions.toml; run the setup skill'
 export const CV_DISABLED = 'cv module is disabled in permissions.toml; run the setup skill'
@@ -184,7 +190,7 @@ const applicationPatch = {
 }
 
 export function registerTools(server: McpServer, deps: ToolDeps): void {
-  const { db, home } = deps
+  const { db, home, workspace } = deps
   const permissions = () => loadPermissions(permissionsPath(home))
   const requireTrack = () => {
     if (!permissions().modules.track) throw new Error(TRACK_DISABLED)
@@ -192,6 +198,22 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   const requireCv = () => {
     if (!permissions().modules.cv) throw new Error(CV_DISABLED)
   }
+
+  server.registerTool('get_onboarding_status', {
+    description: 'Call at session start. profile_empty: the profile holds no facts yet. pending_imports: resumes and '
+      + 'LinkedIn files in inbox/ (or PDF/DOCX at the workspace top level) that no agent has imported, matched by '
+      + 'SHA-256 of their content. Import each now with the setup skill\'s Step 2 without asking, then call '
+      + 'mark_imported. When the profile is empty and nothing is pending, point the user to dashboard_hint.',
+    annotations: { readOnlyHint: true },
+  }, () => run(() => ({ ...onboardingStatus(home, workspace) })))
+
+  server.registerTool('mark_imported', {
+    description: 'Record files as imported after their facts are saved with update_profile, so no agent imports '
+      + 'them again. Paths are relative to the workspace (as pending_imports lists them). Each file is hashed as it '
+      + 'is now; a file edited later gets a new hash and is pending again. Marking a file twice is a no-op.',
+    inputSchema: { files: z.array(z.string().min(1)).min(1).max(MAX_MARK_FILES) },
+    annotations: { idempotentHint: true },
+  }, ({ files }) => run(() => ({ ...markImported(home, workspace, files) })))
 
   server.registerTool('get_profile', {
     description: 'Read the user profile (profile.md in the Job Duck home named in AGENTS.md): TOML front matter, markdown body and its revision.',
