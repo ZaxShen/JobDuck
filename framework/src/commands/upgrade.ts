@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto'
 import { chmodSync, existsSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { basename } from 'node:path'
-import { PACKAGE_VERSION } from '../paths'
+import { PACKAGE_VERSION, discoverHome } from '../paths'
 import type { FetchLike } from '../sync/client'
+import { type DashboardRecord, restartDashboard } from './dashboard'
 
 export const RELEASE_REPO = 'ZaxShen/JobDuck'
 export const CHECKSUMS_ASSET = 'SHA256SUMS'
@@ -23,6 +24,7 @@ export interface UpgradeOptions {
   execPath?: string
   platform?: NodeJS.Platform
   arch?: string
+  restartDashboard?: () => Promise<DashboardRecord | null>
   out?: (line: string) => void
   err?: (line: string) => void
 }
@@ -175,6 +177,11 @@ function defaultExecPath(): string {
   return path
 }
 
+async function restartRunningDashboard(): Promise<DashboardRecord | null> {
+  const home = discoverHome()
+  return home === undefined ? null : restartDashboard(home)
+}
+
 function swap(execPath: string, bytes: Uint8Array, platform: NodeJS.Platform): void {
   const next = `${execPath}.new`
   writeFileSync(next, bytes, { mode: 0o755 })
@@ -241,6 +248,12 @@ export async function runUpgrade(options: UpgradeOptions = {}): Promise<number> 
 
     swap(execPath, bytes, platform)
     out(`${newer ? 'upgraded' : 'downgraded'} ${installed} -> ${target}`)
+    try {
+      const restarted = await (options.restartDashboard ?? restartRunningDashboard)()
+      if (restarted) out(`restarted the dashboard at ${restarted.url} on ${target}`)
+    } catch (error) {
+      err(`could not restart the dashboard: ${error instanceof Error ? error.message : String(error)}; run jobduck dashboard --background to start it on the new build`)
+    }
     return 0
   } catch (error) {
     err(`upgrade failed: ${error instanceof Error ? error.message : String(error)}`)

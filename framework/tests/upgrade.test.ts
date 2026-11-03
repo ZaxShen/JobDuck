@@ -18,6 +18,7 @@ let execPath: string
 let calls: { url: string; init: RequestInit }[]
 let lines: string[]
 let errors: string[]
+let restarts: number
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'jobduck-upgrade-'))
@@ -26,6 +27,7 @@ beforeEach(() => {
   calls = []
   lines = []
   errors = []
+  restarts = 0
 })
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
@@ -55,7 +57,8 @@ function github(options: GithubOptions = {}): FetchLike {
 }
 
 const run = (fetch: FetchLike, extra: Parameters<typeof runUpgrade>[0] = {}) => runUpgrade({
-  fetch, execPath, currentVersion: CURRENT_VERSION, platform: 'darwin', arch: 'arm64', out: (line) => { lines.push(line) }, err: (line) => { errors.push(line) }, ...extra,
+  fetch, execPath, currentVersion: CURRENT_VERSION, platform: 'darwin', arch: 'arm64', out: (line) => { lines.push(line) }, err: (line) => { errors.push(line) },
+  restartDashboard: async () => { restarts++; return null }, ...extra,
 })
 
 test('asset names follow jobduck-<os>-<arch> with .exe on Windows', () => {
@@ -207,4 +210,42 @@ test('a version and a channel together are refused', async () => {
   expect(await run(github(), { version: NEW_VERSION, channel: 'rc' })).toBe(1)
   expect(errors[0]).toContain('not both')
   expect(calls).toHaveLength(0)
+})
+
+test('a successful upgrade restarts the running dashboard after the swap', async () => {
+  const record = { pid: 42, port: 4848, url: 'http://127.0.0.1:4848', workspace: dir }
+  let swapped: string | undefined
+  expect(await run(github(), {
+    restartDashboard: async () => { restarts++; swapped = readFileSync(execPath, 'utf8'); return record },
+  })).toBe(0)
+  expect(restarts).toBe(1)
+  expect(swapped).toBe(NEW_BYTES)
+  expect(lines).toEqual([`upgraded ${CURRENT_VERSION} -> ${NEW_VERSION}`, `restarted the dashboard at ${record.url} on ${NEW_VERSION}`])
+  expect(errors).toEqual([])
+})
+
+test('no live dashboard means no restart line', async () => {
+  expect(await run(github())).toBe(0)
+  expect(restarts).toBe(1)
+  expect(lines).toEqual([`upgraded ${CURRENT_VERSION} -> ${NEW_VERSION}`])
+})
+
+test('--check, up to date, a checksum mismatch and a failed download never restart the dashboard', async () => {
+  await run(github(), { check: true })
+  await run(github({ tag: `v${CURRENT_VERSION}` }))
+  await run(github({ binary: 'tampered bytes' }))
+  await run(github({ binaryRedirect: `${CDN}/missing` }))
+  expect(restarts).toBe(0)
+  expect(readFileSync(execPath, 'utf8')).toBe('old jobduck binary')
+})
+
+test('a failed dashboard restart still completes the upgrade and warns on err', async () => {
+  expect(await run(github(), {
+    restartDashboard: async () => { throw new Error('the dashboard did not start within 5s; run jobduck dashboard to see why') },
+  })).toBe(0)
+  expect(readFileSync(execPath, 'utf8')).toBe(NEW_BYTES)
+  expect(lines).toEqual([`upgraded ${CURRENT_VERSION} -> ${NEW_VERSION}`])
+  expect(errors).toEqual([
+    'could not restart the dashboard: the dashboard did not start within 5s; run jobduck dashboard to see why; run jobduck dashboard --background to start it on the new build',
+  ])
 })

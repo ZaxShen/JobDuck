@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'no
 import { createServer } from 'node:net'
 import { join } from 'node:path'
 import { type Sandbox, migratedDb, sandbox } from './helpers'
-import { type DashboardRecord, launchDashboard, liveDashboard, runDashboard } from '../src/commands/dashboard'
+import { type DashboardRecord, launchDashboard, liveDashboard, restartDashboard, runDashboard } from '../src/commands/dashboard'
 import { DEFAULT_PORT, startDashboard } from '../src/dashboard/server'
 import { dashboardStatePath, ensureHome } from '../src/paths'
 
@@ -219,4 +219,45 @@ test('a dashboard started from a subfolder of a workspace home serves and record
     workspace: cv, open: false, timeoutMs: 300, spawn: (_command, args) => { spawns.push(args); return { pid: 123 } },
   })).rejects.toThrow('did not start')
   expect(spawns[0]!.slice(-2)).toEqual(['--workspace', box.workspace])
+}, 10_000)
+
+test('restartDashboard does nothing when no dashboard is live', async () => {
+  ensureHome(box.home)
+  writeFileSync(dashboardStatePath(box.home), JSON.stringify({ pid: 1, port: 9, url: 'http://127.0.0.1:9', workspace: box.workspace }))
+  let stopped = 0
+  let spawned = 0
+  const restarted = await restartDashboard(box.home, {
+    stopDashboard: () => { stopped++ }, spawn: () => { spawned++; return {} },
+  })
+  expect(restarted).toBeNull()
+  expect(stopped).toBe(0)
+  expect(spawned).toBe(0)
+})
+
+test('restartDashboard stops the live dashboard and respawns it on the same workspace and port', async () => {
+  const old = await startDashboard({ home: box.home, workspace: box.workspace, port: 0, open: false, out: quiet })
+  const live: DashboardRecord = { pid: 1, port: old.port, url: old.url, workspace: box.workspace }
+  writeFileSync(dashboardStatePath(box.home), JSON.stringify(live))
+  const { stop, stopped } = stopper()
+  const stoppedRecords: DashboardRecord[] = []
+  const spawns: Array<{ args: string[]; env: NodeJS.ProcessEnv }> = []
+  let child: Promise<number> | undefined
+  try {
+    const restarted = await restartDashboard(box.home, {
+      stopDashboard: async (record) => { stoppedRecords.push(record); await old.close() },
+      spawn: (_command, args, env) => {
+        spawns.push({ args, env })
+        child = runDashboard({ home: box.home, workspace: box.workspace, port: live.port, open: false, stop: stopped, out: quiet, err: quiet })
+        return { pid: process.pid }
+      },
+    })
+    expect(stoppedRecords).toEqual([live])
+    expect(spawns).toHaveLength(1)
+    expect(spawns[0]!.args.slice(-6)).toEqual(['dashboard', '--no-open', '--workspace', box.workspace, '--port', String(live.port)])
+    expect(spawns[0]!.env.JOBDUCK_HOME).toBe(box.home)
+    expect(restarted).toEqual({ pid: process.pid, port: live.port, url: live.url, workspace: box.workspace })
+  } finally {
+    stop()
+    await child
+  }
 }, 10_000)
