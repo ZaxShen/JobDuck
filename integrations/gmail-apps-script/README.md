@@ -1,12 +1,15 @@
 # Job Duck — Gmail automation (Apps Script)
 
-Script v5.2. Rejections are queued inside the script and served to `jobduck sync` by the script itself, deployed as a
+Script v5.3. Rejections are queued inside the script and served to `jobduck sync` by the script itself, deployed as a
 web app; `jobduck sync` records them in your local Job Duck database. Nothing is pushed anywhere.
 
-A Google Apps Script that runs in the user's own Google account. Every 10 minutes it sorts each job thread in the
-Inbox. Archiving works by allowlist: a thread leaves the Inbox only when every message in it is provably safe to
-archive, and everything else stays in the Inbox. Only message bodies are read for this; the subject never decides
-it. Missing an invite is the defect to avoid, so keeping an extra email in the Inbox is the accepted cost.
+A Google Apps Script that runs in the user's own Google account. Every 10 minutes it reads each job thread in the
+Inbox. It handles exactly two kinds of mail: plain application confirmations (labeled `Job Duck/Applications` and
+archived) and rejections (labeled `Job Duck/Rejections`, archived and queued). **Everything else is kept: no label,
+no archive, the thread is left in the Inbox untouched.** Archiving works by allowlist: a thread leaves the Inbox only
+when every message in it is provably safe to archive. Only message bodies are read for this; the subject never
+decides it. Missing an invite is the defect to avoid, so keeping an extra email in the Inbox is the accepted cost:
+when unsure, the script keeps.
 
 A **plain application confirmation** is a job email whose body confirms the application ("thank you for applying",
 "we have received your application"), is not a rejection, is written by nobody in the first person, and in which
@@ -24,14 +27,26 @@ the case study we sent is confidential") is an ordinary sentence. Every other se
 applying or for your interest (in a role at a company); we have received your application; we or our team will
 review your application, qualifications or background; we will be in touch, contact you or get back to you (if your
 experience matches, in the coming weeks); you can view or track your application status in the candidate portal;
-we appreciate your interest; we wish you luck. Role and company names in them are at most 60 characters with no
-digit and no action, time or deadline word. Any other sentence ("Please complete your HireVue by Friday", "Your
+we appreciate your interest; we wish you luck; we will keep your resume on file; join our talent community; and the
+standard process wording described below. Role and company names in them are at most 60 characters with no digit
+and no action, time, deadline or scheduling word. Any other sentence ("Please complete your HireVue by Friday", "Your
 Karat session link is below", "Reply with your free times", a question to you, a bare link) keeps the thread in the
-Inbox. As an extra veto, a scheduling word anywhere keeps it too: interview, call, chat, Zoom, Teams, Calendly,
-schedule, availability, onsite, screen, next step, assessment, meet, talk, phone, round, slot, book, invite, offer,
-an assessment or video-interview vendor (HackerRank, CodeSignal, Codility, TestGorilla, HireVue, Pymetrics, Karat,
-Spark Hire, Modern Hire, Harver, Wonderlic, SHL, CCAT), a questionnaire, and similar. Boilerplate counts too: "if your
-experience matches, we will reach out to schedule an interview" keeps the thread in the Inbox.
+Inbox.
+
+Scheduling words are judged one sentence at a time: interview, call, chat, Zoom, Teams, Calendly, schedule,
+availability, onsite, screen, next step, assessment, meet, talk, phone, round, slot, book, invite, offer, an
+assessment or video-interview vendor (HackerRank, CodeSignal, Codility, TestGorilla, HireVue, Pymetrics, Karat, Spark
+Hire, Modern Hire, Harver, Wonderlic, SHL, CCAT), a questionnaire, and similar. A sentence with one of them keeps the
+thread unless the whole sentence is proven boilerplate that promises you nothing yet: an employer-side condition
+before a contact promise ("if your experience matches, we'll be in touch to schedule an interview", "if there is a
+fit, we will contact you about next steps"), an applicant-pool promise ("candidates who move forward in the interview
+process will be contacted", "if you are selected for an interview, a member of our team will contact you"), a
+description of the process ("our interview process typically includes a recruiter screen, a technical interview and
+an onsite"), a "what's next?" heading, "our team will screen your application", or a talent-community invite. A
+scheduling word in the greeting or signature keeps the thread too. A direct ask or offer ("could you share times for
+a 30-minute call", "we would like to invite you to interview", a named interviewer with a date, a Calendly, GoodTime
+or booking link, an assessment to complete, "we would like to move forward with you") is never boilerplate, whatever
+condition precedes it.
 
 1. **Records rejections.** A rejection gets `Job Duck/Rejections`, is archived and is queued for `jobduck sync` only
    when it is the latest job email in the thread and every other message is a plain application confirmation (a
@@ -39,22 +54,22 @@ experience matches, we will reach out to schedule an interview" keeps the thread
    taking the time to interview with us") or offers to keep in touch about future roles is still a rejection. Any
    other message in the thread (an invite, scheduling mail, a personal note from a recruiter, a message after the
    rejection) or a rejection that offers a call ("but we'd like to schedule a call about another role") keeps the
-   thread in the Inbox under `Job Duck/Interviews`, and nothing is queued. This also applies to a thread already
-   labeled `Job Duck/Rejections` that comes back to the Inbox with a new message: it loses `Job Duck/Rejections`,
-   gets `Job Duck/Interviews`, stays in the Inbox and its outcome, if `jobduck sync` has not fetched it yet, is
-   dropped. If the rejection still stands, the thread is re-archived and not queued again.
+   thread: no label, left in the Inbox, nothing queued. A thread already labeled `Job Duck/Rejections` that comes
+   back to the Inbox with a new message is re-read: if the rejection no longer stands it loses `Job Duck/Rejections`,
+   stays in the Inbox with no label and its outcome, if `jobduck sync` has not fetched it yet, is dropped. If the
+   rejection still stands, the thread is re-archived and not queued again.
 2. **Sorts application mail.** A thread whose every message is a plain application confirmation gets the nested
    label `Job Duck/Applications` and skips the Inbox (archived). Confirmations never leave Gmail. Verification and
    security-code emails with application wording count as application mail and are archived too, unless the script
-   property `KEEP_ACTION_MAIL_IN_INBOX` is `true`; that property affects only verification-code mail. Every other
-   job thread (an interview invite or kickoff, a request for your availability, a screen, an onsite, an assessment,
-   an offer, a recruiter's note, a confirmation with scheduling boilerplate) gets `Job Duck/Interviews`, loses
-   `Job Duck/Applications` and stays in the Inbox. A thread labeled `Job Duck/Interviews` is never archived by a
-   later run. Password resets and verification codes with no application wording, job alerts, "new jobs for you" /
-   recommended-jobs digests, referral invites, self-identification invites and unfinished-application reminders are
-   not treated as job mail and are left alone.
+   property `KEEP_ACTION_MAIL_IN_INBOX` is `true`; that property affects only verification-code mail.
+3. **Keeps everything else untouched.** Every other job thread (an interview invite or kickoff, a request for your
+   availability, a screen, an onsite, an assessment, an offer, a recruiter's note, a confirmation with a sentence the
+   allowlist does not know) is kept: the script adds no label, does not archive it, and leaves it in the Inbox. If an
+   earlier run had labeled it `Job Duck/Applications`, that label comes off. Password resets and verification codes
+   with no application wording, job alerts, "new jobs for you" / recommended-jobs digests, referral invites,
+   self-identification invites and unfinished-application reminders are not treated as job mail and are left alone.
 
-Only rejections that stand leave the script; nothing about interviews is queued for `jobduck sync`.
+Only rejections that stand leave the script; nothing else is queued for `jobduck sync`.
 
 The script only ever searches the Inbox (`in:inbox`), plus the `Job Duck/Applications` label when you run
 `previewReaudit` / `reauditApplications`. Other archived mail is never read.
@@ -84,14 +99,14 @@ job link; nothing else leaves Gmail.
 recorded; acknowledged outcomes are deleted from the script. The agent never gets mail access.
 
 1. Open [script.google.com](https://script.google.com/home) and click **New project**; rename it
-   `Job Duck - Gmail Rejection Sync v5.2`. In **Project Settings**, tick **Show "appsscript.json" manifest file in
+   `Job Duck - Gmail Rejection Sync v5.3`. In **Project Settings**, tick **Show "appsscript.json" manifest file in
    editor**. Back in the **Editor**, replace the contents of `appsscript.json` with
    [`appsscript.json`](https://github.com/ZaxShen/JobDuck/blob/main/integrations/gmail-apps-script/appsscript.json)
    and of `Code.gs` with
    [`Code.gs`](https://github.com/ZaxShen/JobDuck/blob/main/integrations/gmail-apps-script/Code.gs) (open each and
    click **Raw** to copy), then **Save** (Cmd/Ctrl+S). Optional script properties (**Project Settings → Script Properties → Add script property**, then
    **Save script properties**): `PROTECTED_LABELS` and `EXCLUDED_DOMAINS` (comma-separated),
-   `KEEP_ACTION_MAIL_IN_INBOX=true` (keeps verification-code mail in the Inbox; interview mail always stays).
+   `KEEP_ACTION_MAIL_IN_INBOX=true` (keeps verification-code mail in the Inbox; every kept thread always stays).
 2. In the Editor, pick `generateSyncToken` in the function menu and **Run**. The first run opens Google's permission
    screens: **Review permissions → Advanced → Go to … (unsafe)**, then on the permissions page **tick "Select all"**
    before **Continue** (the boxes are empty by default; continuing with them empty authorizes nothing and every later
@@ -103,18 +118,18 @@ recorded; acknowledged outcomes are deleted from the script. The agent never get
    is), under `[track]`, set `sync_url` to the `/exec` URL and `sync_token` to the logged token.
 5. Run `checkConnection`: it logs the mode (`serve`), the number of pending outcomes and whether `SYNC_TOKEN` is set.
 6. Run `preview` to log, with the same thread rules as the trigger, which Inbox threads would be treated as
-   rejections and the outcome each would queue, and which would stay in the Inbox under `Job Duck/Interviews`
-   (`INTERVIEW` lines with the reason and body phrase). Nothing is changed or queued. Up to four minutes on a large
-   Inbox.
+   rejections and the outcome each would queue, and which would be kept untouched in the Inbox (`KEEP` lines with
+   the reason and body phrase). Nothing is changed or queued. Up to four minutes on a large Inbox.
 7. Run `install` to start the 10-minute trigger. It also renames the labels of earlier versions (`Job Applications`,
    `Deny Letters`) into the nested ones, deletes the old `JobDuck Sync` / `JobDuck Synced` / `JobDuck Review` labels
-   and clears the push-mode queue left by v3/v4; threads keep their mail. `uninstall` removes the trigger.
+   and the interview label v5.2 created, and clears the push-mode queue left by v3/v4; threads keep their mail.
+   `uninstall` removes the trigger.
 
 On a large Inbox: the trigger only reads Inbox mail from the last 3 days (`CONFIG.RUN_QUERY`), so run `backfill`
 once for older mail. Only rejections received in the last 30 days (`CONFIG.SYNC_SINCE`) are queued for
 `jobduck sync`; older ones are labeled and archived but not queued.
 
-The URL alone exposes nothing: a `GET` returns the one line `Job Duck Gmail script v5.2 — POST only`, and every request
+The URL alone exposes nothing: a `GET` returns the one line `Job Duck Gmail script v5.3 — POST only`, and every request
 for data is a `POST` whose JSON body carries the token (`{ token, action, messageIds? }`, actions `pending`, `ack`,
 `status`). The token never goes into a URL. After editing the script, **Deploy → Manage deployments → Edit → Version:
 New version** so the `/exec` URL serves the new code; a deployment keeps running the version it was created with.
@@ -125,13 +140,13 @@ Optional:
   labels are queued like any other.
 - `previewReaudit` re-checks every `Job Duck/Applications` thread, newest first, with the same thread rules as the
   trigger and logs what would change: rejections that would move to `Job Duck/Rejections`, threads that are not
-  plain application confirmations (interview mail, scheduling boilerplate, recruiter notes) that would move to
-  `Job Duck/Interviews` and back to the Inbox, and non-application mail (password resets, job alerts, referral and
-  self-identification invites, unfinished-application reminders) that would lose the Applications label. Nothing
-  is changed.
+  plain application confirmations (interview mail, recruiter notes, unknown sentences) that would be kept (`would
+  keep` lines), and non-application mail (password resets, job alerts, referral and self-identification invites,
+  unfinished-application reminders) that would lose the Applications label. Nothing is changed.
 - `reauditApplications` applies those decisions: a rejection gets `Job Duck/Rejections`, loses
-  `Job Duck/Applications` and is queued; a kept thread gets `Job Duck/Interviews`, loses `Job Duck/Applications`
-  and is moved back to the Inbox; non-application mail loses the Applications label only. Both stop after
+  `Job Duck/Applications` and is queued; a kept thread loses `Job Duck/Applications` (and the v5.2 interview label,
+  if the thread still has it; that label is never created) and is moved back to the Inbox with no label;
+  non-application mail loses the Applications label only. Both stop after
   4.5 minutes and remember where they were, so run them again until the log says `complete`. `resetReaudit` starts
   both over from the newest thread.
 
@@ -144,7 +159,9 @@ so a fresh copy never needs a code edit; the sync start date lives in `CONFIG`.
 |---|---|
 | `Job Duck/Applications` | Job-application mail (archived) |
 | `Job Duck/Rejections` | Rejections (archived) |
-| `Job Duck/Interviews` | Interview, assessment, scheduling and offer mail, and any other job thread that is not a plain confirmation or a standing rejection (stays in the Inbox, never archived) |
+
+These are the only two labels the script uses. Every other thread (interview, assessment, scheduling and offer mail,
+recruiter notes, anything the script is unsure about) gets no label and is left in the Inbox untouched.
 
 Queued outcomes live in the script properties as one `outcome:<messageId>` entry each, not in labels.
 
@@ -170,6 +187,24 @@ trigger are kept.
 
 ## Changelog
 
+- **v5.3**: The script handles only applications and rejections. The interview label v5.2 added is gone: a kept
+  thread gets no label, is not archived and stays in the Inbox untouched, and a stale `Job Duck/Applications` label
+  on it comes off. A returning `Job Duck/Rejections` thread whose rejection no longer stands loses the label and stays
+  in the Inbox unlabeled. `install` deletes the v5.2 interview label; `reauditApplications` takes Applications (and
+  that label, if a thread still has it, never creating it) off kept threads and moves them to the Inbox. `preview`
+  logs kept threads on `KEEP` lines, `previewReaudit` on `would keep` lines, and the reaudit no-op is now counted as
+  `unchanged`. Scheduling words are judged per sentence instead of anywhere in the body: proven boilerplate (an
+  employer-side condition before a contact promise, an applicant-pool promise, a process description naming the
+  interview stages, a "what's next?" heading, "we will screen your application", a talent-community invite) no
+  longer keeps a plain confirmation in the Inbox, while a direct ask, invite, named interviewer with a time,
+  scheduling link, assessment or offer always does. The acknowledgement allowlist is wider (resume on file, talent
+  community, next-steps contact promises, review in progress, inline table cells, greeting lines with a trailing
+  dash or a bare name). A role or company name, a greeting or a signature carrying a scheduling word keeps the thread.
+  Fixtures that expected `interview` now expect `keep`, except four confirmations whose only scheduling wording is
+  employer-side boilerplate, which now expect `job`: Initech conditional interview promise, Massive Dynamic, Oscorp
+  and Vandelay. `bun test` adds anonymized boilerplate shapes that archive, interview shapes that are kept, and mocked
+  Gmail checks that a kept thread gets no label and no archive and that no code path creates an interview or review
+  label.
 - **v5.2**: Interview mail is never archived. Earlier versions archived interview invites under
   `Job Duck/Applications` unless `KEEP_ACTION_MAIL_IN_INBOX` was set, and checked only the subject. Archiving is now
   an allowlist read from message bodies only, and both archiving filters favour precision: if unsure, keep in the
@@ -179,9 +214,9 @@ trigger are kept.
   when it is the latest job email and every other message in the thread is a plain confirmation; an invite,
   scheduling mail, a recruiter's note or any later message keeps the thread in the Inbox, and so does a rejection
   that offers a call about another role. A retrospective "thank you for taking the time to interview with us" or an
-  offer to keep in touch stays a rejection. Every thread that is kept gets the new label `Job Duck/Interviews`, loses
+  offer to keep in touch stays a rejection. Every thread that is kept gets the new v5.2 interview label, loses
   `Job Duck/Applications`, and is never archived by a later run. A `Job Duck/Rejections` thread that comes back to the
-  Inbox is re-read: if its rejection no longer stands it moves to `Job Duck/Interviews`, stays in the Inbox and its
+  Inbox is re-read: if its rejection no longer stands it moves to the interview label, stays in the Inbox and its
   pending outcome is dropped. Scheduling news no longer counts as a rejection: "you have not selected a time yet",
   "the time you selected is no longer available", "we regret to inform you that we need to reschedule your interview"
   and "you cannot move forward to the onsite until you complete the assessment". `KEEP_ACTION_MAIL_IN_INBOX` now
