@@ -20,8 +20,3 @@ export const SETTINGS_DOC = {
   fromView: (view: PermissionsView): Draft => view.permissions,
   body: (draft: Draft, _original: Draft, view: PermissionsView) => ({ permissions: draft, revision: view.revision }),
 }
-
-export function profileEmpty(view: ProfileView): boolean {
-  const front = view.front_matter
-  return !front.name && !front.email && view.sections.every((section) => !section.content.trim())
-}

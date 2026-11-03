@@ -20,6 +20,8 @@ import {
   getFact, listFacts, updateFact,
 } from '../db/profile-facts'
 import { OUTCOME_STATUSES, type Outcome, dismissOutcome, getOutcome, listOutcomes, matchOutcome } from '../db/outcomes'
+import { IMPORT_EXTENSIONS } from '../onboarding/ledger'
+import { onboardingStatus, workspaceOf } from '../onboarding/status'
 import { permissionsPath, profilePath } from '../paths'
 
 export class ApiError extends Error {
@@ -141,7 +143,7 @@ const profileSchema = z.object({
 const permissionsSchema = z.object({ permissions: z.unknown(), revision: z.string().max(64).optional() }).strict()
 
 export const INBOX_PATH = '/api/inbox'
-export const INBOX_EXTENSIONS = ['.pdf', '.docx', '.doc', '.md', '.txt', '.zip', '.csv'] as const
+export const INBOX_EXTENSIONS = IMPORT_EXTENSIONS
 export const INBOX_MAX_FILE_BYTES = 15 * 1024 * 1024
 export const INBOX_MAX_NAME_BYTES = 255
 const INBOX_JSON_OVERHEAD_BYTES = 4096
@@ -407,6 +409,10 @@ const routes: { method: string; pattern: RegExp; handler: Handler }[] = [
     },
   },
   { method: 'POST', pattern: new RegExp(`^${INBOX_PATH}$`), handler: ({ workspace }, req) => saveToInbox(workspace, req.body) },
+  {
+    method: 'GET', pattern: /^\/api\/onboarding$/,
+    handler: ({ home, workspace }) => onboardingStatus(home, workspace ?? workspaceOf(home)),
+  },
   { method: 'GET', pattern: /^\/api\/summary$/, handler: ({ db }) => summary(db) },
   {
     method: 'GET', pattern: /^\/api\/statuses$/,

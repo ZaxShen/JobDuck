@@ -21,7 +21,7 @@ export function StepActions({ onSkip, onContinue, label = 'Continue' }: {
     <div className="flex w-full items-center gap-3">
       {onSkip && (
         <Button type="button" variant="ghost" size="lg" className="flex-1 text-muted-foreground" onClick={onSkip}>
-          Skip for now
+          Skip For Now
         </Button>
       )}
       <Button
@@ -44,4 +44,4 @@ export function StepActions({ onSkip, onContinue, label = 'Continue' }: {
   )
 }
 
-export const stepMotion = 'animate-in fade-in slide-in-from-bottom-4 duration-700'
+export const stepMotion ='animate-in fade-in slide-in-from-bottom-4 duration-700'

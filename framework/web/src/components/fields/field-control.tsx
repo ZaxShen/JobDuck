@@ -2,8 +2,10 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { CareerSeniority } from '@/components/fields/career-seniority'
 import { CheckGroup } from '@/components/fields/check-group'
 import { ChipInput } from '@/components/fields/chip-input'
+import { LocationPicker } from '@/components/fields/location-picker'
 import { NumberInput } from '@/components/fields/number-input'
 import { RowList } from '@/components/fields/row-list'
 import { fieldId, type Field } from '@/lib/forms'
@@ -43,7 +45,11 @@ function Control({ id, field, value, onChange }: FieldControlProps & { id: strin
     case 'tags':
       return <ChipInput id={id} label={field.label} value={asStrings(value)} onChange={onChange} placeholder={field.placeholder} suggest={field.suggest} />
     case 'checks':
-      return <CheckGroup id={id} value={asStrings(value)} options={field.options ?? []} onChange={onChange} />
+      return <CheckGroup id={id} value={asStrings(value)} options={field.options ?? []} anyLabel={field.anyLabel} onChange={onChange} />
+    case 'locations':
+      return <LocationPicker id={id} value={asStrings(value)} onChange={onChange} />
+    case 'seniority':
+      return <CareerSeniority id={id} value={asStrings(value)} onChange={onChange} />
     case 'record': {
       const initial = Object.entries((value ?? {}) as Record<string, string>).map(([key, v]) => ({ key, value: v }))
       return (

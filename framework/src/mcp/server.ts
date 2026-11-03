@@ -2,12 +2,14 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { type Db, openDb } from '../db/client'
 import { migrate } from '../db/migrate'
 import { type FetchLike, PACKAGE_VERSION } from '../freehire/client'
+import { onboardingStatus, serverInstructions, workspaceOf } from '../onboarding/status'
 import { dbPath, ensureHome, jobduckHome } from '../paths'
 import type { LookupLike } from '../posting/fetch'
 import { registerTools } from './tools'
 
 export interface CreateServerOptions {
   home?: string
+  workspace?: string
   fetch?: FetchLike
   lookup?: LookupLike
   db?: Db
@@ -23,14 +25,25 @@ export const log = (message: string) => {
   process.stderr.write(`[jobduck] ${message}\n`)
 }
 
+export function startupInstructions(home: string, workspace: string): string | undefined {
+  try {
+    return serverInstructions(onboardingStatus(home, workspace))
+  } catch (error) {
+    log(`onboarding status unavailable: ${error instanceof Error ? error.message : String(error)}`)
+    return undefined
+  }
+}
+
 export function createServer(options: CreateServerOptions = {}): JobduckServer {
   const home = options.home ?? jobduckHome()
   ensureHome(home)
   const ownsDb = options.db === undefined
   const db = options.db ?? openDb(dbPath(home))
   migrate(db)
-  const server = new McpServer({ name: 'jobduck', version: PACKAGE_VERSION })
-  registerTools(server, { db, home, fetch: options.fetch, lookup: options.lookup, sleep: options.sleep })
+  const workspace = options.workspace ?? workspaceOf(home)
+  const instructions = startupInstructions(home, workspace)
+  const server = new McpServer({ name: 'jobduck', version: PACKAGE_VERSION }, instructions ? { instructions } : undefined)
+  registerTools(server, { db, home, workspace, fetch: options.fetch, lookup: options.lookup, sleep: options.sleep })
   let closed = false
   return {
     server,

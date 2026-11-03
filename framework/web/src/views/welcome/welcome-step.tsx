@@ -16,11 +16,11 @@ interface WelcomeStepProps {
 
 function InboxHelp() {
   return (
-    <SectionCard title={<span className="flex items-center gap-2"><FolderInputIcon className="size-4" />Put it in inbox/</span>}
+    <SectionCard title={<span className="flex items-center gap-2"><FolderInputIcon className="size-4" />Put It In inbox/</span>}
       description="This dashboard is not running in a Job Duck workspace, so it cannot take the file here.">
       <ol className="list-decimal space-y-2 pl-5 text-sm">
         <li>Save your resume into the <code className="rounded bg-muted px-1">inbox/</code> folder of your Job Duck workspace.</li>
-        <li>Back in your agent, say "import my resume".</li>
+        <li>Open any agent in that workspace. It imports the file automatically.</li>
       </ol>
     </SectionCard>
   )
@@ -48,7 +48,7 @@ export function WelcomeStep({ file, noInbox, onFile, onSkip, onContinue }: Welco
     <div className={cn('flex flex-col items-center gap-10', stepMotion)}>
       <StepIntro
         className="space-y-4"
-        title={<>We value your worth — just as<br />your future employer does.</>}
+        title={<>We Value Your Worth — Just As<br />Your Future Employer Does.</>}
       >
         Tell Job Duck who you are. Your resume goes into your workspace's inbox/ folder, not to a server.
       </StepIntro>
@@ -117,8 +117,8 @@ export function WelcomeStep({ file, noInbox, onFile, onSkip, onContinue }: Welco
                 </div>
                 <div className="text-center">
                   <p className="text-sm font-medium">
-                    Drop your resume here, or{' '}
-                    <span className="text-foreground underline underline-offset-4">browse</span>
+                    Drop Your Resume Here, Or{' '}
+                    <span className="text-foreground underline underline-offset-4">Browse</span>
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     PDF, DOCX, Markdown or text — completely optional

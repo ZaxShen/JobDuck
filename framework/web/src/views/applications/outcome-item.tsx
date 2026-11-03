@@ -57,7 +57,7 @@ export function OutcomeItem({ outcome, onChanged }: OutcomeItemProps) {
   return (
     <li className="flex flex-col gap-3 border-b py-3 last:border-b-0 lg:flex-row lg:items-center">
       <div className="min-w-0 flex-1 space-y-0.5">
-        <p className="font-medium">{outcome.company || 'Unknown company'}</p>
+        <p className="font-medium">{outcome.company || 'Unknown Company'}</p>
         <p className="truncate text-muted-foreground">{outcome.title || outcome.job_ref || ''}</p>
         <p className="text-xs text-muted-foreground">Received {stamp(outcome.received_at)}</p>
       </div>

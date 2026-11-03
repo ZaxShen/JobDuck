@@ -127,7 +127,7 @@ export function StageCard({ stage, types, openVersion, onSave, onDelete }: Stage
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete this {kindLabel(stage.to_status).toLowerCase()} stage?</AlertDialogTitle>
+            <AlertDialogTitle>Delete This {kindLabel(stage.to_status)} Stage?</AlertDialogTitle>
             <AlertDialogDescription>
               {stageTypeLabel(stage.stage_type)}, its note and contacts are removed. The application status does not change.
             </AlertDialogDescription>

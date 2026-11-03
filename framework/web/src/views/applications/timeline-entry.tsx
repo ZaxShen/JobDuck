@@ -100,7 +100,7 @@ export function TimelineEntry({ event, label, undoable, openVersion, onSave, onU
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Undo this entry?</AlertDialogTitle>
+            <AlertDialogTitle>Undo This Entry?</AlertDialogTitle>
             <AlertDialogDescription>
               <span className="capitalize">{label}</span> is removed and the status goes back to {statusLabel(revertsTo(event) ?? '')}.
             </AlertDialogDescription>

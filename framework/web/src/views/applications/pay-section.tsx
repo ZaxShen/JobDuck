@@ -2,13 +2,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
 export const PAY_FIELDS = [
-  ['salary_min', 'Salary min'],
-  ['salary_max', 'Salary max'],
-  ['salary_offered', 'Salary offered'],
+  ['salary_min', 'Salary Min'],
+  ['salary_max', 'Salary Max'],
+  ['salary_offered', 'Salary Offered'],
   ['bonus', 'Bonus'],
   ['rsu', 'RSU'],
   ['options', 'Options'],
-  ['sign_on', 'Sign-on'],
+  ['sign_on', 'Sign-On'],
   ['relocation_fee', 'Relocation'],
 ] as const
 
@@ -26,7 +26,7 @@ interface PaySectionProps {
 export function PaySection({ values, errors, onChange, onCommit, postingPay, postingCurrency }: PaySectionProps) {
   return (
     <fieldset className="space-y-3">
-      <legend className="mb-2 text-sm font-medium">Offer &amp; pay</legend>
+      <legend className="mb-2 text-sm font-medium">Offer &amp; Pay</legend>
       {postingPay && <p className="text-xs text-muted-foreground">{postingPay}</p>}
       <div className="grid grid-cols-2 gap-3">
         {PAY_FIELDS.map(([key, label]) => (

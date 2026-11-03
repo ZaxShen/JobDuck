@@ -5,8 +5,8 @@ import { type StageKey, daysSince, stageColumns, stageOf, statusActions } from '
 const terminal = [...TERMINAL_STATUSES]
 
 describe('stage columns', () => {
-  test('are Pre-interview, Interviewing, Offer and Closed in order', () => {
-    expect(stageColumns(terminal).map((column) => column.label)).toEqual(['Pre-interview', 'Interviewing', 'Offer', 'Closed'])
+  test('are Pre-Interview, Interviewing, Offer and Closed in order', () => {
+    expect(stageColumns(terminal).map((column) => column.label)).toEqual(['Pre-Interview', 'Interviewing', 'Offer', 'Closed'])
   })
 
   test('map every application status to one column', () => {

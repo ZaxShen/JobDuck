@@ -29,7 +29,8 @@ Agent-run Job Duck: a CLI plus a local SQLite store that the user's coding agent
 | `src/commands/` | `init`, `doctor`, `dashboard`, `mcp` and `sync` implementations |
 | `src/commands/upgrade.ts` | `jobduck upgrade [version] [--channel] [--check]`: stable/rc/dev GitHub Releases lookup, semver ordering, checksum check, in-place binary swap |
 | `src/dashboard/` | loopback HTTP server, JSON API, static page in `public/` (the built React app) |
-| `src/mcp/` | MCP server (`createServer`) and its tools |
+| `src/mcp/` | MCP server (`createServer`, with cold-start `instructions` from the onboarding status) and its tools |
+| `src/onboarding/` | import ledger (`<home>/imports.json`, matched by SHA-256 of content only) and the onboarding status shared by the MCP tools and `GET /api/onboarding` |
 | `src/freehire/` | freehire.me search client and job → posting mapping |
 | `src/sync/` | Apps Script web-app client (`pending`, `ack`, `status`) and the pure outcome → application matcher |
 | `web/` | React dashboard source, built into `src/dashboard/public/` by `bun run build:web` |
