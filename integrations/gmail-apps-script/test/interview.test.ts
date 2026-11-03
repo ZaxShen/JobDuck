@@ -548,6 +548,13 @@ describe('v5.5: a rejection is denied only when every sentence is an allowlisted
     expect(run(sentence).action).toBe('keep');
   });
 
+  test.each(['Contact Recruiting.', 'Email Recruiting.', 'Call Recruiting.'])('a contact verb before a team name after a careful-consideration rejection stays untouched in the Inbox: %s', (sentence) => {
+    const { action, t } = runBody('Hi Dan,\n\n' + CAREFUL + ' ' + sentence + '\n\nBest,\nAcme Recruiting');
+    expect(action).toBe('keep');
+    expect(t.calls).toEqual([]);
+    expect(t.inInbox).toBe(true);
+  });
+
   test.each(['Email Jane.', 'Reach out.', 'Holler.'])('a short contact line on its own before the sign-off stays untouched in the Inbox: %s', (line) => {
     expect(runBody('Hi Dan,\n\n' + CAREFUL + '\n\n' + line + '\n\nBest,\nAcme Recruiting').action).toBe('keep');
   });

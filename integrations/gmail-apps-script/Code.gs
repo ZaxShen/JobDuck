@@ -1476,10 +1476,12 @@ function invitesContact_(body) {
 // you to set up time") keeps the thread in the Inbox, and the contact vetoes above are read on top.
 // A name slot stops at the words that join clauses and is then held to the whole veto list once matched: ACK_NAME's
 // inline veto, repeated in every slot, makes these expressions megabytes long and seconds to compile. A word may hold a
-// digit after its first letter ("Q2"), and "repl" vetoes only the reply verbs so a name may start with it.
-var RJ_NAME_STOP = 'at|and|or|but|so|then|to|if|when|once|while|not|this|that|these|those|time|times|here|there|now|open|you|your|yours|we|us|our|i|me|my|is|are|was|were|be|been|will|would|can|could|may|might|should|shall|has|have|had|do|does|did|please|kindly';
+// digit after its first letter ("Q2"), and "repl" vetoes only the reply verbs so a name may start with it. A verb asking
+// for contact ("Contact Recruiting", "Email Jane") is never a name.
+var RJ_CONTACT_VERB = 'e-?mail|contact|text|txt|ping|call|ring|phone|message|msg|dm|write|reach|holler|chat|talk|speak|meet|ask|tell|connect|reply|interested';
+var RJ_NAME_STOP = 'at|and|or|but|so|then|to|if|when|once|while|not|this|that|these|those|time|times|here|there|now|open|you|your|yours|we|us|our|i|me|my|is|are|was|were|be|been|will|would|can|could|may|might|should|shall|has|have|had|do|does|did|please|kindly|' + RJ_CONTACT_VERB;
 var RJ_NAME = "((?:(?!(?:" + RJ_NAME_STOP + ")\\b)[a-z&'()/+#.-][a-z0-9&'()/+#.-]*(?![a-z0-9&'()/+#.-])(?:,? (?=[a-z&'()/+#.-]))?){1,10})";
-var RJ_VETO_WORD = new RegExp('(?:^|\\s)(?:' + ACK_VETO.replace('repl\\w*', 'repl(?:y|ies|ied|ying)') + '|at)\\b', 'i');
+var RJ_VETO_WORD = new RegExp('(?:^|\\s)(?:' + ACK_VETO.replace('repl\\w*', 'repl(?:y|ies|ied|ying)') + '|at|' + RJ_CONTACT_VERB + ')\\b', 'i');
 var RJ_POST ='(?:role|position|opening|opportunity|job|req|requisition|vacancy)';
 var RJ_JOB = '(?:(?:the|this|our|that|your) (?:(?:particular|specific|current|open) )?' + RJ_POST + '(?: you applied (?:to|for))?' +
   '|(?:(?:the|this) (?:position|role|job)[:,]? )?(?:the |our |this |a |an )?(?:current )?(?:[a-z]{0,3}_?\\d{3,9} )?' + RJ_NAME + '(?: (?:[|/–-]|--) ' + RJ_NAME + '){0,2}(?: ' + RJ_POST + ')?' + ACK_REQ + '(?: (?:at|with|here at) (?:us|' + RJ_NAME + '))?)';
@@ -1827,7 +1829,7 @@ function frameSentence_(sentence) {
 // The one capitalised word a letter may be signed with ("Best,\nJane", "- Shopify"), as the last paragraph before the
 // footer and frame lines. A word that asks for contact ("Email.", "Holler.") is no signature.
 var RJ_SIGNED_NAME = /^[A-Z][A-Za-z'&-]*\.?$/;
-var RJ_CONTACT_WORD = /^(?:e-?mail|contact|text|txt|ping|call|ring|phone|message|msg|dm|write|reach|holler|chat|talk|speak|meet|ask|tell|connect|reply|interested)\b/i;
+var RJ_CONTACT_WORD = new RegExp('^(?:' + RJ_CONTACT_VERB + ')\\b', 'i');
 
 function signedName_(paragraph) {
   return RJ_SIGNED_NAME.test(paragraph) && !ACK_VETO_WORD.test(paragraph) && !SCHEDULING_WORDS.test(paragraph) && !RJ_CONTACT_WORD.test(paragraph);
