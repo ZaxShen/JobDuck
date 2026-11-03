@@ -30,7 +30,7 @@ Then, before any new work, call `list_applications` with `status: ["pending", "s
 
 ### Stops
 
-Whenever you stop on an application you cannot finish alone (a CAPTCHA, an emailed or SMS code, a question the profile and manifest cannot answer, a login or account wall, a near-duplicate awaiting the user's call, approval not given yet), record it as `pending` instead of only telling the user: `update_status` with `status: "pending"` if it is already recorded, else `record_application` with step 3's fields and `status: "pending"`. Either way pass a one-sentence `pending_reason` naming what the user must do, e.g. `Enter the code Acme emailed you, then tell me to continue.` With `confirm_each`, wait for the user's answer on it; otherwise move on to the next posting.
+Whenever you stop on an application you cannot finish alone (a CAPTCHA, an emailed or SMS code, a question the profile and manifest cannot answer, a login or account wall, a near-duplicate awaiting the user's call, approval not given yet), record it as `pending` instead of only telling the user: `update_status` with `status: "pending"` if it is already recorded (only while it is still `saved` or `pending`; an application never moves back from `applied`), else `record_application` with step 3's fields and `status: "pending"`. Either way pass a one-sentence `pending_reason` naming what the user must do, e.g. `Enter the code Acme emailed you, then tell me to continue.` With `confirm_each`, wait for the user's answer on it; otherwise move on to the next posting.
 
 ### 1. Discover
 

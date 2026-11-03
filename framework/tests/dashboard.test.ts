@@ -154,19 +154,53 @@ test('mutations without the dashboard header or from a foreign origin get 403', 
   expect(listEvents(db, ids.acme)).toHaveLength(2)
 })
 
-test('PATCH status writes a dashboard event and returns the joined row', async () => {
-  const { res, body } = await mutate('PATCH', `/api/applications/${ids.acme}`, { status: 'interviewing', note: 'phone screen' })
+test('PATCH status with occurred_at writes a dated dashboard event and returns the joined row', async () => {
+  const { res, body } = await mutate('PATCH', `/api/applications/${ids.acme}`, {
+    status: 'interviewing', note: 'phone screen', occurred_at: '2026-04-02',
+  })
   expect(res.status).toBe(200)
   expect(body).toMatchObject({ id: ids.acme, status: 'interviewing', company: 'Acme' })
   const last = listEvents(db, ids.acme).at(-1)!
-  expect(last).toMatchObject({ from_status: 'applied', to_status: 'interviewing', source: 'dashboard', note: 'phone screen' })
+  expect(last).toMatchObject({
+    from_status: 'applied', to_status: 'interviewing', source: 'dashboard', note: 'phone screen', occurred_at: '2026-04-02',
+  })
   const detail = (await get(`/api/applications/${ids.acme}`)).body
   expect(detail.application.status).toBe('interviewing')
   expect(detail.events).toHaveLength(3)
+  expect(detail.events.at(-1).occurred_at).toBe('2026-04-02')
+})
+
+test('PATCH status without occurred_at gets 400 except for pending, and a bad date gets 400', async () => {
+  const path = `/api/applications/${ids.acme}`
+  const missing = await mutate('PATCH', path, { status: 'interviewing' })
+  expect(missing.res.status).toBe(400)
+  expect(missing.body.error).toBe('occurred_at is required when changing status')
+  const invalid = await mutate('PATCH', path, { status: 'interviewing', occurred_at: '2026-13-45' })
+  expect(invalid.res.status).toBe(400)
+  expect(invalid.body.error).toContain('occurred_at must be an ISO date')
+  expect((await mutate('PATCH', path, { status: 'interviewing', occurred_at: 'x'.repeat(41) })).res.status).toBe(400)
+  expect(listEvents(db, ids.acme)).toHaveLength(2)
+  const reason = await mutate('PATCH', `/api/applications/${ids.beta}`, { status: 'pending', pending_reason: 'Upload the transcript.' })
+  expect(reason.res.status).toBe(200)
+  expect(reason.body.pending_reason).toBe('Upload the transcript.')
+})
+
+test('PATCH backwards, to the same status, a second applied or out of a closed status gets 400', async () => {
+  const back = await mutate('PATCH', `/api/applications/${ids.gamma}`, { status: 'applied', occurred_at: '2026-04-01' })
+  expect(back.res.status).toBe(400)
+  expect(back.body.error).toContain('cannot move application')
+  expect((await mutate('PATCH', `/api/applications/${ids.acme}`, { status: 'saved', occurred_at: '2026-04-01' })).res.status).toBe(400)
+  expect((await mutate('PATCH', `/api/applications/${ids.acme}`, { status: 'pending', pending_reason: 'Wait.' })).res.status).toBe(400)
+  const closed = await mutate('PATCH', `/api/applications/${ids.acme}`, { status: 'no_response', occurred_at: '2026-05-01' })
+  expect(closed.body).toMatchObject({ status: 'no_response', closed_at: '2026-05-01' })
+  const reopen = await mutate('PATCH', `/api/applications/${ids.acme}`, { status: 'offered', occurred_at: '2026-05-02' })
+  expect(reopen.res.status).toBe(400)
+  expect(reopen.body.error).toContain('is closed (no_response)')
+  expect(getApplication(db, ids.acme)?.status).toBe('no_response')
 })
 
 test('PATCH to pending needs a pending_reason, stores it, and any later status clears it', async () => {
-  const path = `/api/applications/${ids.acme}`
+  const path = `/api/applications/${ids.delta}`
   const missing = await mutate('PATCH', path, { status: 'pending' })
   expect(missing.res.status).toBe(400)
   expect(missing.body.error).toContain('pending_reason')
@@ -174,24 +208,63 @@ test('PATCH to pending needs a pending_reason, stores it, and any later status c
   expect((await mutate('PATCH', path, { status: 'pending', pending_reason: 'x'.repeat(501) })).res.status).toBe(400)
   expect((await mutate('PATCH', path, { status: 'offered', pending_reason: 'Call back' })).res.status).toBe(400)
   expect((await mutate('PATCH', path, { pending_reason: 'Call back' })).res.status).toBe(400)
-  expect(listEvents(db, ids.acme)).toHaveLength(2)
+  expect(listEvents(db, ids.delta)).toHaveLength(1)
 
-  const applied = getApplication(db, ids.acme)!
+  const saved = getApplication(db, ids.delta)!
   const pending = await mutate('PATCH', path, {
-    status: 'pending', pending_reason: ' Answer the visa question. ', expected_updated_at: applied.updated_at,
+    status: 'pending', pending_reason: ' Answer the visa question. ', expected_updated_at: saved.updated_at,
   })
   expect(pending.res.status).toBe(200)
-  expect(pending.body).toMatchObject({ status: 'pending', pending_reason: 'Answer the visa question.', applied_at: applied.applied_at })
+  expect(pending.body).toMatchObject({ status: 'pending', pending_reason: 'Answer the visa question.', applied_at: null })
   const reworded = await mutate('PATCH', path, { status: 'pending', pending_reason: 'Answer the visa question by Friday.' })
   expect(reworded.body.pending_reason).toBe('Answer the visa question by Friday.')
-  const back = await mutate('PATCH', path, { status: 'applied' })
-  expect(back.body).toMatchObject({ status: 'applied', pending_reason: null })
-  expect(listEvents(db, ids.acme).map((event) => event.to_status)).toEqual(['saved', 'applied', 'pending', 'pending', 'applied'])
+  const applied = await mutate('PATCH', path, { status: 'applied', occurred_at: '2026-04-03' })
+  expect(applied.body).toMatchObject({ status: 'applied', pending_reason: null, applied_at: '2026-04-03' })
+  expect(listEvents(db, ids.delta).map((event) => event.to_status)).toEqual(['saved', 'pending', 'pending', 'applied'])
   expect((await get('/api/applications?status=pending')).body.map((row: any) => row.id)).toEqual([ids.beta])
 
-  const unsubmitted = await mutate('PATCH', `/api/applications/${ids.beta}`, { status: 'saved' })
+  const unsubmitted = await mutate('PATCH', `/api/applications/${ids.beta}`, { status: 'saved', occurred_at: '2026-04-03' })
   expect(unsubmitted.res.status).toBe(200)
   expect(unsubmitted.body).toMatchObject({ status: 'saved', pending_reason: null, applied_at: null })
+})
+
+test('PATCH /api/events/:id edits a status entry date and note and syncs applied_at, with version checks', async () => {
+  const appliedEvent = listEvents(db, ids.acme).at(-1)!
+  const stale = await mutate('PATCH', `/api/events/${appliedEvent.id}`, { expected_updated_at: '2000-01-01T00:00:00.000Z', occurred_at: '2026-03-01' })
+  expect(stale.res.status).toBe(409)
+  const current = getApplication(db, ids.acme)!
+  const edited = await mutate('PATCH', `/api/events/${appliedEvent.id}`, {
+    expected_updated_at: current.updated_at, occurred_at: '2026-03-01', note: 'Applied on the careers page',
+  })
+  expect(edited.res.status).toBe(200)
+  expect(edited.body).toMatchObject({ id: appliedEvent.id, occurred_at: '2026-03-01', note: 'Applied on the careers page' })
+  expect(getApplication(db, ids.acme)?.applied_at).toBe('2026-03-01')
+  expect((await mutate('PATCH', `/api/events/${appliedEvent.id}`, { occurred_at: 'yesterday' })).res.status).toBe(400)
+  expect((await mutate('PATCH', `/api/events/${appliedEvent.id}`, { status: 'offered' })).res.status).toBe(400)
+  expect((await mutate('PATCH', '/api/events/9999', { occurred_at: '2026-03-01' })).res.status).toBe(404)
+  const { stage } = addStage(db, ids.acme, { kind: 'interviewing', stageType: 'phone_screen' })
+  const refused = await mutate('PATCH', `/api/events/${stage.id}`, { occurred_at: '2026-03-02' })
+  expect(refused.res.status).toBe(400)
+  expect(refused.body.error).toContain('stage')
+  db.prepare('UPDATE applications SET deleted_at = ? WHERE id = ?').run(new Date().toISOString(), ids.acme)
+  expect((await mutate('PATCH', `/api/events/${appliedEvent.id}`, { occurred_at: '2026-03-01' })).res.status).toBe(404)
+})
+
+test('DELETE /api/events/:id undoes only the latest status entry, with version checks', async () => {
+  const [created, appliedEvent] = listEvents(db, ids.acme)
+  const stale = await mutate('DELETE', `/api/events/${appliedEvent!.id}`, { expected_updated_at: '2000-01-01T00:00:00.000Z' })
+  expect(stale.res.status).toBe(409)
+  const first = await mutate('DELETE', `/api/events/${created!.id}`, {})
+  expect(first.res.status).toBe(400)
+  expect(first.body.error).toBe('only the latest status entry can be undone')
+  const current = getApplication(db, ids.acme)!
+  const undone = await mutate('DELETE', `/api/events/${appliedEvent!.id}`, { expected_updated_at: current.updated_at })
+  expect(undone.res.status).toBe(200)
+  expect(undone.body.id).toBe(appliedEvent!.id)
+  expect(getApplication(db, ids.acme)).toMatchObject({ status: 'saved', applied_at: null })
+  expect((await mutate('DELETE', `/api/events/${appliedEvent!.id}`, {})).res.status).toBe(404)
+  expect((await mutate('DELETE', '/api/events/9999', {})).res.status).toBe(404)
+  expect((await mutate('DELETE', `/api/events/${created!.id}`, { extra: 1 })).res.status).toBe(400)
 })
 
 test('note and override updates do not write events', async () => {
@@ -658,7 +731,7 @@ const rawPatch = (host: string, origin: string, path: string, body: unknown) => 
 
 test('a page served from localhost:<port> can mutate', async () => {
   const local = `localhost:${dash.port}`
-  const ok = await rawPatch(local, `http://${local}`, `/api/applications/${ids.acme}`, { status: 'interviewing' })
+  const ok = await rawPatch(local, `http://${local}`, `/api/applications/${ids.acme}`, { status: 'interviewing', occurred_at: '2026-04-02' })
   expect(ok.status).toBe(200)
   for (const origin of ['http://evil.example', 'https://evil.example', `http://localhost:${dash.port + 1}`]) {
     const refused = await rawPatch(local, origin, `/api/applications/${ids.acme}`, { status: 'offered' })

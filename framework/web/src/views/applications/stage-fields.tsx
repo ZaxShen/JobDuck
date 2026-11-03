@@ -21,11 +21,11 @@ interface StageFieldsProps {
   onChange: (draft: StageDraft) => void
 }
 
-function Choice({ id, label, value, options, format, onChange }: {
+export function Choice({ id, label, value, options, format, onChange }: {
   id: string
   label: string
   value: string | null
-  options: string[]
+  options: readonly string[]
   format: (value: string) => string
   onChange: (value: string) => void
 }) {

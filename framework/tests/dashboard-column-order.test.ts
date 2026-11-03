@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { TERMINAL_STATUSES } from '../src/db/applications'
 import { ApiError } from '../web/src/lib/api'
 import { appliedAtSortValue } from '../web/src/lib/applied-sort'
-import { stageMove } from '../web/src/lib/board'
+import { MOVE_REFUSED, stageMove } from '../web/src/lib/board'
 import { bulkSummary } from '../web/src/lib/bulk'
 import {
   columnDefIds,
@@ -141,18 +141,23 @@ describe('stageMove', () => {
     expect(stageMove('no_response', 'closed', terminal)).toBeNull()
   })
 
-  test('a forward drop sets the column primary status without confirmation', () => {
-    expect(stageMove('applied', 'interviewing', terminal)).toEqual({ to: 'interviewing', target: 'interviewing', confirm: null })
-    expect(stageMove('saved', 'offer', terminal)).toEqual({ to: 'offer', target: 'offered', confirm: null })
+  test('a forward drop is allowed and targets the column primary status', () => {
+    expect(stageMove('applied', 'interviewing', terminal)).toEqual({ to: 'interviewing', target: 'interviewing', allowed: true })
+    expect(stageMove('saved', 'offer', terminal)).toEqual({ to: 'offer', target: 'offered', allowed: true })
+    expect(stageMove('interviewing', 'closed', terminal)).toEqual({ to: 'closed', target: 'deny_by_employer', allowed: true })
   })
 
-  test('a drop into Closed asks first', () => {
-    expect(stageMove('interviewing', 'closed', terminal)).toEqual({ to: 'closed', target: 'deny_by_employer', confirm: 'close' })
+  test('a backward drop or a drop out of Closed is refused', () => {
+    expect(stageMove('offered', 'pre_interview', terminal)).toEqual({ to: 'pre_interview', target: 'applied', allowed: false })
+    expect(stageMove('interviewing', 'pre_interview', terminal)?.allowed).toBe(false)
+    for (const status of terminal) {
+      for (const to of ['pre_interview', 'interviewing', 'offer'] as const) expect(stageMove(status, to, terminal)?.allowed).toBe(false)
+    }
   })
 
-  test('a backward drop asks first', () => {
-    expect(stageMove('offered', 'pre_interview', terminal)).toEqual({ to: 'pre_interview', target: 'applied', confirm: 'back' })
-    expect(stageMove('accepted', 'interviewing', terminal)).toEqual({ to: 'interviewing', target: 'interviewing', confirm: 'back' })
+  test('the refusal points at Undo in the timeline', () => {
+    expect(MOVE_REFUSED).toContain('Undo')
+    expect(MOVE_REFUSED).toContain('Timeline')
   })
 })
 

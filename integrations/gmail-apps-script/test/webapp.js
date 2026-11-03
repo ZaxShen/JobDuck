@@ -16,6 +16,7 @@ function makeStore(initial) {
 
 function load(scriptProps, userProps) {
   const logs = [];
+  const deletedLabels = [];
   const scriptStore = makeStore(scriptProps);
   const userStore = makeStore(userProps);
   let uuid = 0;
@@ -32,7 +33,7 @@ function load(scriptProps, userProps) {
       }),
     },
     Utilities: { getUuid: () => '0000000' + (++uuid) + '-aaaa-bbbb-cccc-dddddddddddd' },
-    GmailApp: { getUserLabelByName: (name) => (name.startsWith('Job Duck/') ? { name } : null) },
+    GmailApp: { getUserLabelByName: (name) => (name.startsWith('Job Duck/') ? { name, deleteLabel: () => deletedLabels.push(name) } : null) },
     ScriptApp: {
       getProjectTriggers: () => [],
       newTrigger: () => ({ timeBased: () => ({ everyMinutes: () => ({ create: () => {} }) }) }),
@@ -43,7 +44,7 @@ function load(scriptProps, userProps) {
   vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'Code.gs'), 'utf8') +
     '\nthis.__api = { doGet, doPost, queueOutcome_, listOutcomes_, ackOutcomes_, generateSyncToken, checkConnection, install, MAX_OUTCOMES };', sandbox);
-  return { api: sandbox.__api, logs, scriptStore, userStore };
+  return { api: sandbox.__api, logs, scriptStore, userStore, deletedLabels };
 }
 
 const TOKEN = 'a'.repeat(64);
@@ -89,7 +90,7 @@ function outcome(id, receivedAt) {
 
   const pending = post(api, { token: TOKEN, action: 'pending' });
   check('pending responds as JSON', pending.mime === 'application/json');
-  check('pending returns outcomes sorted by receivedAt', pending.json.ok === true && pending.json.scriptVersion === '5.2' &&
+  check('pending returns outcomes sorted by receivedAt', pending.json.ok === true && pending.json.scriptVersion === '5.3' &&
     pending.json.outcomes.map((o) => o.messageId).join(',') === '<a@x>,<b@x>,<c@x>', pending.json);
 
   const ack = post(api, { token: TOKEN, action: 'ack', messageIds: ['<a@x>', '<c@x>', '<unknown@x>'] });
@@ -97,13 +98,13 @@ function outcome(id, receivedAt) {
   check('ack removes exactly the given ids', ack.json.ok === true && ack.json.acked === 2 && left.join(',') === '<b@x>', { ack: ack.json, left });
 
   const status = post(api, { token: TOKEN, action: 'status' });
-  check('status reports mode and pending', status.json.ok === true && status.json.mode === 'serve' && status.json.pending === 1 && status.json.scriptVersion === '5.2', status.json);
+  check('status reports mode and pending', status.json.ok === true && status.json.mode === 'serve' && status.json.pending === 1 && status.json.scriptVersion === '5.3', status.json);
 
   check('bad action → bad_request', post(api, { token: TOKEN, action: 'delete-all' }).json.error === 'bad_request');
   check('ack without messageIds → bad_request', post(api, { token: TOKEN, action: 'ack' }).json.error === 'bad_request');
 
   const page = api.doGet({ parameter: { token: TOKEN } }).getContent();
-  check('doGet is a one-line page without outcome data or token', page === 'Job Duck Gmail script v5.2 — POST only' && !page.includes('<b@x>') && !page.includes(TOKEN), page);
+  check('doGet is a one-line page without outcome data or token', page === 'Job Duck Gmail script v5.3 — POST only' && !page.includes('<b@x>') && !page.includes(TOKEN), page);
 }
 
 {
@@ -114,9 +115,10 @@ function outcome(id, receivedAt) {
 }
 
 {
-  const { api, userStore } = load({}, { jobduckPendingThreads: '["t1"]', 'jobduckSyncCount_2026-10-01': '3', backfillOffset: '200' });
+  const { api, userStore, deletedLabels } = load({}, { jobduckPendingThreads: '["t1"]', 'jobduckSyncCount_2026-10-01': '3', backfillOffset: '200' });
   api.install();
   check('install clears the v3/v4 push queue and daily counters only', Object.keys(userStore.data).join(',') === 'backfillOffset', userStore.data);
+  check('install deletes the v5.2 Interviews label and keeps the two labels it uses', deletedLabels.join(',') === 'Job Duck/Interviews', deletedLabels);
 }
 
 {

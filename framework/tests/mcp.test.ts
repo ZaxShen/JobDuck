@@ -195,6 +195,25 @@ test('update_status is gated on track and writes an event', async () => {
   expect(missing.content[0]?.text).toBe('application 9999 not found')
 })
 
+test('update_status stores date as occurred_at and returns isError for a refused move', async () => {
+  enableTrack()
+  const { application: created } = await data('record_application', application)
+  const { application: interviewing } = await data('update_status', { id: created.id, status: 'interviewing', date: '2026-04-02' })
+  expect(interviewing.status).toBe('interviewing')
+  inspect((db) => expect(listEvents(db, created.id).at(-1)?.occurred_at).toBe('2026-04-02'))
+
+  const badDate = await call('update_status', { id: created.id, status: 'offered', date: 'last week' })
+  expect(badDate.isError).toBe(true)
+  const back = await call('update_status', { id: created.id, status: 'applied' })
+  expect(back.isError).toBe(true)
+  expect(back.content[0]?.text).toBe(`cannot move application ${created.id} back from interviewing to applied; undo the later entry instead`)
+  const { application: closed } = await data('update_status', { id: created.id, status: 'deny_by_employer', date: '2026-04-09' })
+  expect(closed.closed_at).toBe('2026-04-09')
+  const reopen = await call('update_status', { id: created.id, status: 'offered' })
+  expect(reopen.isError).toBe(true)
+  expect(reopen.content[0]?.text).toContain('is closed (deny_by_employer)')
+})
+
 test('search_jobs upserts postings and reports known and application_status', async () => {
   const first = await data('search_jobs', { q: 'engineer' })
   expect(requests).toHaveLength(2)
@@ -366,7 +385,7 @@ test('record_interview, update_interview and delete_interview manage stages; get
   const { deleted } = await data('delete_interview', { event_id: offer.stage.id })
   expect(deleted.id).toBe(offer.stage.id)
   expect((await data('get_application', { id: created.id })).stages).toHaveLength(1)
-  expect((await data('get_application', { id: created.id })).application.status).toBe('offered')
+  expect((await data('get_application', { id: created.id })).application.status).toBe('interviewing')
 })
 
 test('interview tools reject mismatched stages, bad values and non-stage events', async () => {

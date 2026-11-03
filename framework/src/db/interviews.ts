@@ -1,9 +1,10 @@
 import { z } from 'zod'
 import {
-  type Application, type ApplicationEvent, type ApplicationStatus, type EventSource, formatIssues, getApplication,
-  isTerminal,
+  type Application, type ApplicationEvent, type EventSource, formatIssues, getApplication, revertRemovedEvent,
+  STATUS_RANK,
 } from './applications'
 import { type Db, nowIso, one, transaction } from './client'
+import { checkEventDate, EVENT_DATE, eventDateMessage } from './dates'
 
 export const INTERVIEW_STAGES = [
   'information', 'phone_screen', 'online_assessment', 'hiring_manager', 'technical',
@@ -21,8 +22,8 @@ export type StageOutcome = (typeof STAGE_OUTCOMES)[number]
 export type StageKind = (typeof STAGE_KINDS)[number]
 
 export const MAX_CONTACTS = 20
-export const SCHEDULED_AT = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/
-export const SCHEDULED_AT_MESSAGE = 'scheduled_at must be an ISO date (YYYY-MM-DD) or timestamp (YYYY-MM-DDTHH:MM:SSZ)'
+export const SCHEDULED_AT = EVENT_DATE
+export const SCHEDULED_AT_MESSAGE = eventDateMessage('scheduled_at')
 
 const optionalText = (max: number) => z.string().trim().max(max).nullish()
   .transform((value) => (value ? value : undefined))
@@ -65,8 +66,6 @@ export interface StagePatch {
   contacts?: ContactInput[]
 }
 
-const RANK: Partial<Record<ApplicationStatus, number>> = { saved: 0, pending: 0, applied: 1, interviewing: 2, offered: 3 }
-
 const isStageKind = (status: string): status is StageKind => (STAGE_KINDS as readonly string[]).includes(status)
 
 export function stageTypesFor(kind: StageKind): readonly StageType[] {
@@ -89,9 +88,7 @@ function checkOutcome(outcome: string | null): StageOutcome | null {
 }
 
 function checkScheduledAt(value: string | null): string | null {
-  if (value === null) return null
-  if (!SCHEDULED_AT.test(value) || Number.isNaN(Date.parse(value))) throw new Error(SCHEDULED_AT_MESSAGE)
-  return value
+  return value === null ? null : checkEventDate(value, 'scheduled_at')
 }
 
 function checkContacts(contacts: ContactInput[]): Contact[] {
@@ -166,7 +163,7 @@ export function addStage(db: Db, applicationId: number, input: AddStageInput): {
     const current = getApplication(db, applicationId)
     if (!current) throw new Error(`application ${applicationId} not found`)
     const now = nowIso()
-    const advance = !isTerminal(current.status) && (RANK[current.status] ?? Infinity) < RANK[input.kind]!
+    const advance = STATUS_RANK[current.status] < STATUS_RANK[input.kind]
     const application = one<Application>(db.prepare(`UPDATE applications
         SET status = ?, pending_reason = ?, applied_at = COALESCE(applied_at, ?), updated_at = ?
         WHERE id = ?
@@ -211,9 +208,9 @@ export function updateStage(db: Db, eventId: number, patch: StagePatch): Stage {
 
 export function deleteStage(db: Db, eventId: number): Stage {
   return transaction(db, () => {
-    const stage = toStage(getStageEvent(db, eventId))
+    const event = getStageEvent(db, eventId)
     db.prepare('DELETE FROM application_events WHERE id = ?').run(eventId)
-    touchApplication(db, stage.application_id, nowIso())
-    return stage
+    revertRemovedEvent(db, event)
+    return toStage(event)
   })
 }

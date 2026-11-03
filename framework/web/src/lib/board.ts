@@ -42,14 +42,16 @@ export const isStageKey = (value: unknown): value is StageKey => STAGE_ORDER.inc
 export interface StageMove {
   to: StageKey
   target: string
-  confirm: 'back' | 'close' | null
+  allowed: boolean
 }
+
+export const MOVE_REFUSED = 'Status only moves forward. To go back, open the application and Undo the latest entry in its Timeline.'
 
 export function stageMove(status: string, to: StageKey, terminal: readonly string[]): StageMove | null {
   const from = stageOf(status, terminal)
   if (from === to) return null
-  const backward = STAGE_ORDER.indexOf(to) < STAGE_ORDER.indexOf(from)
-  return { to, target: PRIMARY_STATUS[to], confirm: backward ? 'back' : to === 'closed' ? 'close' : null }
+  const forward = STAGE_ORDER.indexOf(to) > STAGE_ORDER.indexOf(from)
+  return { to, target: PRIMARY_STATUS[to], allowed: forward && !terminal.includes(status) }
 }
 
 const HIDDEN_HINT = 'It moves to Closed on the board; List hides it until you click Show hidden.'
@@ -57,7 +59,7 @@ const HIDDEN_HINT = 'It moves to Closed on the board; List hides it until you cl
 const MARK_APPLIED: StatusAction = {
   label: 'Mark applied',
   target: 'applied',
-  hint: 'Records today as the date you applied.',
+  hint: 'You pick the date you applied.',
 }
 
 const ADVANCE: Record<string, StatusAction> = {
@@ -66,24 +68,24 @@ const ADVANCE: Record<string, StatusAction> = {
   applied: {
     label: 'Move to interviewing',
     target: 'interviewing',
-    hint: 'Add the round and its contacts under Interviews in the details.',
+    hint: 'You pick the round and its date; add contacts under Interviews in the details.',
   },
   interviewing: {
     label: 'Mark offer',
     target: 'offered',
-    hint: 'Records an offer; add the amounts under Pay in the details.',
+    hint: 'You pick verbal or written and its date; add the amounts under Pay in the details.',
   },
   offered: {
     label: 'Mark accepted',
     target: 'accepted',
-    hint: `Accepting closes the application. ${HIDDEN_HINT}`,
+    hint: `You pick the date you accepted. Accepting closes the application. ${HIDDEN_HINT}`,
   },
 }
 
 const CLOSE: readonly StatusAction[] = [
-  { label: 'Reject', target: 'deny_by_employer', hint: `The employer turned you down. ${HIDDEN_HINT}` },
-  { label: 'Withdraw', target: 'deny_by_candidate', hint: `You withdrew or declined. ${HIDDEN_HINT}` },
-  { label: 'No response', target: 'no_response', hint: `The employer never replied. ${HIDDEN_HINT}` },
+  { label: 'Reject', target: 'deny_by_employer', hint: `The employer turned you down; you pick the date. ${HIDDEN_HINT}` },
+  { label: 'Withdraw', target: 'deny_by_candidate', hint: `You withdrew or declined; you pick the date. ${HIDDEN_HINT}` },
+  { label: 'No response', target: 'no_response', hint: `The employer never replied; you pick the date. ${HIDDEN_HINT}` },
 ]
 
 const CLOSED_TARGETS = new Set(['accepted', ...CLOSE.map((action) => action.target)])

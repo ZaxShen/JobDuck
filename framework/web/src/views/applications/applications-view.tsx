@@ -11,16 +11,18 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useFlash } from '@/hooks/use-flash'
 import { useVisiblePoll } from '@/hooks/use-visible-poll'
-import { applicationsPath, deleteJSON, errorMessage, fetchJSON, isConflict, patchJSON } from '@/lib/api'
-import type { StatusAction } from '@/lib/board'
+import { applicationsPath, deleteJSON, errorMessage, fetchJSON, isConflict } from '@/lib/api'
+import { MOVE_REFUSED, type StageMove, type StatusAction, stageColumns } from '@/lib/board'
 import { bulkSummary } from '@/lib/bulk'
 import { statusLabel } from '@/lib/format'
-import type { ApplicationRow, Outcome, Summary } from '@/lib/types'
+import { BULK_TARGETS, type DialogScope, type StatusEntry, statusRequest } from '@/lib/status-entries'
+import type { ApplicationRow, Outcome, StageTypes, Summary } from '@/lib/types'
 import { ApplicationBoard } from '@/views/applications/application-board'
 import { ApplicationList } from '@/views/applications/application-list'
 import { ApplicationSheet } from '@/views/applications/application-sheet'
 import { OutcomeItem } from '@/views/applications/outcome-item'
 import { SelectionToolbar } from '@/views/applications/selection-toolbar'
+import { StatusDialog, type StatusDialogRequest, sendStatus } from '@/views/applications/status-dialog'
 
 interface ApplicationsViewProps {
   active: boolean
@@ -106,6 +108,12 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
   const [busyId, setBusyId] = useState<number | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
+  const [types, setTypes] = useState<StageTypes | null>(null)
+  const [dialog, setDialog] = useState<{ request: StatusDialogRequest; rows: ApplicationRow[] } | null>(null)
+
+  useEffect(() => {
+    fetchJSON<StageTypes>('/api/stage-types').then(setTypes).catch((error: unknown) => flash(errorMessage(error), true))
+  }, [flash])
 
   const refresh = useCallback(async () => {
     try {
@@ -148,26 +156,32 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
     saveViewMode(next)
   }
 
-  const changeStatus = async (row: ApplicationRow, status: string, done: string, optimistic: boolean) => {
+  const runAction = (row: ApplicationRow, action: StatusAction) =>
+    setDialog({ request: { target: action.target, title: action.label, subject: row.company }, rows: [row] })
+
+  const moveCard = (row: ApplicationRow, move: StageMove) => {
+    if (!move.allowed) {
+      flash(MOVE_REFUSED, true)
+      return
+    }
+    const column = stageColumns(terminal).find((candidate) => candidate.key === move.to)?.label ?? statusLabel(move.target)
+    setDialog({ request: { target: move.target, title: `Move To ${column}`, subject: row.company }, rows: [row] })
+  }
+
+  const submitOne = async (row: ApplicationRow, title: string, scope: DialogScope, entry: StatusEntry) => {
     setBusyId(row.id)
-    if (optimistic) setRows((current) => current.map((item) => (item.id === row.id ? { ...item, status } : item)))
     try {
-      await patchJSON(`/api/applications/${row.id}`, { status, expected_updated_at: row.updated_at })
-      flash(done)
+      await sendStatus(statusRequest(row.id, scope, entry, row.updated_at))
     } catch (error) {
-      flash(errorMessage(error), true)
-      if (!isConflict(error) && !optimistic) return
+      if (isConflict(error)) await refresh()
+      throw error
     } finally {
       setBusyId(null)
     }
+    flash(`${title}: ${row.company}`)
+    setDialog(null)
     await refresh()
   }
-
-  const runAction = (row: ApplicationRow, action: StatusAction) =>
-    void changeStatus(row, action.target, `${action.label}: ${row.company}`, false)
-
-  const moveCard = (row: ApplicationRow, status: string) =>
-    void changeStatus(row, status, `Moved ${row.company} to ${statusLabel(status)}`, true)
 
   const resetFilters = () => {
     setFilter('')
@@ -187,24 +201,39 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
   const listRows = showHidden || closedFilter ? rows : activeRows
   const selectedRows = view === 'list' ? listRows.filter((row) => selectedIds.has(row.id)) : []
   const filtersActive = filter !== '' || search.trim() !== ''
-  const bulkStatuses = statuses.filter((status) => status !== 'pending')
-
-  const runBulk = async (verb: string, request: (row: ApplicationRow) => Promise<unknown>) => {
-    const targets = selectedRows
+  const runBulk = async (verb: string, targets: ApplicationRow[], request: (row: ApplicationRow) => Promise<unknown>) => {
     setBulkBusy(true)
     const results = await Promise.allSettled(targets.map(request))
     setBulkBusy(false)
     const summary = bulkSummary(verb, results)
-    setSelectedIds(new Set(summary.failed.map((index) => targets[index]!.id)))
+    const failed = summary.failed.map((index) => targets[index]!)
+    setSelectedIds(new Set(failed.map((row) => row.id)))
     flash(summary.text, summary.isError)
     await refresh()
+    return { summary, failed }
   }
 
-  const bulkSetStatus = (status: string) =>
-    void runBulk('Updated', (row) => patchJSON(`/api/applications/${row.id}`, { status, expected_updated_at: row.updated_at }))
+  const bulkSetStatus = (status: string) => setDialog({
+    request: { target: status, title: 'Set Status', subject: 'One date and note for every selected application', bulk: true },
+    rows: selectedRows,
+  })
+
+  const submitStatus = async (scope: DialogScope, entry: StatusEntry) => {
+    if (!dialog) return
+    const targets = dialog.rows.map((row) => rows.find((item) => item.id === row.id) ?? row)
+    if (!dialog.request.bulk) return submitOne(targets[0]!, dialog.request.title, scope, entry)
+    const { summary, failed } = await runBulk('Updated', targets,
+      (row) => sendStatus(statusRequest(row.id, scope, entry, row.updated_at)))
+    if (!summary.isError) {
+      setDialog(null)
+      return
+    }
+    setDialog({ ...dialog, rows: failed })
+    throw new Error(summary.text)
+  }
 
   const bulkDelete = () =>
-    void runBulk('Deleted', (row) => deleteJSON(`/api/applications/${row.id}`, { expected_updated_at: row.updated_at }))
+    void runBulk('Deleted', selectedRows, (row) => deleteJSON(`/api/applications/${row.id}`, { expected_updated_at: row.updated_at }))
 
   const content = () => {
     if (!loaded) {
@@ -339,14 +368,16 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
 
       <SelectionToolbar
         selectedCount={selectedRows.length}
-        statuses={bulkStatuses}
+        statuses={BULK_TARGETS}
         busy={bulkBusy}
         onSetStatus={bulkSetStatus}
         onDelete={bulkDelete}
         onClearSelection={() => setSelectedIds(new Set())}
       />
 
-      <ApplicationSheet id={selected} statuses={statuses} terminal={terminal} onClose={close} onChanged={refresh} />
+      <StatusDialog request={dialog?.request ?? null} types={types} onClose={() => setDialog(null)} onSubmit={submitStatus} />
+
+      <ApplicationSheet id={selected} terminal={terminal} onClose={close} onChanged={refresh} />
     </div>
   )
 }

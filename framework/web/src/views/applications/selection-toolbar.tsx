@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { statusLabel } from '@/lib/format'
+import { entryLabel } from '@/lib/status-entries'
 import { cn } from '@/lib/utils'
 
 interface SelectionToolbarProps {
@@ -24,14 +24,12 @@ interface SelectionToolbarProps {
   onClearSelection: () => void
 }
 
-const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
-
 export function SelectionToolbar({ selectedCount, statuses, busy, onSetStatus, onDelete, onClearSelection }: SelectionToolbarProps) {
   const [confirming, setConfirming] = useState(false)
   if (selectedCount === 0) return null
 
   const noun = selectedCount === 1 ? 'application' : 'applications'
-  const items = statuses.map((status) => ({ value: status, label: sentence(statusLabel(status)) }))
+  const items = statuses.map((status) => ({ value: status, label: entryLabel(status) }))
 
   return (
     <div
