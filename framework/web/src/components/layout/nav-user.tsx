@@ -46,7 +46,7 @@ function identityOf(profile: ProfileView | null) {
   const front = profile?.front_matter ?? {}
   const name = text(front.name)
   const titles = Array.isArray(front.target_titles) ? front.target_titles.map(text).filter(Boolean) : []
-  return { name, initials: initialsOf(name), title: name || 'Your profile', subtitle: titles[0] ?? 'Local profile' }
+  return { name, initials: initialsOf(name), title: name || 'Your Profile', subtitle: titles[0] ?? 'Local Profile' }
 }
 
 type Identity = ReturnType<typeof identityOf>

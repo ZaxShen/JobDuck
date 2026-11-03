@@ -287,7 +287,7 @@ export function FactRow({ fact, onSave, onDelete }: FactRowProps) {
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete this fact?</AlertDialogTitle>
+            <AlertDialogTitle>Delete This Fact?</AlertDialogTitle>
             <AlertDialogDescription>
               It is removed for good and your agent may propose it again. Archive it instead to keep it out of your CV.
             </AlertDialogDescription>

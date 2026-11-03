@@ -1,9 +1,10 @@
-import { COMPANY_STAGES } from '@/lib/forms'
+import { COMPANY_STAGES } from './forms'
 import { MAX_UPLOAD_BYTES } from './inbox'
 
 export const WIZARD_STEPS = ['Welcome', 'Career DNA', 'Targets', 'Modules', 'Done'] as const
 export const RESUME_TYPES = ['.pdf', '.docx', '.md', '.txt'] as const
 export const WORK_MODES = ['remote', 'hybrid', 'onsite'] as const
+export const ANY_MODE = 'any'
 
 export interface Quiz {
   builder: number
@@ -33,14 +34,22 @@ interface ToggleQuestion {
 export type Question = SliderQuestion | ToggleQuestion
 
 export const QUIZ: readonly Question[] = [
-  { key: 'builder', title: 'Build new or improve?', subtitle: 'Do you like starting things from scratch, or making existing things better?', left: 'Start from scratch', right: 'Improve what exists' },
-  { key: 'team', title: 'Team size', subtitle: 'Where do you do your best work?', options: [['small', 'Small teams'], ['large', 'Large orgs']] },
-  { key: 'mode', title: 'Work mode', subtitle: 'How do you prefer to work?', options: [['remote', 'Remote'], ['hybrid', 'Hybrid'], ['onsite', 'On-site']] },
-  { key: 'risk', title: 'Startup or established company?', subtitle: 'What kind of environment fits you?', left: 'Startup', right: 'Established company' },
-  { key: 'motivation', title: 'What drives you?', subtitle: 'What matters most in your next move?', left: 'Learning and growth', right: 'Pay' },
+  { key: 'builder', title: 'Build New Or Improve?', subtitle: 'Do You Like Starting Things From Scratch, Or Making Existing Things Better?', left: 'Start From Scratch', right: 'Improve What Exists' },
+  { key: 'risk', title: 'Startup Or Established Company?', subtitle: 'What Kind Of Environment Fits You?', left: 'Startup', right: 'Established Company' },
+  { key: 'team', title: 'Team Size', subtitle: 'Where Do You Do Your Best Work?', options: [['small', 'Small Teams'], ['large', 'Large Orgs']] },
+  { key: 'mode', title: 'Work Mode', subtitle: 'How Do You Prefer To Work?', options: [['remote', 'Remote'], ['hybrid', 'Hybrid'], ['onsite', 'On-Site'], [ANY_MODE, 'Any']] },
+  { key: 'motivation', title: 'What Drives You?', subtitle: 'What Matters Most In Your Next Move?', left: 'Learning And Growth', right: 'Pay' },
 ]
 
 export const isToggle = (question: Question): question is ToggleQuestion => 'options' in question
+
+export const workModesOf = (mode: string): string[] => (mode === ANY_MODE ? [...WORK_MODES] : [mode])
+
+export function modeOf(workModes: readonly string[]): string | undefined {
+  if (WORK_MODES.every((mode) => workModes.includes(mode))) return ANY_MODE
+  const first = workModes[0]
+  return first !== undefined && (WORK_MODES as readonly string[]).includes(first) ? first : undefined
+}
 
 export const extension = (name: string) => {
   const dot = name.lastIndexOf('.')
@@ -67,13 +76,4 @@ export function inboxProblem(file: File): string | undefined {
   if (!(RESUME_TYPES as readonly string[]).includes(extension(file.name))) return `Use one of ${RESUME_TYPES.join(', ')}.`
   if (file.size > MAX_UPLOAD_BYTES) return 'That file is over 15 MB. Put it in inbox/ yourself instead.'
   return undefined
-}
-
-export function base64Of(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''))
-    reader.onerror = () => reject(reader.error ?? new Error('Could not read the file.'))
-    reader.readAsDataURL(file)
-  })
 }

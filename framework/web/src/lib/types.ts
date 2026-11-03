@@ -122,6 +122,19 @@ export interface InboxUpload {
   name: string
 }
 
+export interface ImportCandidate {
+  path: string
+  name: string
+  sha256: string
+}
+
+export interface OnboardingStatus {
+  profile_empty: boolean
+  pending_imports: ImportCandidate[]
+  dashboard_hint: string
+  workspace: string
+}
+
 export type FactStatus = 'proposed' | 'accepted' | 'archived'
 
 export interface ProfileFact {

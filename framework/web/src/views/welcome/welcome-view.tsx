@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useFlash } from '@/hooks/use-flash'
-import { errorMessage, fetchJSON, isConflict, postJSON, putJSON } from '@/lib/api'
+import { errorMessage, fetchJSON, isConflict, putJSON } from '@/lib/api'
 import { MODULES } from '@/lib/forms'
 import { clone } from '@/lib/paths'
 import type { FrontMatter, InboxUpload, PermissionsView, ProfileView } from '@/lib/types'
-import { base64Of, careerDna, companyStages, DEFAULT_QUIZ, WIZARD_STEPS, WORK_MODES, type Quiz } from '@/lib/wizard'
+import { uploadToInbox } from '@/lib/upload'
+import { careerDna, companyStages, DEFAULT_QUIZ, modeOf, WIZARD_STEPS, workModesOf, type Quiz } from '@/lib/wizard'
 import { doneSummary, NOTHING_SAVED, type SavedSteps } from '@/lib/wizard-done'
 import { cn } from '@/lib/utils'
 import { DoneStep } from '@/views/welcome/done-step'
@@ -82,8 +83,8 @@ export function WelcomeView({ active, onProfileSaved, onSettingsSaved }: Welcome
         setUploaded(null)
         setSaved(NOTHING_SAVED)
       }
-      const mode = list(profile.front_matter.work_modes)[0]
-      if ((WORK_MODES as readonly string[]).includes(mode ?? '')) setQuiz((prev) => ({ ...prev, mode: mode! }))
+      const mode = modeOf(list(profile.front_matter.work_modes))
+      if (mode) setQuiz((prev) => ({ ...prev, mode }))
       setReady(true)
     } catch (error) {
       flash(errorMessage(error), true)
@@ -112,8 +113,7 @@ export function WelcomeView({ active, onProfileSaved, onSettingsSaved }: Welcome
   const uploadAndContinue = async () => {
     if (!file || noInbox) return goTo(1)
     try {
-      const data = await base64Of(file)
-      const result = await postJSON<InboxUpload>('/api/inbox', { name: file.name, data })
+      const result = await uploadToInbox(file)
       setUploaded(result)
       setFile(null)
       flash(`Saved to inbox/${result.name}.`)
@@ -126,7 +126,7 @@ export function WelcomeView({ active, onProfileSaved, onSettingsSaved }: Welcome
 
   const saveQuiz = () => guarded(async () => {
     const profile = await saveProfile(
-      { work_modes: [quiz.mode], company_stages: companyStages(quiz.risk) },
+      { work_modes: workModesOf(quiz.mode), company_stages: companyStages(quiz.risk) },
       { 'Career DNA': careerDna(quiz) },
     )
     setTargets(targetsOf(profile.front_matter))
@@ -176,7 +176,7 @@ export function WelcomeView({ active, onProfileSaved, onSettingsSaved }: Welcome
               <DoneStep
                 uploaded={uploaded}
                 summary={doneSummary({
-                  uploaded: uploaded !== null,
+                  uploaded: uploaded?.name ?? null,
                   saved,
                   modulesOn: MODULES.filter(([key]) => modules?.[key]).length,
                 })}

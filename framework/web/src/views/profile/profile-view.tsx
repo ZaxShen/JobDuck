@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { PlusIcon } from 'lucide-react'
-import { SectionCard } from '@/components/composed/section-card'
 import { FieldControl } from '@/components/fields/field-control'
 import { LoadError, LoadSkeleton } from '@/components/load-states'
+import { OnboardingBanner, PROFILE_FORM_ID } from '@/components/onboarding-banner'
 import { SaveBar } from '@/components/save-bar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -10,7 +10,6 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import type { DocForm } from '@/hooks/use-doc-form'
 import { go } from '@/hooks/use-hash-route'
-import { profileEmpty } from '@/lib/docs'
 import { CV_FILES, type Draft, type Group, visibleFields, withField } from '@/lib/forms'
 import { getPath } from '@/lib/paths'
 import { hashFor, profileSection } from '@/lib/routing'
@@ -19,22 +18,6 @@ import { cn } from '@/lib/utils'
 import { FactsView } from '@/views/facts/facts-view'
 import { useProfileFacts, type ProfileFacts } from '@/views/facts/use-profile-facts'
 import { FACTS_SLUG, profileSections, type SectionBody, type SectionGroup, type SectionItem } from '@/views/profile/profile-sections'
-
-function Intake() {
-  return (
-    <SectionCard
-      title="Fill in your profile"
-      description="Pick whichever is quickest. For the first two, your agent fills this form and you review it here."
-      className="bg-muted/40"
-    >
-      <ol className="list-decimal space-y-2 pl-5 text-sm">
-        <li><strong>Import a resume.</strong> Put your CV (PDF, Word or Markdown) in the <code className="rounded bg-muted px-1">inbox/</code> folder of your Job Duck workspace, then tell your agent "import my resume".</li>
-        <li><strong>Import LinkedIn.</strong> On your LinkedIn profile, choose More, then Save to PDF. Put the file in <code className="rounded bg-muted px-1">inbox/</code> and tell your agent "import my LinkedIn".</li>
-        <li><strong>Type it in.</strong> Fill in the form below and press Save.</li>
-      </ol>
-    </SectionCard>
-  )
-}
 
 const sectionsOf = (draft: Draft) => draft.sections as Record<string, string>
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
@@ -212,7 +195,7 @@ function AddSection({ draft, onChange }: { draft: Draft; onChange: (draft: Draft
   }
 
   return (
-    <Section title={<label htmlFor="profile-new-section">Add section</label>} help="Add a section of your own to profile.md, e.g. Publications or Awards.">
+    <Section title={<label htmlFor="profile-new-section">Add Section</label>} help="Add a section of your own to profile.md, e.g. Publications or Awards.">
       <form
         className="flex gap-2"
         onSubmit={(event) => {
@@ -294,11 +277,11 @@ export function ProfileView({ form, active, section }: { form: DocForm<ProfileDo
 
       {!view || !draft ? (!loadError && <LoadSkeleton />) : (
         <div key={version} className="space-y-4">
-          {profileEmpty(view) && <Intake />}
+          <OnboardingBanner page="profile" active={active} refreshKey={view.revision} />
           <div className="flex flex-col gap-6 lg:flex-row">
             <SectionNav groups={groups} active={current} proposed={proposed} dirty={dirty} />
             <SectionPills groups={groups} active={current} proposed={proposed} dirty={dirty} />
-            <div className="min-w-0 flex-1 space-y-4">
+            <div id={PROFILE_FORM_ID} className="min-w-0 flex-1 space-y-4">
               <SectionContent body={item.body} view={view} draft={draft} onChange={setDraft} facts={facts} />
               {item.body.kind !== 'facts' && (
                 <SaveBar {...form} onSave={() => void form.save()} onDiscard={() => void load()} />

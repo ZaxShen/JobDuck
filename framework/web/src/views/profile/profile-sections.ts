@@ -20,8 +20,8 @@ export interface SectionGroup {
 
 const PERSONAL_SLUGS: Record<string, string> = {
   Contact: 'contact',
-  'Work eligibility': 'eligibility',
-  "What you're looking for": 'targets',
+  'Work Eligibility': 'eligibility',
+  "What You're Looking For": 'targets',
 }
 
 export const FACTS_SLUG = 'facts'
@@ -52,8 +52,8 @@ export function profileSections(markdownNames: readonly string[]): SectionGroup[
   }))
   return [
     { label: 'Personal', items: personal },
-    { label: 'Background', items: [...markdown, { slug: ADD_SLUG, label: 'Add section', body: { kind: 'add' } }] },
-    { label: 'Experience', items: [{ slug: FACTS_SLUG, label: 'Experience facts', body: { kind: 'facts' } }] },
-    { label: 'Documents', items: [{ slug: DOCUMENTS_SLUG, label: 'CV files', body: { kind: 'documents' } }] },
+    { label: 'Background', items: [...markdown, { slug: ADD_SLUG, label: 'Add Section', body: { kind: 'add' } }] },
+    { label: 'Experience', items: [{ slug: FACTS_SLUG, label: 'Experience Facts', body: { kind: 'facts' } }] },
+    { label: 'Documents', items: [{ slug: DOCUMENTS_SLUG, label: 'CV Files', body: { kind: 'documents' } }] },
   ]
 }

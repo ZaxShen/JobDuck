@@ -82,7 +82,7 @@ export function SelectionToolbar({ selectedCount, statuses, busy, onSetStatus, o
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {selectedCount} {noun}?</AlertDialogTitle>
+            <AlertDialogTitle>Delete {selectedCount} {selectedCount === 1 ? 'Application' : 'Applications'}?</AlertDialogTitle>
             <AlertDialogDescription>They disappear from the board and the list. This cannot be undone.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

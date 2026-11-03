@@ -3,6 +3,7 @@ import {
   AlertCircleIcon, ClipboardListIcon, EyeIcon, EyeOffIcon, KanbanIcon, ListIcon, SearchIcon, XCircleIcon,
 } from 'lucide-react'
 import { SectionCard } from '@/components/composed/section-card'
+import { OnboardingBanner } from '@/components/onboarding-banner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -164,7 +165,7 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
       return
     }
     const column = stageColumns(terminal).find((candidate) => candidate.key === move.to)?.label ?? statusLabel(move.target)
-    setDialog({ request: { target: move.target, title: `Move to ${column}`, subject: row.company }, rows: [row] })
+    setDialog({ request: { target: move.target, title: `Move To ${column}`, subject: row.company }, rows: [row] })
   }
 
   const submitOne = async (row: ApplicationRow, title: string, scope: DialogScope, entry: StatusEntry) => {
@@ -213,7 +214,7 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
   }
 
   const bulkSetStatus = (status: string) => setDialog({
-    request: { target: status, title: 'Set status', subject: 'One date and note for every selected application', bulk: true },
+    request: { target: status, title: 'Set Status', subject: 'One date and note for every selected application', bulk: true },
     rows: selectedRows,
   })
 
@@ -273,6 +274,7 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-500">
       <p className="text-sm text-muted-foreground">Everything your agent saved, applied to or is waiting on you for, newest first.</p>
+      <OnboardingBanner page="applications" active={active} />
 
       <div className="flex flex-wrap items-center gap-3">
         <Select items={items} value={filter} onValueChange={(value: string | null) => setFilter(value ?? '')}>
@@ -353,7 +355,7 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
 
       {outcomes.length > 0 && (
         <SectionCard
-          title="Needs a match"
+          title="Needs A Match"
           description="Rejection emails that could not be matched to an application automatically."
         >
           <ul>

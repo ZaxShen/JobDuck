@@ -29,7 +29,7 @@ const MOVED: Record<FactStatus, string> = {
   accepted: 'Fact accepted', archived: 'Fact archived', proposed: 'Fact restored to proposed',
 }
 
-const NO_COMPANY = 'No company'
+const NO_COMPANY = 'No Company'
 
 const INSTRUCTIONS = {
   draggable:
@@ -54,7 +54,7 @@ function group(facts: ProfileFact[]): Groups {
 
 function EmptyState() {
   return (
-    <SectionCard title="No experience facts yet" className="bg-muted/40">
+    <SectionCard title="No Experience Facts Yet" className="bg-muted/40">
       <p className="text-sm text-muted-foreground">
         Tell your agent "augment my profile". Its <code className="rounded bg-muted px-1">augment</code> skill reads the
         Experience in your profile and proposes atomic facts (one action each, with outcome and metrics) here. Accept the

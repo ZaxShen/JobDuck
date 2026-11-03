@@ -1,4 +1,4 @@
-import { ArrowRightIcon, MessageSquareIcon, ShieldCheckIcon } from 'lucide-react'
+import { ArrowRightIcon, BotIcon, ShieldCheckIcon } from 'lucide-react'
 import { SectionCard } from '@/components/composed/section-card'
 import { Button } from '@/components/ui/button'
 import { go } from '@/hooks/use-hash-route'
@@ -13,10 +13,8 @@ export function DoneStep({ uploaded, summary }: { uploaded: InboxUpload | null; 
       <StepIntro className="space-y-3" title={summary.title}>{summary.body}</StepIntro>
       <SectionCard
         className="w-full"
-        title={<span className="flex items-center gap-2"><MessageSquareIcon className="size-4" aria-hidden="true" />Back in your agent, say: {summary.nextStep}</span>}
-        description={uploaded
-          ? `It reads inbox/${uploaded.name} and fills in your profile for you to review.`
-          : 'It reads your own LinkedIn profile, read-only, and fills in your profile for you to review.'}
+        title={<span className="flex items-center gap-2"><BotIcon className="size-4" aria-hidden="true" />{summary.next.title}</span>}
+        description={summary.next.body}
       >
         {uploaded && <span className="sr-only">Uploaded {uploaded.name}</span>}
       </SectionCard>
