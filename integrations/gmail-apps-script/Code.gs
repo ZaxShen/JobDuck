@@ -1198,7 +1198,8 @@ function bodyParts_(body) {
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1 URL')
     .replace(/<?(?:https?:\/\/|www\.)[^\s>]*[^\s>.,;:!?)]>?/gi, ' URL ')
     .replace(/<?[\w.+-]+@[\w-]+(?:\.[\w-]+)+>?/g, ' EMAIL ');
-  var lines = text.split('\n').map(function (l) { return l.replace(/\s+/g, ' ').replace(/^(?:[*•·>-]+ ?)+/, '').trim(); });
+  var raw = text.split('\n');
+  var lines = raw.map(function (l) { return l.replace(/\s+/g, ' ').replace(/^(?:[*•·>-]+ ?)+/, '').trim(); });
   var footerLine = lines.map(function (l) { return !!l && lineSentences_(l).every(footer_); });
   var drop = footerLine.slice();
   var i, j, signedOff = false, greeted = false;
@@ -1231,15 +1232,22 @@ function bodyParts_(body) {
   for (i = 0; i < lines.length && !odd; i++) {
     if (drop[i] && !footerLine[i] && SCHEDULING_WORDS.test(lines[i].replace(/\b(?:Phone|Tel|Mobile|Cell)\b[:.]?/g, ''))) odd = lines[i];
   }
-  var paragraphs = [], current = [];
+  // A paragraph of one line may be a signed name only under a sign-off line or as a "- Name" line.
+  var paragraphs = [], signable = [], current = [], signed = false, before = '';
+  var close = function () {
+    if (current.length) { paragraphs.push(current.join(' ')); signable.push(current.length === 1 && signed); }
+    current = [];
+  };
   lines.forEach(function (l, k) {
-    if (!l || drop[k]) { if (current.length) paragraphs.push(current.join(' ')); current = []; return; }
+    if (!l || drop[k]) { close(); if (l) before = l; return; }
+    if (!current.length) signed = /^\s*-\s*\S/.test(raw[k]) || RJ_SIGN_OFF_LINE.test(before);
     current.push(l);
+    before = l;
   });
-  if (current.length) paragraphs.push(current.join(' '));
+  close();
   var sentences = [];
   paragraphs.forEach(function (p) { sentences = sentences.concat(lineSentences_(p)); });
-  return { line: odd, sentences: sentences, paragraphs: paragraphs };
+  return { line: odd, sentences: sentences, paragraphs: paragraphs, signable: signable };
 }
 
 /** The first body sentence that is neither a known acknowledgement nor a standard footer once the greeting, the
@@ -1477,11 +1485,15 @@ function invitesContact_(body) {
 // A name slot stops at the words that join clauses and is then held to the whole veto list once matched: ACK_NAME's
 // inline veto, repeated in every slot, makes these expressions megabytes long and seconds to compile. A word may hold a
 // digit after its first letter ("Q2"), and "repl" vetoes only the reply verbs so a name may start with it. A verb asking
-// for contact ("Contact Recruiting", "Email Jane") is never a name.
-var RJ_CONTACT_VERB = 'e-?mail|contact|text|txt|ping|call|ring|phone|message|msg|dm|write|reach|holler|chat|talk|speak|meet|ask|tell|connect|reply|interested';
-var RJ_NAME_STOP = 'at|and|or|but|so|then|to|if|when|once|while|not|this|that|these|those|time|times|here|there|now|open|you|your|yours|we|us|our|i|me|my|is|are|was|were|be|been|will|would|can|could|may|might|should|shall|has|have|had|do|does|did|please|kindly|' + RJ_CONTACT_VERB;
+// for contact in any form ("Contact Recruiting", "Emailing Jane") is never a name.
+var RJ_CONTACT_VERB = 'e-?mail|contact|text|txt|ping|call|ring|phone|messag|msg|dm|write|reach|holler|chat|talk|speak|meet|ask|tell|connect|reply|interested';
+// A word any contact request starts with. Outside the decision clause, the footer lines and the footer notices, one in a
+// sentence keeps the thread in the Inbox.
+var RJ_CONTACT_STEMS = 'e-?mail|contact|call|reach|phon|schedul|connect|chat|meet|messag|text|ping|dm|talk|speak|ring|book|calendar';
+var RJ_CONTACT_STEM = new RegExp('\\b(?:' + RJ_CONTACT_STEMS + ')\\w*', 'i');
+var RJ_NAME_STOP = 'at|and|or|but|so|then|to|if|when|once|while|not|this|that|these|those|time|times|here|there|now|open|you|your|yours|we|us|our|i|me|my|is|are|was|were|be|been|will|would|can|could|may|might|should|shall|has|have|had|do|does|did|please|kindly|(?:' + RJ_CONTACT_VERB + ')\\w*';
 var RJ_NAME = "((?:(?!(?:" + RJ_NAME_STOP + ")\\b)[a-z&'()/+#.-][a-z0-9&'()/+#.-]*(?![a-z0-9&'()/+#.-])(?:,? (?=[a-z&'()/+#.-]))?){1,10})";
-var RJ_VETO_WORD = new RegExp('(?:^|\\s)(?:' + ACK_VETO.replace('repl\\w*', 'repl(?:y|ies|ied|ying)') + '|at|' + RJ_CONTACT_VERB + ')\\b', 'i');
+var RJ_VETO_WORD = new RegExp('(?:^|\\s)(?:' + ACK_VETO.replace('repl\\w*', 'repl(?:y|ies|ied|ying)') + '|at|(?:' + RJ_CONTACT_VERB + '|' + RJ_CONTACT_STEMS + ')\\w*)\\b', 'i');
 var RJ_POST ='(?:role|position|opening|opportunity|job|req|requisition|vacancy)';
 var RJ_JOB = '(?:(?:the|this|our|that|your) (?:(?:particular|specific|current|open) )?' + RJ_POST + '(?: you applied (?:to|for))?' +
   '|(?:(?:the|this) (?:position|role|job)[:,]? )?(?:the |our |this |a |an )?(?:current )?(?:[a-z]{0,3}_?\\d{3,9} )?' + RJ_NAME + '(?: (?:[|/–-]|--) ' + RJ_NAME + '){0,2}(?: ' + RJ_POST + ')?' + ACK_REQ + '(?: (?:at|with|here at) (?:us|' + RJ_NAME + '))?)';
@@ -1772,6 +1784,8 @@ function rejectionRegExp_(pattern) { return new RegExp(unrollRepeats_(pattern), 
 // One expression per clause, and the leads apart: a single alternation of them all backtracks for seconds on a long
 // near-miss sentence, and the leads repeated in every clause cost seconds to compile.
 var REJECTION_CLAUSES = RJ_CLAUSES.map(function (clause) { return rejectionRegExp_('^(?:' + clause + ')$'); });
+var RJ_CONTACT_EXEMPT = [RJ_DECISION_SENTENCE].concat(RJ_NOTICES);
+var RJ_CONTACT_CHECKED = RJ_CLAUSES.map(function (clause) { return RJ_CONTACT_EXEMPT.indexOf(clause) < 0; });
 var RJ_ANY_LEAD = RJ_LEADS + '|' + RJ_TEAM_NAME + ' team' + RJ_TEAM_AT + '|' + RJ_LINK_ROW + '|(?:hi|hello|dear|hey) ' + RJ_NAME + ' ?';
 var REJECTION_LEADS = rejectionRegExp_('^(?:' + RJ_ANY_LEAD + ')(?:,? (?:' + RJ_ANY_LEAD + ')){0,2},?$');
 // A frame line stands alone as a whole sentence, never as one clause of a longer one; an emoji may trail it.
@@ -1780,11 +1794,15 @@ var REJECTION_FRAME = RJ_FRAME.map(function (line) {
 });
 
 function rejectionClause_(text) {
-  var bare = function (s) { return REJECTION_CLAUSES.some(function (re) { return acknowledges_(re, s, RJ_VETO_WORD); }); };
+  var bare = function (s) {
+    var contact = RJ_CONTACT_STEM.test(s);
+    return REJECTION_CLAUSES.some(function (re, i) { return !(contact && RJ_CONTACT_CHECKED[i]) && acknowledges_(re, s, RJ_VETO_WORD); });
+  };
   if (bare(text)) return true;
   var s = text.replace(/\s+/g, ' ').trim();
   for (var p = s.indexOf(' '); p > 0 && p < 200; p = s.indexOf(' ', p + 1)) {
-    if (acknowledges_(REJECTION_LEADS, s.slice(0, p), RJ_VETO_WORD) && bare(s.slice(p + 1))) return true;
+    var lead = s.slice(0, p);
+    if (!RJ_CONTACT_STEM.test(lead) && acknowledges_(REJECTION_LEADS, lead, RJ_VETO_WORD) && bare(s.slice(p + 1))) return true;
   }
   return false;
 }
@@ -1810,7 +1828,7 @@ function unexplainedRejection_(body) {
   var paragraphs = parts.paragraphs, last = paragraphs.length - 1;
   while (last >= 0 && lineSentences_(paragraphs[last]).every(frameSentence_)) last--;
   for (var p = 0; p < paragraphs.length; p++) {
-    if (p === last && signedName_(paragraphs[p])) continue;
+    if (p === last && parts.signable[p] && signedName_(paragraphs[p])) continue;
     var sentences = lineSentences_(paragraphs[p]);
     for (var s = 0; s < sentences.length; s++) {
       if (!frameSentence_(sentences[s]) && !rejectionSentence_(bareSentence_(sentences[s]))) return sentences[s];
@@ -1827,12 +1845,15 @@ function frameSentence_(sentence) {
 }
 
 // The one capitalised word a letter may be signed with ("Best,\nJane", "- Shopify"), as the last paragraph before the
-// footer and frame lines. A word that asks for contact ("Email.", "Holler.") is no signature.
+// footer and frame lines, right under a sign-off line or on a "- " line. A word that asks for contact ("Emailed.",
+// "Holler.") is no signature.
 var RJ_SIGNED_NAME = /^[A-Z][A-Za-z'&-]*\.?$/;
-var RJ_CONTACT_WORD = new RegExp('^(?:' + RJ_CONTACT_VERB + ')\\b', 'i');
+var RJ_SIGN_OFF_LINE = /^(?:best|(?:(?:best|kind|warm|warmest) )?regards|(?:many )?thanks|sincerely|cheers|warmly)\s*[,.!]?$/i;
+var RJ_CONTACT_WORD = new RegExp('^(?:' + RJ_CONTACT_VERB + ')\\w*', 'i');
 
 function signedName_(paragraph) {
-  return RJ_SIGNED_NAME.test(paragraph) && !ACK_VETO_WORD.test(paragraph) && !SCHEDULING_WORDS.test(paragraph) && !RJ_CONTACT_WORD.test(paragraph);
+  return RJ_SIGNED_NAME.test(paragraph) && !ACK_VETO_WORD.test(paragraph) && !SCHEDULING_WORDS.test(paragraph) &&
+    !RJ_CONTACT_WORD.test(paragraph) && !RJ_CONTACT_STEM.test(paragraph);
 }
 
 function rejectionStands_(body) {

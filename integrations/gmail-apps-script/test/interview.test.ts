@@ -435,7 +435,6 @@ describe('v5.4: archive only what is certainly a plain confirmation', () => {
   test.each([
     'We wish you the best in your search.',
     'However, we will be in touch should your qualifications be a good fit for other opportunities.',
-    'Thank you for taking the time to speak with our team.',
   ])('a signed courtesy rejection is still denied (F49-2, F49-3, F49-4): %s', (courtesy) => {
     const { action } = untouched('Your application to Acme', signedRejectionWith(courtesy), 'Acme Recruiting <no-reply@greenhouse.io>');
     expect(action).toBe('deny');
@@ -446,8 +445,6 @@ describe('v5.4: archive only what is certainly a plain confirmation', () => {
     'We wish you the best in your search.',
     'We encourage you to visit our careers page for other opportunities that match your interests.',
     'Please continue to check our career site for new openings and apply if a role catches your eye.',
-    'Thank you for taking the time to speak with our team.',
-    'This was not an easy decision, and we had to make some difficult calls.',
     'However, we will be in touch should your qualifications be a good fit for other opportunities.',
   ])('a rejection with a courtesy sentence and no contact invite is still denied (F49-1): %s', (courtesy) => {
     const { action } = untouched('Your application to Acme', rejectionWith(D, courtesy), 'Acme Recruiting <no-reply@greenhouse.io>');
@@ -571,6 +568,46 @@ describe('v5.5: a rejection is denied only when every sentence is an allowlisted
     expect(action).toBe('keep');
     expect(t.inInbox).toBe(true);
     expect(api.unexplainedRejection_('Hi Dan,\n\n' + CAREFUL + ' ' + sentence + '\n\nBest,\nAcme Recruiting')).not.toBeNull();
+  });
+
+  test.each(['Contacting.', 'Emailed.', 'Emailing.', 'Contacted.', 'Messaging.', 'Callback.', 'Reaching out.', 'Reaching.', 'Pinging.', 'Texted.'])(
+    'an inflected contact word as the last paragraph stays untouched in the Inbox (F51-1): %s', (line) => {
+      const { action, t } = runBody('Hi Dan,\n\n' + CAREFUL + '\n\n' + line);
+      expect(action).toBe('keep');
+      expect(t.inInbox).toBe(true);
+    });
+
+  test.each([
+    'Website · Emailing Jane ( URL ) · Blog',
+    'Website · Messaging Jane ( URL ) · Blog',
+    'Follow us on LinkedIn, Twitter and Messaging Jane.',
+    'Emailed Jane 12345.',
+    'Contacting jobs.',
+  ])('an inflected contact word in a name slot stays untouched in the Inbox (F51-1): %s', (sentence) => {
+    const { action, t } = runBody('Hi Dan,\n\n' + CAREFUL + ' ' + sentence + '\n\nBest,\nAcme Recruiting');
+    expect(action).toBe('keep');
+    expect(t.inInbox).toBe(true);
+  });
+
+  test.each([
+    'We will keep your information on file and reach out if future opportunities arise that match your background.',
+    'We will keep your resume on file and contact you should a suitable position open.',
+    'We encourage you to stay connected with us through our website for future openings.',
+    'Thank you for your interest in Acme and for connecting with us.',
+    'We wish you the best of luck in your job search; feel free to book time with Jane.',
+    'Thank you for your time, and please schedule a chat with Jane.',
+    'Thank you for taking the time to speak with our team.',
+    'This was not an easy decision, and we had to make some difficult calls.',
+  ])('a courtesy sentence holding a contact word stays untouched in the Inbox: %s', (sentence) => {
+    const { action, t } = runBody('Hi Dan,\n\n' + CAREFUL + ' ' + sentence + '\n\nBest,\nAcme Recruiting');
+    expect(action).toBe('keep');
+    expect(t.inInbox).toBe(true);
+  });
+
+  test.each(['Voicemail.', 'WhatsApp.', 'Hired.', 'Acme'])('a lone capitalised word with no sign-off above it stays untouched in the Inbox: %s', (line) => {
+    const { action, t } = runBody('Hi Dan,\n\n' + CAREFUL + ' We wish you the best of luck in your job search.\n\n' + line);
+    expect(action).toBe('keep');
+    expect(t.inInbox).toBe(true);
   });
 
   test.each([

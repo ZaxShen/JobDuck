@@ -14,11 +14,11 @@
     "expect": "rejection"
   },
   {
-    "name": "Jane Street unable to find a match",
+    "name": "Jane Street unable to find a match, promising to reach out (contact word keeps it)",
     "from": "Recruiting <no-reply@greenhouse.io>",
     "subject": "Update on your application",
     "body": "Hi Alex,\n\nUnfortunately we were unable to find a good match for your background at this time, but we will reach out in the event that our needs change.\n\nBest regards,\nThe Talent Team",
-    "expect": "rejection"
+    "expect": "keep"
   },
   {
     "name": "Commure other candidates before conditional",
