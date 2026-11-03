@@ -495,10 +495,52 @@
     "expect": "keep"
   },
   {
-    "name": "Wonka rejection with a courtesy offer to connect about future opportunities",
+    "name": "Wonka rejection that would love to connect about future opportunities stays in the Inbox (contact veto)",
     "from": "Wonka Recruiting <no-reply@greenhouse.io>",
     "subject": "Your application to Wonka",
     "body": "Hi Danlin,\n\nThank you for applying to the Senior Engineer role at Wonka. We have decided not to move forward with your application. We'd love to connect with you about future opportunities.\n\nWonka Recruiting",
+    "expect": "keep"
+  },
+  {
+    "name": "F4 Acme filled the position, curly apostrophes (#51 R1)",
+    "from": "Acme Recruiting <no-reply@greenhouse.io>",
+    "subject": "Your application to Acme",
+    "body": "Hi Jordan,\n\nThank you for applying to the Backend Engineer role at Acme. We’ve filled the position, so we won’t be moving forward with your application.\n\nAcme Recruiting",
+    "expect": "rejection"
+  },
+  {
+    "name": "F5 Acme not moving you forward to an interview (#51 R6)",
+    "from": "Acme Recruiting <no-reply@ashbyhq.com>",
+    "subject": "Update on your application",
+    "body": "Hi Jordan,\n\nThank you for your interest in the Data Engineer role at Acme. After reviewing your application, we are not moving you forward to an interview at this time.\n\nAcme Recruiting",
+    "expect": "rejection"
+  },
+  {
+    "name": "F6 Acme won't be able to invite you to the next round (#51 R2, R7)",
+    "from": "Acme Recruiting <no-reply@ashbyhq.com>",
+    "subject": "Update on your application",
+    "body": "Hi Jordan,\n\nThank you for interviewing for the Platform Engineer role at Acme. Unfortunately, we won't be able to invite you to the next round of interviews.\n\nAcme Recruiting",
+    "expect": "rejection"
+  },
+  {
+    "name": "F7 Acme doesn't see the right fit (#51 R1, R3)",
+    "from": "Acme Recruiting <no-reply@lever.co>",
+    "subject": "Your application to Acme",
+    "body": "Hi Jordan,\n\nThank you for applying to the Backend Engineer role at Acme. After reviewing your background, we don’t see the right fit for this role at this time.\n\nAcme Recruiting",
+    "expect": "rejection"
+  },
+  {
+    "name": "F8 Acme rejection that asks whether you would relocate stays in the Inbox (#51 REPLY_REQUEST)",
+    "from": "Acme Recruiting <no-reply@greenhouse.io>",
+    "subject": "Your application to Acme",
+    "body": "Hi Jordan,\n\nThank you for applying to the Backend Engineer role at Acme. Unfortunately, we are not moving forward with remote candidates for this role. Please let us know if you are near, or willing to relocate to, Springfield.\n\nAcme Recruiting",
+    "expect": "keep"
+  },
+  {
+    "name": "F9 Acme made the decision to pursue other candidates (#51 R4)",
+    "from": "Acme Recruiting <no-reply@greenhouse.io>",
+    "subject": "Update on your application",
+    "body": "Hi Jordan,\n\nThank you for applying to the Backend Engineer role at Acme. After careful consideration, we have made the decision to pursue other candidates whose experience more closely matches our needs.\n\nAcme Recruiting",
     "expect": "rejection"
   }
 ]
