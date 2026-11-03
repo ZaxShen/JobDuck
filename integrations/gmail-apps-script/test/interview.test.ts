@@ -292,14 +292,58 @@ describe('the archive is an allowlist', () => {
     expect(t.calls).toEqual(['add ' + APPLICATIONS, 'archive']);
   });
 
-  test('verification-code mail is application mail, kept in the Inbox only with KEEP_ACTION_MAIL_IN_INBOX', () => {
+  test('verification-code mail asks for an action, so it stays untouched in the Inbox with or without KEEP_ACTION_MAIL_IN_INBOX', () => {
     const body = 'Your verification code is 482913. Enter it to continue your application for the Backend Engineer role.';
-    const archived = thread([], [message('Your verification code', body)]);
-    const kept = thread([], [message('Your verification code', body)]);
-    expect(load([archived]).api.processThread_(archived)).toBe('job');
-    expect(archived.calls).toEqual(['add ' + APPLICATIONS, 'archive']);
-    expect(load([kept], { KEEP_ACTION_MAIL_IN_INBOX: 'true' }).api.processThread_(kept)).toBe('kept');
-    expect(kept.calls).toEqual(['add ' + APPLICATIONS]);
+    const plain = thread([], [message('Your verification code', body)]);
+    const flagged = thread([], [message('Your verification code', body)]);
+    expect(load([plain]).api.processThread_(plain)).toBe('keep');
+    expect(plain.calls).toEqual([]);
+    expect(load([flagged], { KEEP_ACTION_MAIL_IN_INBOX: 'true' }).api.processThread_(flagged)).toBe('keep');
+    expect(flagged.calls).toEqual([]);
+  });
+});
+
+describe('v5.4: archive only what is certainly a plain confirmation', () => {
+  const untouched = (subject: string, body: string, from?: string) => {
+    const t = thread([], [message(subject, body, from)]);
+    const { api } = load([t]);
+    return { action: api.processThread_(t), t };
+  };
+
+  test.each([
+    ['recruiter will reach out to schedule', 'Thank you for applying', 'Hi Jordan,\n\nThank you for applying to the Backend Engineer role at Acme. Our recruiter will reach out to schedule your interview this week.\n\nAcme Recruiting'],
+    ['online assessment', 'Your Acme assessment', 'Hi Jordan,\n\nThank you for applying to the Backend Engineer role at Acme. As a next step, please complete the HackerRank coding assessment within 7 days: https://www.hackerrank.com/test/example\n\nAcme Recruiting'],
+    ['verify your email', 'Verify your email', 'Hi Jordan,\n\nThanks for applying to the Backend Engineer role at Acme. Verify your email to finish your application: https://careers.example.com/verify\n\nAcme Recruiting'],
+    ['security code', 'Your security code', 'Hi Jordan,\n\nYour security code for your application to the Backend Engineer role at Acme is 551204. It expires in 10 minutes.\n\nAcme Recruiting'],
+    ['application limit reached', 'Application limit reached', 'Hi Jordan,\n\nThank you for your interest in Acme. Application limit reached: you have applied to the maximum number of roles in 30 days.\n\nAcme Recruiting'],
+    ['application started, not submitted', 'You have started your application', "Hi Jordan,\n\nYou've started your application for the Backend Engineer role at Acme. Return any time to submit it.\n\nAcme Recruiting"],
+    ['phone screen confirmed with a date', 'Phone screen confirmed', 'Hi Jordan,\n\nThank you for applying to the Backend Engineer role at Acme. Your phone screen is confirmed for Tuesday, March 3 at 10:00 AM PT.\n\nAcme Recruiting'],
+    ['recruiter would love to chat', 'Your application to Acme', "Hi Jordan,\n\nThanks for applying to the Backend Engineer role at Acme. I'd love to chat about your background.\n\nSam Lee\nRecruiter, Acme"],
+  ])('%s stays untouched in the Inbox', (_name, subject, body) => {
+    const { action, t } = untouched(subject, body);
+    expect(action).toBe('keep');
+    expect(t.calls).toEqual([]);
+    expect(t.inInbox).toBe(true);
+  });
+
+  test('an unknown non-boilerplate sentence in an otherwise plain confirmation keeps the thread untouched', () => {
+    const plain = 'Hi Jordan,\n\nThank you for applying to the Backend Engineer role at Acme. We have received your application.\n\nAcme Recruiting';
+    const odd = 'Hi Jordan,\n\nThank you for applying to the Backend Engineer role at Acme. We have received your application. The hiring manager mentioned your open source work.\n\nAcme Recruiting';
+    expect(untouched('Thank you for applying', plain).action).toBe('job');
+    const { action, t } = untouched('Thank you for applying', odd);
+    expect(action).toBe('keep');
+    expect(t.calls).toEqual([]);
+  });
+
+  test.each([
+    ['Ashby', 'Recruiting <no-reply@ashbyhq.com>', "Hi Jordan,\n\nThank you for applying to the Backend Engineer role at Acme. We've received your application and our team will review it. If your experience is a match for the role, we will reach out about next steps.\n\nBest,\nAcme Recruiting\n\nAcme is an equal opportunity employer. We do not discriminate on the basis of race, religion, color, national origin, gender, sexual orientation, age, marital status, veteran status, or disability status.\n\nPowered by Ashby"],
+    ['Greenhouse', 'Acme <no-reply@us.greenhouse-mail.io>', 'Hi Jordan,\n\nThanks for applying to Acme. Your application has been received and we will review it right away. If your application seems like a good fit for the position, we will contact you soon.\n\nRegards,\nAcme Recruiting\n\nAcme will never ask for payment or banking details during the hiring process.\n\n** Please note: Do not reply to this email. This email is sent from an unattended mailbox. Replies will not be read.'],
+    ['Lever', 'Acme <no-reply@hire.lever.co>', 'Hi Jordan,\n\nThank you for your interest in Acme! We wanted to let you know we received your application for the Backend Engineer role, and we are delighted that you would consider joining our team.\n\nOur team will review your application and will be in touch if your qualifications match our needs for the role.\n\nThe Acme Team\n\nFor details on how we handle your personal information, please review our https://www.example.com/privacy'],
+    ['Workday', 'Acme Careers <acme@myworkday.com>', 'Dear Jordan,\n\nThank you for applying for the Backend Engineer position (R-123456) at Acme. We have received your application and it will be reviewed by our team.\n\nIf your qualifications match the position\'s requirements, a member of our recruiting team will contact you.\n\nSincerely,\nAcme Talent Acquisition\n\nThis is an automated email response. Please do not reply to this email.'],
+  ])('a %s-style confirmation with boilerplate footers is archived as application mail', (_ats, from, body) => {
+    const { action, t } = untouched('Thank you for applying to Acme', body, from);
+    expect(action).toBe('job');
+    expect(t.calls).toEqual(['add ' + APPLICATIONS, 'archive']);
   });
 });
 
