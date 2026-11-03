@@ -1414,23 +1414,46 @@ var FUTURE_ONLY = /\b(in the future|future (opportunities|roles|openings|positio
 // A rejection that asks the candidate to reply ("please let us know if you are willing to relocate") needs an answer.
 var REPLY_REQUEST = /\bplease (let us know|let me know|reply|respond|get back to (us|me)|confirm)\b[^.?!]{0,80}\b(if|whether) you(['’]re| are| would| were| can)\b/i;
 
-// A rejection that invites further contact ("Are you free Tuesday to chat about a different position?") is no plain
-// rejection: a question to you, a conversation, a date or time, a meeting tool, a request or an imperative, or a
-// booking or meeting link keeps it. Footer sentences are set aside as in actionIn_.
+// A rejection that might invite further contact is no plain rejection, so it stays in the Inbox ("Unfortunately we
+// don't see a direct fit. Can we talk?"). Outside the footer, any of these keeps it: a question that does more than
+// offer help with questions; a call, chat, talk, meeting or conversation not thanked for as past; another role, team
+// or opening, an interest in you for a role or a resume passed along, unless the sentence points to the job board; a
+// promise that someone will reach out that is not tied to a future opening; a contact ACTION_SIGNALS kind (a question to you, a conversation, a date or time, a
+// meeting tool, a request or an imperative); or a booking or meeting link anywhere.
 var CONTACT_KINDS = ['question', 'conversation', 'date or time', 'tool', 'request', 'imperative'];
 var CONTACT_SIGNALS = ACTION_SIGNALS.filter(function (sig) { return CONTACT_KINDS.indexOf(sig[0]) >= 0; });
+var CONTACT_WORDS = /\b(call|chat|chats|chatting|talk|talks|talking|speak|speaking|meet|meeting|meetings|conversations?|discuss|discussing|discussions?|catch up|hop on|jump on|connect (with )?you)\b/i;
+var CONTACT_PAST = /\bthank(s| you)\b[^.!?]*\b(for|of)\b[^.!?]*\b(time|speaking|talking|meeting|chatting|conversations?|calls?|chats?|discussions?)\b|\b(spoke|talked|met|chatted|discussed)\b|\bpleasure (of )?(speaking|meeting|talking|chatting|getting to know)\b|\b(enjoyed|appreciated|appreciate|valued) (\w+ ){0,3}(speaking|meeting|talking|chatting|conversations?|calls?|discussions?)\b/i;
+var OTHER_ROLE = /\b(other|another|different|alternative|alternate|additional|new|separate|similar|related|open) (\w+ ){0,2}(roles?|positions?|openings?|opportunit(y|ies)|teams?|jobs?|reqs?|requisitions?|vacanc(y|ies)|departments?|groups?)\b|\binstead\b/i;
+// "We encourage you to check our careers page for other openings" points to the job board, not to a conversation.
+var JOB_BOARD = /\b(re)?appl(y|ying|ied|ication|ications)\b|\bcareers?\b|\b(site|page|website|postings?|job board|listings?)\b|\b(visit|view|check|monitor|explore|exploring|browse|follow|keep an eye)\b|\bstay (informed|connected|in touch)\b|\binterviewing\b|\bcandidates?\b|\b(arise|comes? up|open up|opens up|become available|becomes available|posted)\b|\b(future|should)\b/i;
+var WANTS_YOU = /\b(consider|considering) you\b|\byou (could|would|might|may|will) be (a |an )?(\w+ )?fit\b|\b(interested in|keen on|excited about) (you|your (profile|background|experience))\b|\b(we|I)(['’]ve| have| will|['’]ll| would|['’]d| are|['’]re| am|['’]m)? (also )?(pass|passed|passing|forward|forwarded|forwarding|share|shared|sharing|refer|referred|referring)( along)? your\b/i;
+var CONDITIONAL_CONTACT = /\b(if|should|when|whenever|once|in case|in the event|as soon as)\b/i;
 
+function contactSentence_(sentence) {
+  var questions = ABOUT_QUESTIONS.test(sentence);
+  if (!questions && /\?/.test(sentence)) return true;
+  if (CONTACT_SIGNALS.some(function (sig) { return !(questions && sig[2]) && sig[1].test(sentence); })) return true;
+  if ((WANTS_YOU.test(sentence) || OTHER_ROLE.test(sentence)) && !FUTURE_ONLY.test(sentence) && !JOB_BOARD.test(sentence)) {
+    return true;
+  }
+  if (CONTACT_WORDS.test(sentence) && !CONTACT_PAST.test(sentence)) return true;
+  return FUTURE_CONTACT.test(sentence) && !FUTURE_ONLY.test(sentence) && !CONDITIONAL_CONTACT.test(sentence);
+}
+
+/** The first link or sentence that might invite further contact, or null. Footer sentences are set aside. */
 function invitesContact_(body) {
-  if (ACTION_LINK.test(String(body || ''))) return true;
-  return bodyParts_(body).sentences.some(function (sentence) {
-    if (footer_(sentence)) return false;
-    var questions = ABOUT_QUESTIONS.test(sentence);
-    return CONTACT_SIGNALS.some(function (sig) { return !(questions && sig[2]) && sig[1].test(sentence); });
-  });
+  var link = String(body || '').match(ACTION_LINK);
+  if (link) return link[0];
+  var sentences = bodyParts_(body).sentences;
+  for (var i = 0; i < sentences.length; i++) {
+    if (!footer_(sentences[i]) && contactSentence_(sentences[i])) return sentences[i];
+  }
+  return null;
 }
 
 function rejectionStands_(body) {
-  return !invitesContact_(body) && !splitSentences(body).some(function (sentence) {
+  return invitesContact_(body) === null && !splitSentences(body).some(function (sentence) {
     return REPLY_REQUEST.test(sentence) || (directOffer_(sentence) && !FUTURE_ONLY.test(sentence));
   });
 }

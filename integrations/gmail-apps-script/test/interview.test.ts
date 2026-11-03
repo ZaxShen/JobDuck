@@ -373,6 +373,64 @@ describe('v5.4: archive only what is certainly a plain confirmation', () => {
     },
   );
 
+  const MAYBE_CONTACT = [
+    'Could we set up a call about our Staff role?',
+    'Can we talk?',
+    'Would a quick call about another opening work?',
+    'Our hiring manager would like to set up a call about a different role.',
+    'Interested in a different role? Reply to this email.',
+    'Open to other roles? Our Platform team is hiring.',
+    'Happy to set up a call about other openings.',
+    'We have another opening on our Platform team that may be a better fit, and the hiring manager would like to speak with you.',
+    'We think you could be a great fit for our Staff role instead.',
+    'Feel free to grab time on my calendar: https://acme.com/recruiter',
+    "We'd like to consider you for our Staff role instead.",
+    'Would love to chat about another role.',
+    "We'd like to invite you to interview for a different position.",
+    "I've passed your resume to our Platform team, who will reach out.",
+    'A recruiter will reach out about other roles.',
+    'Please email us if you would like us to reach out about additional opportunities.',
+  ];
+
+  test.each(DECLINES.flatMap((d) => MAYBE_CONTACT.map((q) => [d, q])))(
+    'a rejection that might invite further contact stays untouched (F49-1): %s %s',
+    (decline, invite) => {
+      const { action, t } = untouched('Your application to Acme', rejectionWith(decline, invite), 'Acme Recruiting <no-reply@greenhouse.io>');
+      expect(action).not.toBe('deny');
+      expect(t.calls).toEqual([]);
+      expect(t.inInbox).toBe(true);
+    },
+  );
+
+  const D = 'Unfortunately, we have decided not to move forward with your application.';
+  test.each([
+    ['a signature line offering a call', 'Hi Dan,\n\nThank you for your interest in the Backend Engineer role at Acme. ' + D + '\n\nBest,\nJane Doe\nRecruiter at Acme\nBook a call with me anytime\n'],
+    ['a question in the greeting', 'Hi Dan, are you free Tuesday?\n\nThank you for your interest in the Backend Engineer role at Acme. ' + D + '\n\nBest,\nAcme Recruiting'],
+  ])('a rejection with %s stays untouched (F49-1)', (_name, body) => {
+    const { action, t } = untouched('Your application to Acme', body, 'Acme Recruiting <no-reply@greenhouse.io>');
+    expect(action).not.toBe('deny');
+    expect(t.calls).toEqual([]);
+  });
+
+  test.each([
+    'We encourage you to apply for future roles.',
+    'We wish you the best in your search.',
+    'We encourage you to visit our careers page for other opportunities that match your interests.',
+    'Please continue to check our career site for new openings and apply if a role catches your eye.',
+    'Thank you for taking the time to speak with our team.',
+    'This was not an easy decision, and we had to make some difficult calls.',
+    'However, we will be in touch should your qualifications be a good fit for other opportunities.',
+  ])('a rejection with a courtesy sentence and no contact invite is still denied (F49-1): %s', (courtesy) => {
+    const { action } = untouched('Your application to Acme', rejectionWith(D, courtesy), 'Acme Recruiting <no-reply@greenhouse.io>');
+    expect(action).toBe('deny');
+  });
+
+  test('a rejection whose signature is a row of profile links is still denied', () => {
+    const body = 'Hi Dan,\n\nThank you for your interest in the Backend Engineer role at Acme. ' + D + '\n\nBest,\nJane Doe\nRecruiter at Acme\nhttps://acme.com/jane | https://linkedin.com/in/jane\n';
+    const { action } = untouched('Your application to Acme', body, 'Acme Recruiting <no-reply@greenhouse.io>');
+    expect(action).toBe('deny');
+  });
+
   test.each(DECLINES)('a plain rejection with equal opportunity and do-not-reply footers is still denied: %s', (decline) => {
     const body = 'Hi Dan,\n\nThank you for your interest in the Backend Engineer role at Acme. ' + decline +
       ' We wish you the best in your search.\n\nBest,\nAcme Recruiting\n\nAcme is an equal opportunity employer. All qualified applicants will receive consideration for employment without regard to race, color, religion, sex, national origin, disability or protected veteran status.\n\nPlease do not reply to this email. This email is sent from an unattended mailbox.';
@@ -384,6 +442,8 @@ describe('v5.4: archive only what is certainly a plain confirmation', () => {
     ['bullet-separated', 'https://acme.com/offer/sign • https://acme.com/careers'],
     ['comma-separated', 'https://acme.com/onboarding/documents, https://acme.com/careers'],
     ['pipe-separated', 'https://acme.com/portal/tasks | https://acme.com/careers'],
+    ['single', 'https://acme.com/offer/sign'],
+    ['labelled social', 'LinkedIn https://linkedin.com/company/acme • Twitter https://twitter.com/acme'],
   ])('a confirmation with a %s row of links stays untouched (F48-2)', (_name, links) => {
     const body = 'Hi Dan,\n\nThank you for applying to the Backend Engineer role at Acme. We have received your application.\n\n' + links + '\n\nAcme Recruiting';
     const { action, t } = untouched('Thank you for applying to Acme', body, 'Acme Recruiting <no-reply@greenhouse.io>');

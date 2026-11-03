@@ -210,9 +210,12 @@ trigger are kept.
   right fit", "made the decision to pursue other candidates", "not moving you forward to an interview"); "not" or
   "never" before "move you forward" no longer reads as advancing you; a negated offer is no offer; a rejection that
   asks you to reply ("please let us know if you are willing to relocate") stays in the Inbox; and a rejection is
-  denied only when no sentence invites further contact, so a question to you, a conversation, a date or time, a
-  meeting tool, a request or imperative, or a booking or meeting link anywhere outside the footer ("Unfortunately we
-  don't see a direct fit. Are you free Tuesday to chat about a different position?") keeps it in the Inbox. A row of
+  denied only when no sentence might invite further contact. Outside the footer, any question other than an offer of
+  help with questions ("Can we talk?"), a call, chat, talk, meeting or conversation not thanked for as past ("Could we
+  set up a call about our Staff role?"), another role, team or opening not pointed to on the careers site, interest
+  in you for a role, a resume passed along, an unconditional promise that someone will reach out, a date or time, a
+  meeting tool, a request or imperative, or a booking or meeting link anywhere ("Unfortunately we don't see a direct
+  fit. Are you free Tuesday to chat about a different position?") keeps it in the Inbox. A row of
   bare links is never a footer, so a confirmation carrying links stays in the Inbox. Fixtures F4 to F9 cover
   these. `bun test` adds interview, assessment, verification, security-code, application-limit, unfinished-application,
   phone-screen and recruiter-chat mail that stays untouched, Ashby, Greenhouse, Lever and Workday-style confirmations
