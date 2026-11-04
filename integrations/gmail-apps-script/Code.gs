@@ -1,5 +1,5 @@
 /**
- * Job Duck — Gmail Rejection Sync v5.4
+ * Job Duck — Gmail Rejection Sync v5.5
  * Script v5.4 — serve-only: rejections are queued in the script and served to `jobduck sync` by the script deployed
  * as a web app. Nothing is pushed anywhere.
  *
@@ -1276,7 +1276,7 @@ function acknowledges_(re, sentence, vetoWord) {
     .replace(/\s+/g, ' ').replace(/[.!]+$/, '').trim();
   if (!s) return true;
   if (s.length > 300) return false;
-  var m = re.exec(s);
+  var m = re.exec ? re.exec(s) : shapeMatch_(re, s);
   return !!m && m.slice(1).every(function (g) {
     return !g || (g.length <= 80 && !SCHEDULING_WORDS.test(g) && !(vetoWord && vetoWord.test(g)));
   });
@@ -1491,8 +1491,12 @@ var RJ_CONTACT_VERB = 'e-?mail|contact|text|txt|ping|call|ring|phone|messag|msg|
 // sentence keeps the thread in the Inbox.
 var RJ_CONTACT_STEMS = 'e-?mail|contact|call|reach|phon|schedul|connect|chat|meet|messag|text|ping|dm|talk|speak|ring|book|calendar';
 var RJ_CONTACT_STEM = new RegExp('\\b(?:' + RJ_CONTACT_STEMS + ')\\w*', 'i');
-var RJ_NAME_STOP = 'at|and|or|but|so|then|to|if|when|once|while|not|this|that|these|those|time|times|here|there|now|open|you|your|yours|we|us|our|i|me|my|is|are|was|were|be|been|will|would|can|could|may|might|should|shall|has|have|had|do|does|did|please|kindly|(?:' + RJ_CONTACT_VERB + ')\\w*';
-var RJ_NAME = "((?:(?!(?:" + RJ_NAME_STOP + ")\\b)[a-z&'()/+#.-][a-z0-9&'()/+#.-]*(?![a-z0-9&'()/+#.-])(?:,? (?=[a-z&'()/+#.-]))?){1,10})";
+var RJ_NAME_STOP = 'at|and|or|but|so|then|to|if|when|once|while|not|this|that|these|those|time|times|here|there|now|open|you|your|yours|we|us|our|i|me|my|is|are|was|were|be|been|will|would|can|could|may|might|should|shall|has|have|had|do|does|did|please|kindly';
+var RJ_NAME_GUARD = '(?!(?:' + RJ_NAME_STOP + ')\\b|' + RJ_CONTACT_VERB + ')';
+// The few guarded words that start most sentences' clauses, a subset of the guard that costs a sliver of its size.
+var RJ_NAME_LOOSE_GUARD = '(?!(?:a(?:t|nd|re)|or|but|so|t(?:hen|o|his|hat|imes?)|i[fs]?|wh(?:en|ile)|once|you(?:rs?)?|we(?:re)?|us|our|here|open|was|please|m[ey])\\b|e-?mail)';
+var RJ_GUARDED_WORD = new RegExp('^' + RJ_NAME_GUARD.replace('(?!', '(?:'), 'i');
+var RJ_NAME = "((?:" + RJ_NAME_GUARD + "[a-z&'()/+#.-][a-z0-9&'()/+#.-]*(?![a-z0-9&'()/+#.-])(?:,? (?=[a-z&'()/+#.-]))?){1,10})";
 var RJ_VETO_WORD = new RegExp('(?:^|\\s)(?:' + ACK_VETO.replace('repl\\w*', 'repl(?:y|ies|ied|ying)') + '|at|(?:' + RJ_CONTACT_VERB + '|' + RJ_CONTACT_STEMS + ')\\w*)\\b', 'i');
 var RJ_POST ='(?:role|position|opening|opportunity|job|req|requisition|vacancy)';
 var RJ_JOB = '(?:(?:the|this|our|that|your) (?:(?:particular|specific|current|open) )?' + RJ_POST + '(?: you applied (?:to|for))?' +
@@ -1781,16 +1785,121 @@ function unrollRepeats_(src) {
 
 function rejectionRegExp_(pattern) { return new RegExp(unrollRepeats_(pattern), 'i'); }
 
-// One expression per clause, and the leads apart: a single alternation of them all backtracks for seconds on a long
-// near-miss sentence, and the leads repeated in every clause cost seconds to compile.
-var REJECTION_CLAUSES = RJ_CLAUSES.map(function (clause) { return rejectionRegExp_('^(?:' + clause + ')$'); });
+/** The pattern split at its top-level "|". */
+function topAlternatives_(src) {
+  var out = [], depth = 0, inClass = false, from = 0;
+  for (var i = 0; i < src.length; i++) {
+    var c = src[i];
+    if (c === '\\') { i++; continue; }
+    if (inClass) { inClass = c !== ']'; continue; }
+    if (c === '[') inClass = true;
+    else if (c === '(') depth++;
+    else if (c === ')') depth--;
+    else if (c === '|' && !depth) { out.push(src.slice(from, i)); from = i + 1; }
+  }
+  return out.concat(src.slice(from));
+}
+
+/** Lowercase literal runs any case-insensitive match of the pattern holds, as lists of which every match holds at
+ *  least one string each. A run breaks at every escape, class, group, quantifier or non-ASCII character, so the lists
+ *  are only ever looser than the pattern. */
+function requiredLiterals_(src) {
+  var i = 0, quant = /(?:[?*+]|\{(\d+)(?:,\d*)?\})\??/y;
+  var minRepeat = function () {
+    quant.lastIndex = i;
+    var q = quant.exec(src);
+    if (!q) return 1;
+    i = quant.lastIndex;
+    return q[0][0] === '+' ? 1 : q[0][0] === '{' ? Number(q[1]) : 0;
+  };
+  var shortest = function (any) { return Math.min.apply(null, any.map(function (s) { return s.length; })); };
+  var sequence = function () {
+    var need = [], run = '';
+    var flush = function () { if (run.trim().length >= 3) need.push([run]); run = ''; };
+    while (i < src.length && src[i] !== '|' && src[i] !== ')') {
+      var c = src[i], head = src.substr(i, 4);
+      if (c === '(') {
+        var look = /^\(\?<?[=!]/.test(head);
+        i += look ? (src[i + 2] === '<' ? 4 : 3) : /^\(\?<[A-Za-z]/.test(head) ? src.indexOf('>', i) + 1 - i : src[i + 1] === '?' ? 3 : 1;
+        var inner = alternation();
+        i++;
+        flush();
+        if (minRepeat() > 0 && !look) need = need.concat(inner);
+      } else if (c === '[') {
+        for (i++; src[i] !== ']'; i++) if (src[i] === '\\') i++;
+        i++;
+        flush();
+        minRepeat();
+      } else if (c === '\\' || '.^${}?*+'.indexOf(c) >= 0 || c.charCodeAt(0) > 127) {
+        i += c !== '\\' ? 1 : src[i + 1] === 'u' ? 6 : src[i + 1] === 'x' ? 4 : src[i + 1] === 'c' ? 3 : 2;
+        flush();
+        minRepeat();
+      } else {
+        i++;
+        quant.lastIndex = i;
+        if (quant.test(src)) { flush(); minRepeat(); } else run += c.toLowerCase();
+      }
+    }
+    flush();
+    return need;
+  };
+  var alternation = function () {
+    var options = [sequence()];
+    while (src[i] === '|') { i++; options.push(sequence()); }
+    if (options.length === 1) return options[0];
+    var any = [];
+    for (var o = 0; o < options.length; o++) {
+      if (!options[o].length) return [];
+      any = any.concat(options[o].reduce(function (best, x) { return shortest(x) > shortest(best) ? x : best; }));
+    }
+    return [any.filter(function (s, k) { return any.indexOf(s) === k; })];
+  };
+  return alternation();
+}
+
+/** One anchored expression per top-level alternative of the pattern, built on first need, each with the literals a
+ *  match must hold: a sentence without them never compiles or runs it. Tried in order, the first that matches stands
+ *  for the whole alternation, as it would in the one expression. A part with name slots runs first with the loose guard
+ *  in place of theirs, which is most of its size: it matches whatever the guarded one does, and when no word of its
+ *  first match's names is guarded that match is the guarded one's first too. Only otherwise is the guarded one built. */
+function rejectionShape_(pattern, tail) {
+  return topAlternatives_(pattern).map(function (alt) {
+    var source = '^(?:' + alt + ')' + tail, loose = source.split(RJ_NAME_GUARD).join(RJ_NAME_LOOSE_GUARD);
+    return { source: source, loose: loose === source ? null : loose, need: requiredLiterals_(alt), re: null, strict: null };
+  });
+}
+
+function guardedName_(name) {
+  return !!name && name.split(/,? /).some(function (word) { return RJ_GUARDED_WORD.test(word); });
+}
+
+function shapeMatch_(shape, text) {
+  var lower = text.toLowerCase();
+  for (var i = 0; i < shape.length; i++) {
+    var part = shape[i];
+    if (!part.need.every(function (any) { return any.some(function (s) { return lower.indexOf(s) >= 0; }); })) continue;
+    part.re = part.re || rejectionRegExp_(part.loose || part.source);
+    var m = part.re.exec(text);
+    if (m && part.loose && m.slice(1).some(guardedName_)) {
+      part.strict = part.strict || rejectionRegExp_(part.source);
+      m = part.strict.exec(text);
+    }
+    if (m) return m;
+  }
+  return null;
+}
+
+// One expression per clause alternative, and the leads apart: a single alternation of them all backtracks for seconds
+// on a long near-miss sentence, the leads repeated in every clause cost seconds to compile, and compiling every
+// alternative up front runs Apps Script out of memory.
+var REJECTION_CLAUSES = RJ_CLAUSES.map(function (clause) { return rejectionShape_(clause, '$'); });
 var RJ_CONTACT_EXEMPT = [RJ_DECISION_SENTENCE].concat(RJ_NOTICES);
 var RJ_CONTACT_CHECKED = RJ_CLAUSES.map(function (clause) { return RJ_CONTACT_EXEMPT.indexOf(clause) < 0; });
 var RJ_ANY_LEAD = RJ_LEADS + '|' + RJ_TEAM_NAME + ' team' + RJ_TEAM_AT + '|' + RJ_LINK_ROW + '|(?:hi|hello|dear|hey) ' + RJ_NAME + ' ?';
 var REJECTION_LEADS = rejectionRegExp_('^(?:' + RJ_ANY_LEAD + ')(?:,? (?:' + RJ_ANY_LEAD + ')){0,2},?$');
 // A frame line stands alone as a whole sentence, never as one clause of a longer one; an emoji may trail it.
 var REJECTION_FRAME = RJ_FRAME.map(function (line) {
-  return rejectionRegExp_('^(?:' + line + ')(?: ?(?:[\\uD83C-\\uD83E][\\uDC00-\\uDFFF]|[\\u2600-\\u27BF]))*$');
+  return rejectionShape_(line, '(?: ?(?:[\\uD83C-\\uD83E][\\uDC00-\\uDFFF]|[\\u2600-\\u27BF]))*$');
 });
 
 function rejectionClause_(text) {
