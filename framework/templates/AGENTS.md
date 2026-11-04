@@ -39,6 +39,7 @@ When a request matches a trigger, read the skill file and follow it.
 | find | "find jobs", "search for roles", "what should I apply to" | `{{home}}/skills/find.md` |
 | apply | "apply to jobs", "submit applications", "apply to this posting <url>" | `{{home}}/skills/apply.md` |
 | track | "show my applications", "mark <company> as rejected", "what's my pipeline" | `{{home}}/skills/track.md` |
+| sort-mail | "sort my job mail", "clean up my job emails", "file my rejections" | `{{home}}/skills/sort-mail.md` |
 | cv | "write my CV", "tailor my resume for <role>" | `{{home}}/skills/cv.md` |
 | augment | "augment my profile", "enrich my experience", "break my experience into facts" | `{{home}}/skills/augment.md` |
 | interview | "prep me for my interview at <company>", "I got an offer", "record the outcome" | `{{home}}/skills/interview.md` |

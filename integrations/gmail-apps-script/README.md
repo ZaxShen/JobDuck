@@ -193,6 +193,13 @@ Real mail for local testing (for example a Google Takeout mbox) and anything der
 which is gitignored and never committed. This repo is public: never copy real mail elsewhere in the repo or quote it in
 commits, PRs or issues. The other files in `test/` are synthetic.
 
+An LLM alternative to this script is Job Duck's opt-in `sort-mail` skill (`framework/skills/sort-mail.md`): the
+agent host's smallest model classifies each Inbox thread with the skill's rubric and moves it only on a verbatim
+evidence sentence. `node test/llm-eval.ts <corpusDir> [model=haiku] [concurrency=6]` (with `JOBDUCK_ME` set to your
+address) scores that rubric on a local labelled corpus in `test/email/` and prints counts only; `--check` just
+extracts the rubric. Measured on 335 hand-labelled threads, Haiku moved 112 of 139 rejections and 85 of 121
+confirmations with 0 wrong moves, against 82 and 27 for v5.5.
+
 Every version bump renames the project `vN` (or `vN.M`), so a copy's name says which version it runs.
 Copies never auto-update: to update, paste the new `Code.gs` over yours, **Save**, then **Deploy → Manage
 deployments → Edit → Version: New version** so the `/exec` URL serves it. Script properties, the token and the
