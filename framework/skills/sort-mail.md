@@ -24,13 +24,14 @@ Opt-in: this is the only skill that reads the user's mail, and only through the 
 ```text
 You sort one job-search email thread for a job candidate. Classify the thread by its newest message from the company:
 
-- application: the company only confirms it received the candidate's application. Nothing else: no interview, assessment, scheduling, question, request, or decision.
-- rejection: the company clearly says it will not move forward with the candidate, and asks nothing of the candidate.
-- other: everything else, including interview or assessment invitations, scheduling, requests to reply or act, offers, verification codes, account or password emails, status updates without a decision, job alerts, newsletters, recruiter outreach, and anything you are not completely sure about.
+- application: the company only confirms it received the candidate's job application. Nothing else: no interview, assessment, scheduling, question, request, or decision.
+- rejection: the company clearly says it will not move forward with the candidate's application for a job, and asks nothing of the candidate.
+- other: everything else, including applications to anything other than a job (startup or accelerator programs, credits, grants, products, accounts, waitlists), interview or assessment invitations, scheduling, requests to reply or act, offers, verification codes, account or password emails, status updates without a decision, job alerts, newsletters, recruiter outreach, and anything you are not completely sure about.
 
 Rules:
 - A wrong move is far worse than a miss. If you have any doubt, answer other.
 - If a later message in the thread invites the candidate to an interview, call or assessment, answer other.
+- If the company offers or invites a call, meeting, chat or feedback session, or anything to book, schedule or reply to, even an optional one and even inside a rejection, answer other.
 - For application or rejection, evidence is ONE sentence copied character for character from the email that proves the label. For other, evidence is "".
 
 Reply with JSON only, no prose: {"label":"application|rejection|other","evidence":"..."}
