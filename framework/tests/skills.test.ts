@@ -11,14 +11,14 @@ import { PACKAGE_VERSION, installSkills, skillNames, skillsUpToDate } from '../s
 const skillsDir = () => join(import.meta.dir, '..', 'skills')
 const templatesDir = () => join(import.meta.dir, '..', 'templates')
 
-const SKILLS = ['apply', 'augment', 'cv', 'find', 'interview', 'setup', 'track']
+const SKILLS = ['apply', 'augment', 'cv', 'find', 'interview', 'setup', 'sort-mail', 'track']
 const read = (name: string) => readFileSync(join(skillsDir(), `${name}.md`), 'utf8')
 
 let box: Sandbox
 beforeEach(() => { box = sandbox() })
 afterEach(() => box.cleanup())
 
-test('the package ships exactly the seven skills', () => {
+test('the package ships exactly the eight skills', () => {
   expect(skillNames()).toEqual(SKILLS)
 })
 
@@ -77,7 +77,7 @@ test('apply records every EXTRACTED v3 key', () => {
 test('installSkills copies the skills privately and stamps the version', () => {
   expect(skillsUpToDate(box.home)).toBe(false)
   const written = installSkills(box.home)
-  expect(written).toHaveLength(7)
+  expect(written).toHaveLength(8)
   const dir = join(box.home, 'skills')
   expect(readdirSync(dir).sort()).toEqual(['.version', ...SKILLS.map((name) => `${name}.md`)])
   for (const name of SKILLS) {
@@ -104,4 +104,22 @@ test('setup and track describe jobduck sync', () => {
   expect(read('setup')).toContain('jobduck sync --dry-run')
   expect(read('setup')).toContain('generateSyncToken')
   expect(read('track')).toContain('jobduck sync')
+})
+
+test('sort-mail carries one rubric block and moves only on a verified quote', () => {
+  const text = read('sort-mail')
+  const blocks = [...text.matchAll(/^```text\n([\s\S]*?)\n```$/gm)]
+  expect(blocks).toHaveLength(1)
+  expect(blocks[0]![1]).toContain('Reply with JSON only, no prose: {"label":"application|rejection|other","evidence":"..."}')
+  for (const phrase of ['newest message is from the user', 'Classify each thread on its own', 'runs of whitespace', 'remove the thread from the Inbox', 'leaves the thread untouched']) {
+    expect(text).toContain(phrase)
+  }
+  const never = text.slice(text.indexOf('## Never'))
+  for (const action of ['Delete', 'trash', 'spam', 'reply', 'forward', 'send', 'draft', 'interview']) expect(never).toContain(action)
+})
+
+test('track points mail reading at the opt-in sort-mail skill', () => {
+  const text = read('track')
+  expect(text).not.toContain('no mail access')
+  expect(text).toContain('sort-mail')
 })
