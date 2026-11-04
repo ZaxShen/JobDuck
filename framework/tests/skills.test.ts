@@ -115,6 +115,7 @@ test('sort-mail carries one rubric block and moves only on a verified quote', ()
   expect(rubric).toContain("confirms it received the candidate's job application")
   expect(rubric).toContain("will not move forward with the candidate's application for a job")
   expect(rubric).toContain('applications to anything other than a job (startup or accelerator programs, credits, grants, products, accounts, waitlists)')
+  expect(rubric).toContain('If the company offers or invites a call, meeting, chat or feedback session, or anything to book, schedule or reply to, even an optional one and even inside a rejection, answer other.')
   for (const phrase of ['newest message is from the user', 'Classify each thread on its own', 'runs of whitespace', 'remove the thread from the Inbox', 'leaves the thread untouched']) {
     expect(text).toContain(phrase)
   }

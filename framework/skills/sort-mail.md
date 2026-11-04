@@ -31,6 +31,7 @@ You sort one job-search email thread for a job candidate. Classify the thread by
 Rules:
 - A wrong move is far worse than a miss. If you have any doubt, answer other.
 - If a later message in the thread invites the candidate to an interview, call or assessment, answer other.
+- If the company offers or invites a call, meeting, chat or feedback session, or anything to book, schedule or reply to, even an optional one and even inside a rejection, answer other.
 - For application or rejection, evidence is ONE sentence copied character for character from the email that proves the label. For other, evidence is "".
 
 Reply with JSON only, no prose: {"label":"application|rejection|other","evidence":"..."}
