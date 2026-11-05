@@ -13,7 +13,7 @@ The installer is a TypeScript script run by [Bun](https://bun.sh), so install Bu
 macOS and Linux (arm64 or x64):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ZaxShen/JobDuck/main/framework/scripts/install.ts | bun run -
+curl -fsSL https://raw.githubusercontent.com/ZaxShen/JobDuck/dev/framework/scripts/install.ts | bun run -
 mkdir ~/JobDuck && cd ~/JobDuck
 jobduck init
 ```
@@ -21,7 +21,7 @@ jobduck init
 Windows (x64), in PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/ZaxShen/JobDuck/main/framework/scripts/install.ts | bun run -
+irm https://raw.githubusercontent.com/ZaxShen/JobDuck/dev/framework/scripts/install.ts | bun run -
 ```
 
 The installer downloads the binary for your platform from [GitHub Releases](https://github.com/ZaxShen/JobDuck/releases), checks it against the release's `SHA256SUMS`, and puts it in `~/.local/bin` (`jobduck.exe` on Windows) without root or admin rights. `JOBDUCK_VERSION=0.1.0` pins a version; `JOBDUCK_CHANNEL=rc` or `JOBDUCK_CHANNEL=dev` installs from a [prerelease channel](#release-channels); `JOBDUCK_INSTALL_DIR=<dir>` picks another directory.
@@ -84,6 +84,8 @@ jobduck upgrade 0.1.0            # install a specific version
 ```
 
 `upgrade` downloads the release asset for your platform from GitHub, refuses it unless its SHA-256 matches the release's `SHA256SUMS`, and swaps it in place. The next `jobduck` command (any but `init` and `upgrade`) refreshes the home's `skills/` to the new version; `jobduck init` does too.
+
+`upgrade` also restarts a running dashboard on the new build, on the same port and workspace. Builds older than that restart (PR #60) leave the old dashboard running, so stop it before upgrading from one: press Ctrl+C where `jobduck dashboard` runs, or for a `--background` dashboard end the process whose `pid` is in `dashboard.json` in your Job Duck home (`<workspace>/.jobduck/` by default). Agent hosts keep running the old binary for the MCP server until you restart the host.
 
 ### Release channels
 

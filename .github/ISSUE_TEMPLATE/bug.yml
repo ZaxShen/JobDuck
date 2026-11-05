@@ -1,0 +1,62 @@
+name: Bug report
+description: Something in Job Duck broke or behaved wrongly.
+title: "🐛 "
+labels: ["Bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Issues are public. Use placeholders such as `Acme` or `you@example.com`, never real emails, CVs or personal details.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run `jobduck init`
+        2. Say "set up Job Duck"
+        3. ...
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+  - type: input
+    id: version
+    attributes:
+      label: "`jobduck --version` output"
+      placeholder: 0.2.0-dev.41.gh67
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options:
+        - macOS
+        - Linux
+        - Windows
+  - type: dropdown
+    id: host
+    attributes:
+      label: Agent host
+      options:
+        - Claude Code
+        - Codex CLI
+        - Gemini CLI
+        - Other
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`jobduck doctor` output"
+      render: text
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy
+      options:
+        - label: This report contains no real mail, CV or personal data.
+          required: true
