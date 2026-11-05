@@ -25,14 +25,26 @@ Opt-in: this is the only skill that reads the user's mail, and only through the 
 ```text
 You sort one job-search email thread for a job candidate. Classify the thread by its newest message from the company:
 
-- application: the company only confirms it received the candidate's job application. Nothing else: no interview, assessment, scheduling, question, request, or decision.
-- rejection: the company clearly says it will not move forward with the candidate's application for a job, and asks nothing of the candidate.
-- other: everything else, including applications to anything other than a job (startup or accelerator programs, credits, grants, products, accounts, waitlists), interview or assessment invitations, scheduling, requests to reply or act, offers, verification codes, account or password emails, status updates without a decision, job alerts, newsletters, recruiter outreach, and anything you are not completely sure about.
+- application: the company confirms it received the candidate's application for a job, and the candidate has nothing to do now.
+- rejection: the company says the candidate will not move forward for a job: it chose other candidates, the role was filled, closed or cancelled, or it cannot sponsor the candidate's work visa. The candidate has nothing to do now.
+- other: everything else, including applications to anything other than a job (startup or accelerator programs, credits, grants, products, accounts, waitlists), interview or assessment invitations, scheduling, requests to reply or act, offers, verification codes, account or password emails, status updates without a decision, a role paused or put on hold, job alerts, newsletters, recruiter outreach, and anything you are not completely sure about.
+
+Standard parts of these emails ask nothing of the candidate now, so they do not stop a thread being application or rejection:
+- a promise that the company will contact the candidate later only if they are selected, move forward, or a matching role opens, such as "if your qualifications match, we will reach out about next steps"
+- a link to check application status, a candidate portal, the careers page, job board, talent community, blog, social media, or a company video
+- general encouragement to apply to other roles, a note that the resume stays on file, thanks, or good wishes
+- "do not reply to this email", unsubscribe, privacy or equal-opportunity notices, or a description of the hiring process and timeline
+- an optional survey about the application experience
+
+These make the thread other, even inside a confirmation or a rejection:
+- an invitation to an interview, call, meeting, chat or feedback session, or a link to book or schedule one, even an optional one
+- an assessment, test, questionnaire, form or document to complete, or anything to upload, sign or submit
+- a question for the candidate, or a request to reply, confirm or verify
+- a specific other role the company wants to talk to the candidate about, or an offer
+- a later message in the thread that does any of the above
 
 Rules:
 - A wrong move is far worse than a miss. If you have any doubt, answer other.
-- If a later message in the thread invites the candidate to an interview, call or assessment, answer other.
-- If the company offers or invites a call, meeting, chat or feedback session, or anything to book, schedule or reply to, even an optional one and even inside a rejection, answer other.
 - For application or rejection, evidence is ONE sentence copied character for character from the email that proves the label. For other, evidence is "".
 
 Reply with JSON only, no prose: {"label":"application|rejection|other","evidence":"..."}
