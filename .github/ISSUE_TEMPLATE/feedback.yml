@@ -1,0 +1,41 @@
+name: Feedback
+description: Tell us what worked, what was confusing, and what you'd change.
+title: "⚡ "
+labels: ["Improvement"]
+body:
+  - type: markdown
+    attributes:
+      value: Issues are public. Use placeholders such as `Acme` or `you@example.com`, never real emails, CVs or personal details.
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you tried
+  - type: textarea
+    id: worked-or-confusing
+    attributes:
+      label: What worked or was confusing
+  - type: textarea
+    id: change
+    attributes:
+      label: What you'd change
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `jobduck --version`.
+  - type: dropdown
+    id: host
+    attributes:
+      label: Agent host
+      options:
+        - Claude Code
+        - Codex CLI
+        - Gemini CLI
+        - Other
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy
+      options:
+        - label: This report contains no real mail, CV or personal data.
+          required: true
