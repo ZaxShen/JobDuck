@@ -97,13 +97,17 @@ export function skillFrontMatter(text: string): Record<string, string> {
   return fields
 }
 
-export function skillPointers(dir: string, label: string): Array<FileChange | null> {
+export type ModelTier = 'small' | 'medium' | 'large'
+export type ModelMapper = (tier: ModelTier) => string
+
+export function skillPointers(dir: string, label: string, mapModel?: ModelMapper): Array<FileChange | null> {
   return skillNames().map((name) => {
-    const { description = '' } = skillFrontMatter(SKILLS[name]!)
+    const { description = '', model, effort } = skillFrontMatter(SKILLS[name]!)
     const pointer = `jobduck-${name}`
+    const tiers = mapModel && model ? `model: ${mapModel(model as ModelTier)}\n${effort ? `effort: ${effort}\n` : ''}` : ''
     return planChange(
       join(dir, pointer, 'SKILL.md'),
-      `---\nname: ${pointer}\ndescription: ${JSON.stringify(description)}\n---\n\nRead and follow \`${label}/skills/${name}.md\`.\n`,
+      `---\nname: ${pointer}\ndescription: ${JSON.stringify(description)}\n${tiers}---\n\nRead and follow \`${label}/skills/${name}.md\`.\n`,
     )
   })
 }

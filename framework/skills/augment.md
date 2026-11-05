@@ -2,6 +2,8 @@
 name: augment
 description: Augment the user's experience into atomic, reviewable profile facts that later CVs draw from. Use when the user says "augment my profile", "enrich my experience", "break my experience into facts", or "what's the story behind <project>".
 modules: [cv]
+model: large
+effort: high
 ---
 
 # Augment

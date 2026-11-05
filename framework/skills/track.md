@@ -2,6 +2,7 @@
 name: track
 description: Show and update the user's job applications. Use when the user says "show my applications", "what's my pipeline", "mark <company> as rejected", "I heard back from <company>", or "open the dashboard".
 modules: [track]
+model: small
 ---
 
 # Track applications

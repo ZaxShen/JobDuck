@@ -96,6 +96,22 @@ test('skill pointers carry the jobduck- name and the skill description', () => {
   }
 })
 
+test('Claude Code skill pointers map the model tier and keep the effort; Codex pointers carry neither', () => {
+  const pointer = (changes: ReturnType<typeof claudeCode.register>, name: string) =>
+    changes.find((change) => change.path.endsWith(join(`jobduck-${name}`, 'SKILL.md')))!.after
+  const claude = claudeCode.register(ctx)
+  expect(pointer(claude, 'cv')).toContain('model: opus\neffort: high\n')
+  expect(pointer(claude, 'sort-mail')).toContain('model: haiku\n')
+  expect(pointer(claude, 'sort-mail')).not.toContain('effort:')
+  expect(skillFrontMatter(pointer(claude, 'apply')).model).toBe('sonnet')
+  const codexPointers = codex.register(ctx).filter((change) => change.path.endsWith('SKILL.md'))
+  expect(codexPointers).toHaveLength(skillNames().length)
+  for (const change of codexPointers) {
+    expect(change.after).not.toContain('model:')
+    expect(change.after).not.toContain('effort:')
+  }
+})
+
 test('Codex dry run appends the server table and preserves other sections byte for byte', () => {
   const fixture = '# my codex config\nmodel = "o3"   # keep this comment\n\n[mcp_servers.other]\ncommand = "other"\nargs = []\n\n[profiles.fast]\nmodel = "o4-mini"\n'
   const path = join(box.userHome, '.codex', 'config.toml')

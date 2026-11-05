@@ -2,6 +2,7 @@
 name: sort-mail
 description: Sort job mail with a small model. Labels a plain application confirmation or a clear rejection and archives it; everything else stays in the Inbox untouched. Use when the user says "sort my job mail", "clean up my job emails" or "file my rejections".
 modules: [track]
+model: small
 ---
 
 # Sort job mail

@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { TEMPLATES } from '../assets'
 import {
-  type FileChange, type Host, type HostContext, applyChanges, hasJsonMcpServer, homeLabel, mcpServer, mergeMcpServersJson,
+  type FileChange, type Host, type HostContext, type ModelTier, applyChanges, hasJsonMcpServer, homeLabel, mcpServer, mergeMcpServersJson,
   onPath, planChange, readText, skillPointers, userHomeOf,
 } from './index'
 
@@ -36,6 +36,8 @@ function claudeMdPointer(ctx: HostContext): FileChange | null {
   return planChange(path, `${before}${before.endsWith('\n') ? '' : '\n'}\n@AGENTS.md\n`)
 }
 
+const CLAUDE_MODELS: Record<ModelTier, string> = { small: 'haiku', medium: 'sonnet', large: 'opus' }
+
 const mcpJson = (ctx: HostContext) => join(ctx.workspace, '.mcp.json')
 
 export const claudeCode: Host = {
@@ -50,6 +52,6 @@ export const claudeCode: Host = {
       planChange(mcpJson(ctx), mergeMcpServersJson(mcpJson(ctx), mcpServer(ctx))),
       agentsPointer(ctx),
       claudeMdPointer(ctx),
-      ...skillPointers(join(ctx.workspace, '.claude', 'skills'), homeLabel(ctx)),
+      ...skillPointers(join(ctx.workspace, '.claude', 'skills'), homeLabel(ctx), (tier) => CLAUDE_MODELS[tier]),
     ], ctx.dryRun),
 }

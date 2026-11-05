@@ -2,6 +2,8 @@
 name: cv
 description: Write or tailor a CV strictly from the user's profile and accepted experience facts. Use when the user says "write my CV", "update my resume", "tailor my CV for <role>", or when the apply skill needs a tailored CV.
 modules: [cv]
+model: large
+effort: high
 ---
 
 # CV

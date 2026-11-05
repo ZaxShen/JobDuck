@@ -2,6 +2,7 @@
 name: find
 description: Find job postings that fit the user. Use when the user says "find jobs", "search for roles", "what should I apply to", or "anything new this week".
 modules: [find]
+model: medium
 ---
 
 # Find jobs
