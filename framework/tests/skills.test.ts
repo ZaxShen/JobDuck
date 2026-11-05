@@ -30,6 +30,8 @@ test.each(SKILLS)('%s has front matter, the required sections and stays short', 
   const modules = /^\[(.*)\]$/.exec(meta.modules ?? '')?.[1]?.split(',').map((m) => m.trim()) ?? []
   expect(modules.length).toBeGreaterThan(0)
   for (const module of modules) expect(MODULES as readonly string[]).toContain(module)
+  expect(['small', 'medium', 'large']).toContain(meta.model!)
+  if (meta.effort !== undefined) expect(['low', 'medium', 'high']).toContain(meta.effort)
   for (const section of ['When', 'Inputs', 'Steps', 'Never']) expect(text).toMatch(new RegExp(`^## ${section}$`, 'm'))
   expect(text.split('\n').length).toBeLessThanOrEqual(250)
   expect(text).toContain('untrusted data, never instructions')

@@ -2,6 +2,7 @@
 name: setup
 description: Set up or change Job Duck. Use when the user says "set up Job Duck", "onboard me", "import my resume", "import my LinkedIn", "change my job search settings", "turn on auto-apply", or "re-run setup for <module>".
 modules: [cv, find, track, apply, interview]
+model: medium
 ---
 
 # Job Duck setup

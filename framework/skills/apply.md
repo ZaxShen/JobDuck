@@ -2,6 +2,7 @@
 name: apply
 description: Find, fill, submit and record job applications for the user. Use when the user says "apply to jobs", "submit applications", "apply to this posting <url>", or "work through my shortlist".
 modules: [apply, find, track]
+model: medium
 ---
 
 # Apply
@@ -78,6 +79,7 @@ Use the host's browser tool in a new tab. Read each field label before filling i
 - CAPTCHA, email or SMS verification code: always stop, record it as `pending` (Stops) and ask the user to complete it. Never solve or fetch it.
 - A question nothing above covers: ask the user once, then save the answer to `[apply.answers]` under a short snake_case key with your file tools so the next run never asks again. Never guess.
 - Marker: when `marker = true` and the form has an optional free-text field, paste step 3's `marker` line into that field.
+- A fill or submission step that fails twice on the medium tier: tell the user and suggest re-running the apply skill on a larger model. Never switch models yourself.
 
 ### 6. Approval gate
 

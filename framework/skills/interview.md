@@ -2,6 +2,7 @@
 name: interview
 description: Prepare for an interview on a tracked application and record the outcome. Use when the user says "prep me for my interview at <company>", "mock interview", "I got an offer", or "record how the interview went".
 modules: [interview, track]
+model: large
 ---
 
 # Interview
