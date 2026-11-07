@@ -31,7 +31,7 @@ Then, before any new work, call `list_applications` with `status: ["pending", "s
 
 ### Stops
 
-Whenever you stop on an application you cannot finish alone (a CAPTCHA, an emailed or SMS code, a question the profile and manifest cannot answer, a login or account wall, a near-duplicate awaiting the user's call, approval not given yet), record it as `pending` instead of only telling the user: `update_status` with `status: "pending"` if it is already recorded (only while it is still `saved` or `pending`; an application never moves back from `applied`), else `record_application` with step 3's fields and `status: "pending"`. Either way pass a one-sentence `pending_reason` naming what the user must do, e.g. `Enter the code Acme emailed you, then tell me to continue.` With `confirm_each`, wait for the user's answer on it; otherwise move on to the next posting.
+Whenever you stop on an application you cannot finish alone (a CAPTCHA, an emailed or SMS code, a question the profile and manifest cannot answer, a login or account wall, a near-duplicate awaiting the user's call, approval not given yet), record it as `pending` instead of only telling the user: `update_status` with `status: "pending"` if it is already recorded (only while it is still `saved` or `pending`; an application never moves back from `applied`), else `record_application` with step 3's fields and `status: "pending"`. Either way pass a one-sentence `pending_reason` naming what the user must do, e.g. `Enter the code Acme emailed you, then tell me to continue.` Tell the user what is needed and move on to the next item in every autonomy mode; when the user answers, resume it in this run, else step 0 picks it up next run.
 
 ### 1. Discover
 
@@ -87,7 +87,7 @@ First check the open page for a submission confirmation: a URL or page title say
 
 Present, per application: company, title, URL, location / mode, posted pay, CV (stock or tailored), uploads, every answer that did not come straight from the profile, all free text, consents ticked. Take a screenshot of the filled form if your browser tool can.
 
-- `confirm_each`: wait for the user's OK on this one form, then click Submit once.
+- `confirm_each`: the user approves each submit: wait for their OK on this one form, then click Submit once.
 - `confirm_batch`: fill up to five forms in separate tabs, present them together, submit only those the user approves by name.
 - `auto_after_approvals`: count applications whose note contains `Approval: as filled` (`list_applications`; `Approval: already submitted` does not count). Below `approvals_before_auto`, or with any `Approval: corrected` among the latest `approvals_before_auto`, behave as `confirm_each`. Otherwise submit, still stopping for CAPTCHAs, codes, unasked questions and false consents.
 A correction is applied, re-presented, and counted as `Approval: corrected`. An earlier approval never covers a later form.
@@ -97,6 +97,7 @@ When the user declines a form, leave it unsubmitted and call `update_status` wit
 
 Only after the employer's confirmation page or email: call `update_status` with step 3's `id`, `status: "applied"`, `source: "agent"` and `note`: `Applied via <ATS>. CV: <file or tailored>. Approval: <as filled | corrected | auto>. Confirmation: <confirmation page URL>.` (the `Confirmation:` part whenever the browser lands on a confirmation page) plus anything the user should double-check.
 If `marker = true`, no marker was pasted before submitting, and the submitted application still has an editable field (a candidate portal), paste step 3's `marker` line there. A failed submission is reported, never recorded as applied.
+Once a form is done (recorded `applied`, already submitted, declined, or left `pending`), open and fill the next item without waiting for the user: step 0's resumable `saved` and cleared `pending` applications first, then the shortlist. Stop after `max_per_run` submissions or when none are left, then report.
 
 ### 8. Report
 
