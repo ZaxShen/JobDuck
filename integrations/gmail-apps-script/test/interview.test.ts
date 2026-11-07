@@ -8,17 +8,17 @@ const REJECTIONS = 'Job Duck/Rejections';
 const LEGACY_INTERVIEWS = 'Job Duck/Interviews';
 
 const INVITE_BODY =
-  "Hi Danlin,\n\nExcited to kick off the interview process with you - before we schedule anything, I'd love for you to fill out a quick questionnaire.\n\nThe Salient Hiring Team";
+  "Hi Alex,\n\nExcited to kick off the interview process with you - before we schedule anything, I'd love for you to fill out a quick questionnaire.\n\nThe Yoyodyne Hiring Team";
 const CONFIRMATION_BODY =
-  'Hi Danlin,\n\nThank you for applying to the Platform Engineer position at Globex. We have received your application.\n\nGlobex Careers';
+  'Hi Alex,\n\nThank you for applying to the Platform Engineer position at Globex. We have received your application.\n\nGlobex Careers';
 const REJECTION_BODY =
-  'Hi Danlin,\n\nThank you for taking the time to interview with us. Unfortunately, we have decided not to move forward.\n\nHooli Recruiting';
+  'Hi Alex,\n\nThank you for taking the time to interview with us. Unfortunately, we have decided not to move forward.\n\nHooli Recruiting';
 const ACME_CONFIRMATION =
-  'Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Acme. We have received your application and our team will review it.\n\nAcme Recruiting';
+  'Hi Alex,\n\nThank you for applying to the Backend Engineer role at Acme. We have received your application and our team will review it.\n\nAcme Recruiting';
 const ACME_REJECTION =
-  'Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Acme. Unfortunately, we have decided not to move forward with your application.\n\nAcme Recruiting';
+  'Hi Alex,\n\nThank you for applying to the Backend Engineer role at Acme. Unfortunately, we have decided not to move forward with your application.\n\nAcme Recruiting';
 const RECRUITER_NOTE =
-  "Hi Danlin,\n\nI'm the recruiter for this role and wanted to say thanks for applying. I have passed your profile to the team.\n\nMaya";
+  "Hi Alex,\n\nI'm the recruiter for this role and wanted to say thanks for applying. I have passed your profile to the team.\n\nJordan";
 
 type Label = { name: string; getName(): string };
 type Message = ReturnType<typeof message>;
@@ -125,7 +125,7 @@ function load(
 
 describe('processThread_ leaves kept mail untouched in the Inbox', () => {
   test('interview mail gets no label and is not archived', () => {
-    const t = thread([], [message('Salient | A few things to know before your interview...', INVITE_BODY, 'The Salient Hiring Team <no-reply@ashbyhq.com>')]);
+    const t = thread([], [message('Yoyodyne | A few things to know before your interview...', INVITE_BODY, 'The Yoyodyne Hiring Team <no-reply@ashbyhq.com>')]);
     const { api, created } = load([t]);
     expect(api.processThread_(t)).toBe('keep');
     expect(t.calls).toEqual([]);
@@ -186,7 +186,7 @@ describe('processThread_ leaves kept mail untouched in the Inbox', () => {
 
   test('a rejection that offers a call about another role is kept, not deny', () => {
     const body =
-      "Hi Danlin,\n\nWe have decided not to move forward with your application for the Senior role, but we'd like to schedule a call about our Staff role.\n\nHooli Recruiting";
+      "Hi Alex,\n\nWe have decided not to move forward with your application for the Senior role, but we'd like to schedule a call about our Staff role.\n\nHooli Recruiting";
     const t = thread([], [message('Your application to Hooli', body)]);
     const { api, scriptStore } = load([t]);
     expect(api.processThread_(t)).toBe('keep');
@@ -196,7 +196,7 @@ describe('processThread_ leaves kept mail untouched in the Inbox', () => {
 
   test('a rejection that only thanks you for interviewing stays deny; one that would love to connect stays untouched', () => {
     const keepInTouch =
-      "Hi Danlin,\n\nUnfortunately, we have decided not to move forward. We'd love to connect with you about future opportunities.\n\nHooli Recruiting";
+      "Hi Alex,\n\nUnfortunately, we have decided not to move forward. We'd love to connect with you about future opportunities.\n\nHooli Recruiting";
     const plain = thread([], [message('Your interview with Hooli', REJECTION_BODY)]);
     const courtesy = thread([], [message('Your interview with Hooli', keepInTouch)]);
     const { api } = load([plain, courtesy]);
@@ -253,7 +253,7 @@ describe('the archive is an allowlist', () => {
   test('a recruiter note between the confirmation and the rejection keeps the thread in the Inbox', () => {
     const t = thread([APPLICATIONS], [
       message('Thank you for applying to Acme', ACME_CONFIRMATION),
-      message('Re: Thank you for applying to Acme', RECRUITER_NOTE, 'Maya Chen <maya@acme.com>'),
+      message('Re: Thank you for applying to Acme', RECRUITER_NOTE, 'Jordan Rivera <jordan@acme.com>'),
       message('Update on your application', ACME_REJECTION),
     ]);
     const { api, scriptStore } = load([t]);
@@ -267,7 +267,7 @@ describe('the archive is an allowlist', () => {
     const rejection = message('Update on your application', ACME_REJECTION);
     const invite = message(
       'Re: Update on your application',
-      'Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Acme. Our Staff Engineer role just opened and we would like to schedule a phone screen with you for it next week.\n\nAcme Recruiting',
+      'Hi Alex,\n\nThank you for applying to the Backend Engineer role at Acme. Our Staff Engineer role just opened and we would like to schedule a phone screen with you for it next week.\n\nAcme Recruiting',
     );
     const t = thread([REJECTIONS], [rejection, invite]);
     const { api, scriptStore } = load([t], { ['outcome:' + rejection.getHeader()]: '{}' });
@@ -287,7 +287,7 @@ describe('the archive is an allowlist', () => {
 
   test('a confirmation whose only scheduling words are an employer-side conditional is archived as application mail', () => {
     const body =
-      'Hi Danlin,\n\nThank you for applying to the Data Engineer role at Initech. Our team will review your application and next steps.\n\nIf your experience matches, we will reach out to schedule an interview.\n\nInitech Recruiting';
+      'Hi Alex,\n\nThank you for applying to the Data Engineer role at Initech. Our team will review your application and next steps.\n\nIf your experience matches, we will reach out to schedule an interview.\n\nInitech Recruiting';
     const t = thread([], [message('Thank you for applying to Initech', body)]);
     const { api } = load([t]);
     expect(api.isInterview(body)).toBe(false);
@@ -296,7 +296,7 @@ describe('the archive is an allowlist', () => {
   });
 
   test('a personal note after a confirmation stays in the Inbox even without scheduling words', () => {
-    const t = thread([], [message('Thank you for applying to Acme', ACME_CONFIRMATION), message('Re: Thank you for applying to Acme', RECRUITER_NOTE, 'Maya Chen <maya@acme.com>')]);
+    const t = thread([], [message('Thank you for applying to Acme', ACME_CONFIRMATION), message('Re: Thank you for applying to Acme', RECRUITER_NOTE, 'Jordan Rivera <jordan@acme.com>')]);
     const { api } = load([t]);
     expect(api.processThread_(t)).toBe('keep');
     expect(t.inInbox).toBe(true);
@@ -800,7 +800,7 @@ describe('reaudit returns archived mail that is not a plain application to the I
   });
 
   test('reauditApplications follows the thread rules: a recruiter note goes back to the Inbox, a conditional promise stays archived', () => {
-    const noted = thread([APPLICATIONS], [message('Thank you for applying to Acme', ACME_CONFIRMATION), message('Re: Thank you for applying to Acme', RECRUITER_NOTE, 'Maya Chen <maya@acme.com>')], false);
+    const noted = thread([APPLICATIONS], [message('Thank you for applying to Acme', ACME_CONFIRMATION), message('Re: Thank you for applying to Acme', RECRUITER_NOTE, 'Jordan Rivera <jordan@acme.com>')], false);
     const boilerplate = thread([APPLICATIONS], [message('Thank you for applying to Initech', 'Thank you for applying to Initech. If your experience matches, we will reach out to schedule an interview.')], false);
     const rejected = thread([APPLICATIONS], [message('Thank you for applying to Acme', ACME_CONFIRMATION), message('Update on your application', ACME_REJECTION)], false);
     const { api, scriptStore } = load([noted, boilerplate, rejected]);
@@ -815,7 +815,7 @@ describe('reaudit returns archived mail that is not a plain application to the I
     const rejected = thread([], [message('Thank you for applying to Acme', ACME_CONFIRMATION), message('Update on your application', ACME_REJECTION)]);
     const noted = thread([], [
       message('Thank you for applying to Acme', ACME_CONFIRMATION),
-      message('Re: Thank you for applying to Acme', RECRUITER_NOTE, 'Maya Chen <maya@acme.com>'),
+      message('Re: Thank you for applying to Acme', RECRUITER_NOTE, 'Jordan Rivera <jordan@acme.com>'),
       message('Update on your application', ACME_REJECTION),
     ]);
     const plain = thread([], [message('Your application', CONFIRMATION_BODY)]);
@@ -831,7 +831,7 @@ describe('reaudit returns archived mail that is not a plain application to the I
 });
 
 describe('v5.6: reauditRejections sends every Rejections thread that is no longer a rejection back to the Inbox', () => {
-  const OFFER_TO_TALK = 'Hi Danlin,\n\nUnfortunately, we have decided not to move forward with your application. Would you be open to a different position?\n\nAcme Recruiting';
+  const OFFER_TO_TALK = 'Hi Alex,\n\nUnfortunately, we have decided not to move forward with your application. Would you be open to a different position?\n\nAcme Recruiting';
   const outcomeKey = (m: Message) => 'outcome:' + m.getHeader();
 
   test('previewReauditRejections logs the thread it would send back and changes nothing', () => {
@@ -948,7 +948,7 @@ describe('a plain confirmation is an allowlist of acknowledgement sentences (F35
     unacknowledged_(body: string, verification: boolean): string | null;
   };
   const wrapped = (sentence: string) =>
-    'Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Acme. ' + sentence + '\n\nBest,\nAcme Recruiting';
+    'Hi Alex,\n\nThank you for applying to the Backend Engineer role at Acme. ' + sentence + '\n\nBest,\nAcme Recruiting';
   const classify = (body: string, from = 'Acme Recruiting <no-reply@greenhouse.io>', subject = 'Your application to Acme') =>
     classifyThread_([{ getFrom: () => from, getSubject: () => subject, getPlainBody: () => body }], { excludedDomains: [] }, 'me@example.com').action;
   const ACTION_SENTENCES = [
@@ -1026,11 +1026,11 @@ describe('a plain confirmation is an allowlist of acknowledgement sentences (F35
   });
 
   test.each([
-    ['an action after the sign-off', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nBest,\nAcme Recruiting\n\nP.S. Upload your portfolio by Friday.'],
+    ['an action after the sign-off', 'Hi Alex,\n\nThank you for applying to Acme.\n\nBest,\nAcme Recruiting\n\nP.S. Upload your portfolio by Friday.'],
     ['an action as a title-case line', 'Thank you for applying to Acme.\n\nAction Required\n\nAcme Recruiting'],
     ['an action in the signature', 'Thank you for applying to Acme.\n\nBest,\nPlease Reply By Friday'],
     ['an action inside a footer sentence', 'Thank you for applying to Acme.\n\nPlease do not reply to this email; instead, upload your portfolio by Friday.'],
-    ['an action in the greeting line', 'Hi Danlin, please upload your portfolio.\n\nThank you for applying to Acme.'],
+    ['an action in the greeting line', 'Hi Alex, please upload your portfolio.\n\nThank you for applying to Acme.'],
     ['a bare link line', 'Thank you for applying to Acme.\nhttps://acme.example.com/start\n\nAcme Recruiting'],
     ['a request in a footer sentence', 'Thank you for applying to Acme.\n\nThis email was sent by Greenhouse; respond with your portfolio.'],
     ['a title-case reminder at the end', 'Thank you for applying to Acme.\n\nAcme Recruiting\nFinal Step Reminder'],
@@ -1041,17 +1041,17 @@ describe('a plain confirmation is an allowlist of acknowledgement sentences (F35
 
   const ATS_CONFIRMATIONS: [string, string, string][] = [
     ['Greenhouse', 'Acme Recruiting <no-reply@greenhouse.io>',
-      'Hi Danlin,\n\nThanks for applying to Acme. Your application has been received and we will review it right away.\n\nIf your application seems like a good fit for the position we will contact you soon.\n\nRegards,\nAcme\n\n** Please note: Do not reply to this email. This email is sent from an unattended mailbox. Replies will not be read.'],
+      'Hi Alex,\n\nThanks for applying to Acme. Your application has been received and we will review it right away.\n\nIf your application seems like a good fit for the position we will contact you soon.\n\nRegards,\nAcme\n\n** Please note: Do not reply to this email. This email is sent from an unattended mailbox. Replies will not be read.'],
     ['Lever', 'Acme <no-reply@hire.lever.co>',
-      'Hi Danlin,\n\nThank you for your interest in Acme! We wanted to let you know we received your application for Senior Backend Engineer, and we are delighted that you would consider joining our team.\n\nOur team will review your application and will be in touch if your qualifications match our needs for the role.\n\nBest,\nThe Acme Team\n\nSent with Lever'],
+      'Hi Alex,\n\nThank you for your interest in Acme! We wanted to let you know we received your application for Senior Backend Engineer, and we are delighted that you would consider joining our team.\n\nOur team will review your application and will be in touch if your qualifications match our needs for the role.\n\nBest,\nThe Acme Team\n\nSent with Lever'],
     ['Workday', 'Acme Careers <acme@myworkday.com>',
-      'Dear Danlin Shen,\n\nThank you for your interest in a career with Acme Corporation. We have received your application for the Backend Engineer position.\n\nOur recruiting team will carefully review your qualifications. If your background matches the requirements of the position, a member of our recruiting team will contact you.\n\nYou can track the status of your application at any time by logging in to your candidate home.\n\nSincerely,\nAcme Talent Acquisition\n\nAcme Corporation is an Equal Opportunity Employer. All qualified applicants will receive consideration for employment without regard to race, color, religion, sex, national origin, disability or protected veteran status.'],
+      'Dear Alex Doe,\n\nThank you for your interest in a career with Acme Corporation. We have received your application for the Backend Engineer position.\n\nOur recruiting team will carefully review your qualifications. If your background matches the requirements of the position, a member of our recruiting team will contact you.\n\nYou can track the status of your application at any time by logging in to your candidate home.\n\nSincerely,\nAcme Talent Acquisition\n\nAcme Corporation is an Equal Opportunity Employer. All qualified applicants will receive consideration for employment without regard to race, color, religion, sex, national origin, disability or protected veteran status.'],
     ['Ashby', 'Acme Recruiting <no-reply@ashbyhq.com>',
-      "Hi Danlin,\n\nThanks for applying to the Backend Engineer role at Acme! We're excited that you're interested in joining our team.\n\nOur hiring team is reviewing your application and will get back to you in the coming weeks.\n\nBest,\nAcme Recruiting\n\nPowered by Ashby"],
+      "Hi Alex,\n\nThanks for applying to the Backend Engineer role at Acme! We're excited that you're interested in joining our team.\n\nOur hiring team is reviewing your application and will get back to you in the coming weeks.\n\nBest,\nAcme Recruiting\n\nPowered by Ashby"],
     ['iCIMS', 'Acme Talent <acme@talent.icims.com>',
-      'Dear Danlin,\n\nThank you for submitting your application for the Backend Engineer position at Acme. This email confirms that we have received your application.\n\nWe will review your background and qualifications carefully and contact you if there is a match.\n\nAgain, we appreciate your interest in Acme and wish you luck in your job search.\n\nKind regards,\nAcme Talent Acquisition Team\n\nThis message was sent by iCIMS on behalf of Acme. Please do not reply to this email.'],
+      'Dear Alex,\n\nThank you for submitting your application for the Backend Engineer position at Acme. This email confirms that we have received your application.\n\nWe will review your background and qualifications carefully and contact you if there is a match.\n\nAgain, we appreciate your interest in Acme and wish you luck in your job search.\n\nKind regards,\nAcme Talent Acquisition Team\n\nThis message was sent by iCIMS on behalf of Acme. Please do not reply to this email.'],
     ['SmartRecruiters', 'Acme Hiring Team <noreply@smartrecruiters.com>',
-      'Hi Danlin,\n\nThank you for applying to the Backend Engineer position at Acme. We have received your application and will review it shortly.\n\nIf your profile matches our requirements, we will get in touch with you.\n\nBest regards,\nAcme Hiring Team\n\nPrivacy Policy | Unsubscribe\nPowered by SmartRecruiters'],
+      'Hi Alex,\n\nThank you for applying to the Backend Engineer position at Acme. We have received your application and will review it shortly.\n\nIf your profile matches our requirements, we will get in touch with you.\n\nBest regards,\nAcme Hiring Team\n\nPrivacy Policy | Unsubscribe\nPowered by SmartRecruiters'],
   ];
 
   test.each(ATS_CONFIRMATIONS)('a %s acknowledgement with greeting, signature and footer is archived', (_ats, from, body) => {
@@ -1074,7 +1074,7 @@ describe('a footer is set aside only when the whole sentence is a standard foote
     footer_(sentence: string): boolean;
   };
   const wrapped = (sentence: string) =>
-    'Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Acme. ' + sentence + '\n\nBest,\nAcme Recruiting';
+    'Hi Alex,\n\nThank you for applying to the Backend Engineer role at Acme. ' + sentence + '\n\nBest,\nAcme Recruiting';
   const classify = (body: string, from = 'Acme Recruiting <no-reply@greenhouse.io>', subject = 'Your application to Acme') =>
     classifyThread_([{ getFrom: () => from, getSubject: () => subject, getPlainBody: () => body }], { excludedDomains: [] }, 'me@example.com').action;
 
@@ -1135,16 +1135,16 @@ describe('a footer is set aside only when the whole sentence is a standard foote
   });
 
   test.each([
-    ['an unsigned title line above an unsigned signature', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nCoding Project Instructions\n\nAcme Recruiting'],
-    ['an automated-message line after the signature', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nAcme Recruiting\n\nAutomated message: the take-home project is in your portal.'],
-    ['an automated-email line after the signature', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nAcme Recruiting\n\nThis automated email has your portfolio request.'],
-    ['a confidential line after the signature', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nAcme Recruiting\n\nConfidential: your take-home project awaits.'],
-    ['an address line carrying instructions', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nAcme Recruiting\n\n123 Main Street, Suite 400 coding project instructions'],
-    ['a title line above the signature', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nYour Case Study\nAcme Recruiting'],
-    ['a linked title above the signature', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nTechnical Project Instructions <https://acme.io/p>\nAcme Recruiting'],
-    ['a title-case note above a name', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nWe Want To Connect\nJane Doe'],
-    ['a signature block that is not the end of the body', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nAcme Recruiting\n\nYour Case Study'],
-    ['a title line after a signed block across a blank line', 'Hi Danlin,\n\nThank you for applying to Acme.\n\nBest,\nAcme Recruiting\n\nCoding Project Instructions'],
+    ['an unsigned title line above an unsigned signature', 'Hi Alex,\n\nThank you for applying to Acme.\n\nCoding Project Instructions\n\nAcme Recruiting'],
+    ['an automated-message line after the signature', 'Hi Alex,\n\nThank you for applying to Acme.\n\nAcme Recruiting\n\nAutomated message: the take-home project is in your portal.'],
+    ['an automated-email line after the signature', 'Hi Alex,\n\nThank you for applying to Acme.\n\nAcme Recruiting\n\nThis automated email has your portfolio request.'],
+    ['a confidential line after the signature', 'Hi Alex,\n\nThank you for applying to Acme.\n\nAcme Recruiting\n\nConfidential: your take-home project awaits.'],
+    ['an address line carrying instructions', 'Hi Alex,\n\nThank you for applying to Acme.\n\nAcme Recruiting\n\n123 Main Street, Suite 400 coding project instructions'],
+    ['a title line above the signature', 'Hi Alex,\n\nThank you for applying to Acme.\n\nYour Case Study\nAcme Recruiting'],
+    ['a linked title above the signature', 'Hi Alex,\n\nThank you for applying to Acme.\n\nTechnical Project Instructions <https://acme.io/p>\nAcme Recruiting'],
+    ['a title-case note above a name', 'Hi Alex,\n\nThank you for applying to Acme.\n\nWe Want To Connect\nJane Doe'],
+    ['a signature block that is not the end of the body', 'Hi Alex,\n\nThank you for applying to Acme.\n\nAcme Recruiting\n\nYour Case Study'],
+    ['a title line after a signed block across a blank line', 'Hi Alex,\n\nThank you for applying to Acme.\n\nBest,\nAcme Recruiting\n\nCoding Project Instructions'],
   ])('%s is kept', (_name, body) => {
     expect(classify(body)).toBe('keep');
     expect(unacknowledged_(body, false)).not.toBeNull();
@@ -1186,7 +1186,7 @@ describe('a footer is set aside only when the whole sentence is a standard foote
   });
 
   test('an unsigned signature as the one unbroken block ending the body is set aside', () => {
-    expect(classify('Hi Danlin,\n\nThank you for applying to Acme.\n\nAcme Recruiting\nTalent Team')).toBe('job');
+    expect(classify('Hi Alex,\n\nThank you for applying to Acme.\n\nAcme Recruiting\nTalent Team')).toBe('job');
   });
 
   test.each([
@@ -1211,7 +1211,7 @@ describe('a mailing address is a footer only as a whole sentence of capitalised 
     footer_(sentence: string): boolean;
   };
   const wrapped = (sentence: string) =>
-    'Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Acme. ' + sentence + '\n\nBest,\nAcme Recruiting';
+    'Hi Alex,\n\nThank you for applying to the Backend Engineer role at Acme. ' + sentence + '\n\nBest,\nAcme Recruiting';
   const classify = (body: string) =>
     classifyThread_([{ getFrom: () => 'Acme Recruiting <no-reply@greenhouse.io>', getSubject: () => 'Your application to Acme', getPlainBody: () => body }], { excludedDomains: [] }, 'me@example.com').action;
 
@@ -1255,7 +1255,7 @@ describe('a mailing address is a footer only as a whole sentence of capitalised 
     expect(classify(wrapped(address))).toBe('job');
   });
 
-  const signed = (line: string) => 'Hi Danlin,\n\nThank you for applying to Acme.\n\nBest,\nJane Doe\nRecruiter, Acme\n' + line;
+  const signed = (line: string) => 'Hi Alex,\n\nThank you for applying to Acme.\n\nBest,\nJane Doe\nRecruiter, Acme\n' + line;
 
   test.each(['2026-11-05', '11.05.2026', '05 11 2026', '10.30 - 11.30'])(
     'a date or time line under the signature is not a phone line: %s',
@@ -1282,7 +1282,7 @@ describe('after a sign-off only allowlisted signature lines are set aside', () =
   };
   const classify = (body: string) =>
     classifyThread_([{ getFrom: () => 'Acme Recruiting <no-reply@greenhouse.io>', getSubject: () => 'Your application to Acme', getPlainBody: () => body }], { excludedDomains: [] }, 'me@example.com').action;
-  const signed = (signature: string) => 'Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Acme.\n\nBest,\n' + signature;
+  const signed = (signature: string) => 'Hi Alex,\n\nThank you for applying to the Backend Engineer role at Acme.\n\nBest,\n' + signature;
 
   test.each([
     'Acme Recruiting\nTechnical Project Instructions',
@@ -1303,7 +1303,7 @@ describe('after a sign-off only allowlisted signature lines are set aside', () =
   });
 
   test('an unsigned title line inside the closing block is kept', () => {
-    const body = 'Hi Danlin,\n\nThank you for applying to Acme.\n\nCoding Project Instructions\nAcme Recruiting';
+    const body = 'Hi Alex,\n\nThank you for applying to Acme.\n\nCoding Project Instructions\nAcme Recruiting';
     expect(classify(body)).toBe('keep');
   });
 
@@ -1322,7 +1322,7 @@ describe('after a sign-off only allowlisted signature lines are set aside', () =
   });
 
   test('an unsigned name above a job title closing the body is set aside', () => {
-    expect(classify('Hi Danlin,\n\nThank you for applying to Acme.\n\nJane Doe\nRecruiter, Acme')).toBe('job');
+    expect(classify('Hi Alex,\n\nThank you for applying to Acme.\n\nJane Doe\nRecruiter, Acme')).toBe('job');
   });
 });
 
@@ -1334,7 +1334,7 @@ describe('only proven boilerplate is exempt from the scheduling-word check; when
     classifyThread_(messages: unknown[], rules: { excludedDomains: string[] }, me: string): { action: string };
   };
   const wrapped = (paragraph: string) =>
-    'Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Acme. We have received your application.\n\n' + paragraph + '\n\nBest regards,\nAcme Recruiting';
+    'Hi Alex,\n\nThank you for applying to the Backend Engineer role at Acme. We have received your application.\n\n' + paragraph + '\n\nBest regards,\nAcme Recruiting';
   const classify = (body: string, subject = 'Thank you for applying to Acme') =>
     classifyThread_([{ getFrom: () => 'Acme Recruiting <no-reply@greenhouse.io>', getSubject: () => subject, getPlainBody: () => body }], { excludedDomains: [] }, 'me@example.com').action;
 
@@ -1376,7 +1376,7 @@ describe('only proven boilerplate is exempt from the scheduling-word check; when
 
   test('a rejection offering a call is kept, never denied', () => {
     const body =
-      "Hi Danlin,\n\nUnfortunately, we will not be moving forward with your application for this role. We'd love to set up a call with you about another opening on the team.\n\nAcme Recruiting";
+      "Hi Alex,\n\nUnfortunately, we will not be moving forward with your application for this role. We'd love to set up a call with you about another opening on the team.\n\nAcme Recruiting";
     expect(classify(body, 'Update on your application')).toBe('keep');
   });
 

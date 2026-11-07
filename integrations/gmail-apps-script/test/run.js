@@ -32,10 +32,10 @@ const rows = fixtures.map((f) => {
 });
 console.table(rows);
 
-const commure = fixtures.find((f) => f.name.startsWith('Commure'));
-const c = api.denyScore(commure.subject, commure.body);
-if (!(c.score >= 3 && c.strong)) { failures++; console.log('Commure denyScore expected score >= 3 and strong, got', c); }
-['Cisco', 'Green Dot'].forEach((prefix) => {
+const bluth = fixtures.find((f) => f.name.startsWith('Bluth'));
+const c = api.denyScore(bluth.subject, bluth.body);
+if (!(c.score >= 3 && c.strong)) { failures++; console.log('Bluth denyScore expected score >= 3 and strong, got', c); }
+['InGen', 'Black Mesa'].forEach((prefix) => {
   const f = fixtures.find((x) => x.name.startsWith(prefix));
   if (api.denyScore(f.subject, f.body).strong) { failures++; console.log(prefix + ' expected strong = false'); }
 });

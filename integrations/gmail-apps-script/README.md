@@ -308,7 +308,7 @@ trigger are kept.
   invites with neutral subjects, direct offers after any condition, availability questions, being moved forward to
   the interview stage, a confirmed or upcoming interview and a promise to schedule your own interview (all
   `interview`), an interview subject over a plain confirmation (`job`) and a rejection after an interview. Nine
-  earlier `job` fixtures now expect `interview` because they are not plain confirmations: Cisco, Green Dot, Courtesy
+  earlier `job` fixtures now expect `interview` because they are not plain confirmations: InGen, Black Mesa, Courtesy
   only, Globex courtesy-only, Initech conditional interview promise, Massive Dynamic, Oscorp, Vandelay and Dunder.
   A plain confirmation is now a sentence allowlist, not a word list: every sentence outside the greeting, sign-off,
   signature and footer must be a known acknowledgement, so a confirmation that also asks you to take a HireVue,
@@ -343,8 +343,8 @@ trigger are kept.
   `/api/inbound/rejections` is unchanged while `JOBDUCK_TOKEN` is set. `previewReaudit` / `reauditApplications`
   re-check the `Job Duck/Applications` label in time-boxed, resumable runs. Job-gate negatives for password resets
   and verification codes without application wording, job alerts, "new jobs for you" / recommended jobs, referral
-  invites, self-identification invites and unfinished-application reminders. New fixtures (Runpod, Ashby receipts with
-  "we can't respond to every applicant", Paylocity receipt vs rejection, the five non-application kinds) and
+  invites, self-identification invites and unfinished-application reminders. New fixtures (Lacuna, Ashby receipts with
+  "we can't respond to every applicant", ATS-domain receipt vs rejection, the five non-application kinds) and
   `node test/webapp.js`. Publishing: template renamed `Job Duck - Gmail Rejection Sync v4`.
 - **v3.1**: Classifier fixes. A sentence with a conditional ("in the event …") now scores its text before the
   conditional instead of being dropped, so "decided to move forward with other candidates … in the event any roles

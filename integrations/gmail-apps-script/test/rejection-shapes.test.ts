@@ -28,7 +28,7 @@ function load() {
 }
 
 const ACME_REJECTION =
-  'Hi Danlin,\n\nThank you for applying to the Backend Engineer role at Acme. Unfortunately, we have decided not to move forward with your application.\n\nAcme Recruiting';
+  'Hi Alex,\n\nThank you for applying to the Backend Engineer role at Acme. Unfortunately, we have decided not to move forward with your application.\n\nAcme Recruiting';
 
 describe('rejection shapes stay small enough for Apps Script (v5.5 out of memory)', () => {
   test('a typical rejection builds a few loose parts, never the guarded ones or the whole alternation', () => {
