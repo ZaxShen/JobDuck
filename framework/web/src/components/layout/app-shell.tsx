@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
-import { BriefcaseIcon, type LucideIcon, SearchIcon } from 'lucide-react'
+import { BriefcaseIcon, CircleHelpIcon, type LucideIcon, SearchIcon } from 'lucide-react'
 import { NavUser } from '@/components/layout/nav-user'
+import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import {
   Sidebar,
@@ -18,7 +19,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { TooltipProvider } from '@/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import type { View } from '@/hooks/use-hash-route'
 import type { ProfileView } from '@/lib/types'
 
@@ -84,19 +85,34 @@ function NavGroup({ view }: { view: View }) {
   )
 }
 
-function Header({ title }: { title: string }) {
+function Header({ title, onOpenGuide }: { title: string; onOpenGuide: () => void }) {
   return (
     <header className="z-50 h-16 shrink-0 border-b border-border bg-background">
       <div className="relative flex h-full items-center gap-3 p-4 sm:gap-4">
         <SidebarTrigger variant="outline" className="max-md:scale-125" />
         <Separator orientation="vertical" className="h-6" />
         <h1 className="truncate text-sm font-medium text-muted-foreground">{title}</h1>
+        <Tooltip>
+          <TooltipTrigger
+            render={<Button variant="ghost" size="icon" className="ms-auto" aria-label="Open Getting Started Guide" onClick={onOpenGuide} />}
+          >
+            <CircleHelpIcon aria-hidden="true" />
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Getting Started Guide</TooltipContent>
+        </Tooltip>
       </div>
     </header>
   )
 }
 
-export function AppShell({ view, profile, children }: { view: View; profile: ProfileView | null; children: ReactNode }) {
+interface AppShellProps {
+  view: View
+  profile: ProfileView | null
+  onOpenGuide: () => void
+  children: ReactNode
+}
+
+export function AppShell({ view, profile, onOpenGuide, children }: AppShellProps) {
   return (
     <TooltipProvider>
       <SidebarProvider>
@@ -114,7 +130,7 @@ export function AppShell({ view, profile, children }: { view: View; profile: Pro
           <SidebarRail />
         </Sidebar>
         <SidebarInset className="@container/content h-svh min-w-0 overflow-auto">
-          <Header title={TITLES[view]} />
+          <Header title={TITLES[view]} onOpenGuide={onOpenGuide} />
           {children}
         </SidebarInset>
       </SidebarProvider>

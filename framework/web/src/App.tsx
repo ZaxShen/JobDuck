@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { GettingStartedDialog } from '@/components/getting-started-dialog'
 import { AppShell } from '@/components/layout/app-shell'
 import { Main } from '@/components/layout/main'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -7,7 +8,8 @@ import { useFlash } from '@/hooks/use-flash'
 import { useHashRoute } from '@/hooks/use-hash-route'
 import { errorMessage, fetchJSON } from '@/lib/api'
 import { PROFILE_DOC, SETTINGS_DOC } from '@/lib/docs'
-import { hashFor, landingRoute } from '@/lib/routing'
+import { guideSeen, markGuideSeen, shouldAutoShowGuide } from '@/lib/getting-started'
+import { hashFor, landingRoute, needsWelcome } from '@/lib/routing'
 import type { PermissionsView, ProfileView as ProfileDoc, Statuses } from '@/lib/types'
 import { ApplicationsView } from '@/views/applications/applications-view'
 import { JobsView } from '@/views/jobs/jobs-view'
@@ -23,6 +25,8 @@ export function App() {
   const settings = useDocForm<PermissionsView>(SETTINGS_DOC)
   const [statuses, setStatuses] = useState<Statuses | null>(null)
   const [routed, setRouted] = useState(false)
+  const [guideOpen, setGuideOpen] = useState(false)
+  const guideAutoShown = useRef(false)
   const started = useRef(false)
 
   const { load: loadProfile } = profile
@@ -43,7 +47,20 @@ export function App() {
   }, [flash, profile, replace])
 
   useEffect(() => {
-    const onUnload = (event: BeforeUnloadEvent) => {
+    if (!routed || !profile.view || guideAutoShown.current) return
+    if (!shouldAutoShowGuide({ view, needsWelcome: needsWelcome(profile.view), seen: guideSeen(window.localStorage) })) return
+    guideAutoShown.current = true
+    setGuideOpen(true)
+  }, [routed, view, profile.view])
+
+  const onGuideOpenChange = useCallback((open: boolean) => {
+    setGuideOpen(open)
+    if (!open) markGuideSeen(window.localStorage)
+  }, [])
+  const openGuide = useCallback(() => setGuideOpen(true), [])
+
+  useEffect(() => {
+    const onUnload =(event: BeforeUnloadEvent) => {
       if (anyDirty) event.preventDefault()
     }
     window.addEventListener('beforeunload', onUnload)
@@ -81,7 +98,7 @@ export function App() {
   return (
     <>
       <div hidden={view === 'welcome'}>
-        <AppShell view={view} profile={profile.view}>
+        <AppShell view={view} profile={profile.view} onOpenGuide={openGuide}>
           <Main>
             <div hidden={view !== 'applications'}>
               <ApplicationsView active={view === 'applications'} statuses={statuses.statuses} terminal={statuses.terminal} />
@@ -101,6 +118,7 @@ export function App() {
       <div hidden={view !== 'welcome'}>
         <WelcomeView active={view === 'welcome'} onProfileSaved={reloadProfile} onSettingsSaved={settings.invalidate} />
       </div>
+      <GettingStartedDialog open={guideOpen && view !== 'welcome'} onOpenChange={onGuideOpenChange} />
     </>
   )
 }
