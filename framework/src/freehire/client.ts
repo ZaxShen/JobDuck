@@ -50,7 +50,7 @@ export interface SearchParams {
   is_tech?: string
   seniority?: string
   employment_type?: string
-  sort?: 'posted_at' | 'created_at'
+  sort?: 'relevance' | 'posted_at' | 'created_at'
   max_results: number
   offset?: number
 }
@@ -65,6 +65,7 @@ export interface SearchOptions {
 
 export interface SearchResult {
   total: number
+  next_offset: number | null
   jobs: FreehireJob[]
 }
 
@@ -89,7 +90,7 @@ export function buildSearchUrl(params: SearchParams, offset: number, limit: numb
   set('is_tech', params.is_tech)
   set('seniority', params.seniority)
   set('employment_type', params.employment_type)
-  set('sort', params.sort)
+  set('sort', params.sort === 'relevance' ? undefined : params.sort)
   query.set('limit', String(limit))
   query.set('offset', String(offset))
   return `${FREEHIRE_SEARCH_URL}?${query.toString()}`
@@ -102,6 +103,7 @@ export async function searchJobs(params: SearchParams, options: SearchOptions = 
   const jobs: FreehireJob[] = []
   let offset = params.offset ?? 0
   let total = 0
+  let exhausted = offset >= MAX_WINDOW
 
   while (jobs.length < params.max_results && offset < MAX_WINDOW) {
     const limit = Math.min(PAGE_LIMIT, params.max_results - jobs.length, MAX_WINDOW - offset)
@@ -117,12 +119,14 @@ export async function searchJobs(params: SearchParams, options: SearchOptions = 
     }
     const page = FreehireSearchResponse.parse(await response.json())
     total = page.meta.total
-    jobs.push(...page.data.slice(0, params.max_results - jobs.length))
-    offset += page.data.length
+    const taken = page.data.slice(0, params.max_results - jobs.length)
+    jobs.push(...taken)
+    offset += taken.length
+    exhausted = page.data.length < limit || offset >= total || offset >= MAX_WINDOW
     if (page.data.length === 0 || offset >= total) break
     if (response.headers.get('x-ratelimit-remaining') === '0') await sleep(rateLimitWaitMs(response.headers))
   }
-  return { total, jobs }
+  return { total, next_offset: exhausted ? null : offset, jobs }
 }
 
 export async function getJob(slug: string, options: SearchOptions = {}): Promise<FreehireJob | null> {

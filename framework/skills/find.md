@@ -24,12 +24,13 @@ Search, filter hard, score what is left, and hand back a short table. This skill
 ## Steps
 
 1. **Load.** Call `get_profile` and `get_permissions`. If `target_titles` is empty, stop and offer `setup --module find`.
-2. **Search.** Call `search_jobs` once per target title:
-   - `q`: the title (plus the user's extra keywords);
-   - `countries`: the profile's `countries` (default `["US"]`);
+2. **Search.** Queries are each `target_titles` entry plus up to 3 adjacent titles the profile body clearly supports (for example an ML profile adds "Applied Scientist"); name the added titles to the user. Call `search_jobs` once per query:
+   - `q`: the query (plus the user's extra keywords);
+   - `countries`: all of the profile's `countries` in one call (default `["US"]`);
    - `posted_within_days`: the user's window, else 7 (e.g. "anything new this week" → `posted_within_days: 7`);
-   - `seniority`: one profile level per call when the user wants it narrowed; omit otherwise;
-   - `company_slug` when the user named a company; `max_results` 20 unless the user asks for more (up to 50).
+   - `max_results` 100; no `sort`, so results come in relevance order, unless the user asks for the newest (`sort: "posted_at"`);
+   - `company_slug` when the user named a company.
+   Do not pass `seniority`, `skills` or `is_tech` by default: freehire leaves most rows untagged, so those filters drop them. When the last page of a query still held titles that closely match it and `next_offset` is not null, call again with `offset: next_offset`, up to 300 rows per query.
    Merge results by `posting_id`, then drop rows with the same company and title (keep the newest `posted_at`).
 3. **Hard filters.** `search_jobs` rows carry `work_mode`, `pay_min`, `pay_max` and `currency` only when the source states them, and never the description: before judging requirements, sponsorship or deal-breakers, call `find_application` with the posting's `url` and `with_text: true` and read `posting.text`. Unknown pay or work mode → keep and flag, never drop. Drop a posting, with a one-line reason, when any of these hold:
    - company in either `skip_companies` list;
@@ -50,7 +51,7 @@ Search, filter hard, score what is left, and hand back a short table. This skill
 
 ## Output
 
-A table: `# | Score | Company | Title | Location / mode | Pay | Posted | Gaps | URL`.
+A line `Searched <N> postings across <Q> queries (freehire reported <T> matches).`, where N is the rows returned, Q the queries run and T the sum of each query's `total`; then a table: `# | Score | Company | Title | Location / mode | Pay | Posted | Gaps | URL`.
 
 - Rows with `known` true and an `application_status` are listed separately under **Already tracked** with their status and `application_id`; never shortlist them again.
 - Under the table: skipped postings, one line each (`Company - Title - reason`), and borderline postings (score 50-64 or flagged) for the user to decide.
