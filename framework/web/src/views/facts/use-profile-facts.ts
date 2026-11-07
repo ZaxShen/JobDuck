@@ -10,6 +10,7 @@ export interface ProfileFacts {
   loaded: boolean
   mutate: (call: () => Promise<unknown>, done: string) => Promise<SaveResult>
   reorder: (ordered: ProfileFact[]) => Promise<void>
+  refresh: () => Promise<void>
 }
 
 export function useProfileFacts(active: boolean, live: boolean): ProfileFacts {
@@ -74,5 +75,5 @@ export function useProfileFacts(active: boolean, live: boolean): ProfileFacts {
     await refresh()
   }, [facts, flash, refresh])
 
-  return { facts, loaded, mutate, reorder }
+  return { facts, loaded, mutate, reorder, refresh }
 }

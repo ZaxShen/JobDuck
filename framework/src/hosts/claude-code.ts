@@ -36,7 +36,7 @@ function claudeMdPointer(ctx: HostContext): FileChange | null {
   return planChange(path, `${before}${before.endsWith('\n') ? '' : '\n'}\n@AGENTS.md\n`)
 }
 
-const CLAUDE_MODELS: Record<ModelTier, string> = { small: 'haiku', medium: 'sonnet', large: 'opus' }
+export const CLAUDE_MODELS: Record<ModelTier, string> = { small: 'haiku', medium: 'sonnet', large: 'opus' }
 
 const mcpJson = (ctx: HostContext) => join(ctx.workspace, '.mcp.json')
 

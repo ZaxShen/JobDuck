@@ -5,6 +5,7 @@ import { DASHBOARD, DASHBOARD_FILES } from '../assets'
 import { openDb } from '../db/client'
 import { migrate } from '../db/migrate'
 import { dbPath, ensureHome, jobduckHome } from '../paths'
+import { AGENT_PATH, AUGMENT_PATH, type Agent, type AgentEvent, type AgentOptions, createAgent, parseAugmentBody } from './agent'
 import { ApiError, INBOX_MAX_BODY_BYTES, INBOX_PATH, handleApi } from './api'
 
 export const DASHBOARD_HOST = '127.0.0.1'
@@ -19,6 +20,7 @@ export interface DashboardOptions {
   open?: boolean
   view?: DashboardView
   out?: (line: string) => void
+  agent?: AgentOptions
 }
 
 export const DASHBOARD_VIEWS = ['applications', 'profile', 'facts', 'settings', 'welcome'] as const
@@ -103,6 +105,39 @@ function parseJson(raw: string): unknown {
   }
 }
 
+const TERMINAL_EVENTS = new Set<AgentEvent['type']>(['done', 'error'])
+
+async function streamAugment(req: IncomingMessage, res: ServerResponse, agent: Agent): Promise<void> {
+  // Bun 1.3 unhooks client-abort detection when a fully read request auto-destroys, so keep it open until the turn ends.
+  (req as unknown as { _readableState: { autoDestroy: boolean } })._readableState.autoDestroy = false
+  const turn = parseAugmentBody(parseJson(await readBody(req, MAX_BODY_BYTES)))
+  if (agent.busy) return sendJson(res, 409, { error: 'an agent turn is already running' })
+  res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': 'text/event-stream; charset=utf-8', Connection: 'keep-alive' })
+  res.flushHeaders()
+  const controller = new AbortController()
+  const abort = () => {
+    if (!res.writableEnded) controller.abort()
+  }
+  res.on('close', abort)
+  req.socket.on('close', abort)
+  try {
+    await agent.run(turn, (event) => {
+      if (res.writableEnded || controller.signal.aborted) return
+      res.write(`data: ${JSON.stringify(event)}\n\n`)
+      if (TERMINAL_EVENTS.has(event.type)) res.end()
+    }, controller.signal)
+  } finally {
+    req.socket.off('close', abort)
+    if (!res.writableEnded) res.end()
+    req.destroy()
+  }
+}
+
+function handleAgent(req: IncomingMessage, res: ServerResponse, method: string, path: string, agent: Agent): Promise<void> | void {
+  if (path === AGENT_PATH) return method === 'GET' ? sendJson(res, 200, agent.status()) : sendJson(res, 405, { error: 'method not allowed' })
+  return method === 'POST' ? streamAugment(req, res, agent) : sendJson(res, 405, { error: 'method not allowed' })
+}
+
 export function openBrowser(url: string, onError: () => void = () => undefined): void {
   const [command, args] = process.platform === 'darwin'
     ? ['open', [url]]
@@ -123,6 +158,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
   ensureHome(home)
   const db = openDb(dbPath(home))
   migrate(db)
+  const agent = createAgent({ home, workspace: options.workspace ?? process.cwd(), options: options.agent })
 
   let origin = ''
   let allowedHosts = new Set<string>()
@@ -147,6 +183,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
         const requestOrigin = req.headers.origin
         if (requestOrigin !== undefined && !allowedOrigins.has(requestOrigin)) return sendJson(res, 403, { error: 'cross-origin request refused' })
       }
+      if (url.pathname === AGENT_PATH || url.pathname === AUGMENT_PATH) return await handleAgent(req, res, method, url.pathname, agent)
       const limit = url.pathname === INBOX_PATH ? INBOX_MAX_BODY_BYTES : MAX_BODY_BYTES
       const body = MUTATIONS.has(method) ? parseJson(await readBody(req, limit)) : undefined
       const result = handleApi({ db, home, workspace: options.workspace }, { method, path: url.pathname, query: url.searchParams, body })
@@ -185,6 +222,7 @@ export async function startDashboard(options: DashboardOptions = {}): Promise<Da
     close: () => new Promise<void>((resolve) => {
       if (closed) return resolve()
       closed = true
+      agent.stop()
       server.close(() => {
         db.close()
         resolve()
