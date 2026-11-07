@@ -448,6 +448,46 @@ export function listApplicationsWithPostings(db: Db, filter: ListApplicationsWit
     .all(...params) as ApplicationWithPosting[]
 }
 
+export const NOT_APPLIED = 'not_applied'
+export const POSTING_STATUS_FILTERS = [NOT_APPLIED, ...APPLICATION_STATUSES] as const
+export type PostingStatusFilter = (typeof POSTING_STATUS_FILTERS)[number]
+
+export interface PostingWithApplication {
+  id: number
+  title: string
+  company: string
+  location: string | null
+  work_mode: string | null
+  url: string
+  posted_at: string | null
+  created_at: string
+  application_id: number | null
+  application_status: ApplicationStatus | null
+  applied_at: string | null
+}
+
+export interface ListPostingsWithApplicationsFilter {
+  status?: PostingStatusFilter
+  limit?: number
+}
+
+export function listPostingsWithApplications(db: Db, filter: ListPostingsWithApplicationsFilter = {}): PostingWithApplication[] {
+  const where: string[] = []
+  const params: unknown[] = []
+  if (filter.status === NOT_APPLIED) where.push('a.id IS NULL')
+  else if (filter.status !== undefined) {
+    where.push('a.status = ?')
+    params.push(filter.status)
+  }
+  params.push(filter.limit ?? 500)
+  return db.prepare(`SELECT p.id, p.title, p.company, p.location, p.work_mode, p.url, p.posted_at, p.created_at,
+      a.id AS application_id, a.status AS application_status, a.applied_at AS applied_at
+    FROM postings p LEFT JOIN applications a ON a.posting_id = p.id AND a.deleted_at IS NULL
+    ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
+    ORDER BY COALESCE(p.posted_at, p.created_at) DESC, p.id DESC LIMIT ?`)
+    .all(...params) as PostingWithApplication[]
+}
+
 export function getApplicationWithPosting(db: Db, id: number): ApplicationWithPosting | undefined {
   return one<ApplicationWithPosting>(db.prepare(`${JOINED_SELECT} WHERE a.id = ? AND a.deleted_at IS NULL`), id)
 }
