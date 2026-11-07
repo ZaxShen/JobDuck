@@ -252,7 +252,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
 
   server.registerTool('search_jobs', {
     description: 'Search freehire.me job postings (relevance order by default), save them locally, and report which are '
-      + 'already known or applied to. next_offset is the offset to page on from, or null when no rows are left.',
+      + 'already known or applied to. next_offset is the offset to page on from, or null when no rows are left. '
+      + 'work_mode leaves out postings with no stated work mode.',
     inputSchema: {
       q: z.string().optional(),
       countries: z.array(z.string()).default(['US']),
@@ -262,6 +263,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       is_tech: z.string().optional().describe("freehire is_tech class, e.g. 'tech'"),
       seniority: z.string().optional(),
       employment_type: z.string().optional(),
+      work_mode: z.array(z.enum(['remote', 'hybrid', 'onsite'])).optional()
+        .describe('only postings whose stated work mode is in the list; postings with no stated work mode are left out'),
       sort: z.enum(['relevance', 'posted_at', 'created_at']).default('relevance'),
       max_results: z.number().int().positive().max(500).default(50),
       offset: z.number().int().min(0).max(9_999).default(0)

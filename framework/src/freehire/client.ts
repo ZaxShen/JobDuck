@@ -50,6 +50,7 @@ export interface SearchParams {
   is_tech?: string
   seniority?: string
   employment_type?: string
+  work_mode?: Array<'remote' | 'hybrid' | 'onsite'>
   sort?: 'relevance' | 'posted_at' | 'created_at'
   max_results: number
   offset?: number
@@ -90,6 +91,7 @@ export function buildSearchUrl(params: SearchParams, offset: number, limit: numb
   set('is_tech', params.is_tech)
   set('seniority', params.seniority)
   set('employment_type', params.employment_type)
+  set('work_mode', params.work_mode?.join(','))
   set('sort', params.sort === 'relevance' ? undefined : params.sort)
   query.set('limit', String(limit))
   query.set('offset', String(offset))

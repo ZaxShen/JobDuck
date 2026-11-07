@@ -83,6 +83,14 @@ test('buildSearchUrl omits sort for relevance and sends posted_at or created_at'
   expect(sortOf('created_at')).toBe('created_at')
 })
 
+test('buildSearchUrl sends work_mode as a comma list and omits it when undefined or empty', () => {
+  const workModeOf = (work_mode?: Array<'remote' | 'hybrid' | 'onsite'>) =>
+    new URL(buildSearchUrl({ q: 'engineer', work_mode, max_results: 10 }, 0, 10)).searchParams
+  expect(workModeOf(['remote', 'hybrid']).get('work_mode')).toBe('remote,hybrid')
+  expect(workModeOf().has('work_mode')).toBe(false)
+  expect(workModeOf([]).has('work_mode')).toBe(false)
+})
+
 test('next_offset points at the first row not returned and is null once the window is exhausted', async () => {
   const template = fixture.pages[0]!.body.data[0]!
   const pagedFetch = (total: number): { fetch: FetchLike; calls: URL[] } => {
