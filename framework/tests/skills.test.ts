@@ -70,6 +70,13 @@ test('find asks for 100 relevance-ordered results, pages via next_offset, reads 
   expect(text).toContain('same company and title')
 })
 
+test('find passes the profile work_modes as work_mode only when they exclude a mode', () => {
+  const text = read('find')
+  expect(text).toContain("`work_mode`: the profile's `work_modes` when they list at least one but not all three modes")
+  expect(text).toContain('postings with no stated work mode are left out')
+  expect(text).toContain('omit `work_mode`')
+})
+
 test('setup always runs doctor with --workspace', () => {
   const runs = [...read('setup').matchAll(/Run `jobduck doctor[^`]*`/g)].map((m) => m[0])
   expect(runs.length).toBeGreaterThan(0)

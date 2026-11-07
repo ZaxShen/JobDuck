@@ -263,6 +263,17 @@ test('search_jobs sends sort only when not relevance and rejects a bad offset', 
   for (const offset of [-1, 10_000, 1.5]) expect((await call('search_jobs', { offset })).isError).toBe(true)
 })
 
+test('search_jobs forwards work_mode and rejects a value outside the enum', async () => {
+  await data('search_jobs', { q: 'engineer', work_mode: ['remote', 'hybrid'] })
+  expect(new URL(requests[0]!).searchParams.get('work_mode')).toBe('remote,hybrid')
+  requests = []
+  await data('search_jobs', { q: 'engineer' })
+  expect(new URL(requests[0]!).searchParams.has('work_mode')).toBe(false)
+  requests = []
+  expect((await call('search_jobs', { work_mode: ['on-site'] })).isError).toBe(true)
+  expect(requests).toEqual([])
+})
+
 test('search_jobs pages through 120 matches with offset and next_offset', async () => {
   const template = fixtureJobs[0]!
   searchHandler = (url) => {

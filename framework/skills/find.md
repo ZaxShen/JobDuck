@@ -29,7 +29,8 @@ Search, filter hard, score what is left, and hand back a short table. This skill
    - `countries`: all of the profile's `countries` in one call (default `["US"]`);
    - `posted_within_days`: the user's window, else 7 (e.g. "anything new this week" → `posted_within_days: 7`);
    - `max_results` 100; no `sort`, so results come in relevance order, unless the user asks for the newest (`sort: "posted_at"`);
-   - `company_slug` when the user named a company.
+   - `company_slug` when the user named a company;
+   - `work_mode`: the profile's `work_modes` when they list at least one but not all three modes. Tell the user up front that postings with no stated work mode are left out; when they ask to include them, omit `work_mode` and let step 3 keep and flag the unknowns.
    Do not pass `seniority`, `skills` or `is_tech` by default: freehire leaves most rows untagged, so those filters drop them. When the last page of a query still held titles that closely match it and `next_offset` is not null, call again with `offset: next_offset`, up to 300 rows per query.
    Merge results by `posting_id`, then drop rows with the same company and title (keep the newest `posted_at`).
 3. **Hard filters.** `search_jobs` rows carry `work_mode`, `pay_min`, `pay_max` and `currency` only when the source states them, and never the description: before judging requirements, sponsorship or deal-breakers, call `find_application` with the posting's `url` and `with_text: true` and read `posting.text`. Unknown pay or work mode → keep and flag, never drop. Drop a posting, with a one-line reason, when any of these hold:
