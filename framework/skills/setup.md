@@ -123,7 +123,7 @@ Profile front matter keys; most come from the resume, so ask only what is missin
 
 The `[apply]` manifest in `permissions.toml`; defaults in brackets. The dashboard Settings tab shows all of it.
 
-1. **Autonomy** `autonomy` [`confirm_each`]: `confirm_each`, `confirm_batch` (approve a filled batch by name), `auto_after_approvals` (confirm each until `approvals_before_auto` [10] approvals with no corrections, then submit without asking).
+1. **Autonomy** `autonomy` [`confirm_each`]: `confirm_each` (approve each submit; the agent moves on to the next form by itself), `confirm_batch` (approve a filled batch by name), `auto_after_approvals` (confirm each until `approvals_before_auto` [10] approvals with no corrections, then submit without asking).
 2. **Consents** `[apply.consents]` [false each]: `privacy_policy`, `terms`, `arbitration`, `background_check`, `e_signature`, `marketing_opt_in`. False means "ask me each time", not "refuse".
 3. **Demographic questions** `eeo` [`decline`]: `decline`, or `from_profile` (answers go in `[apply.answers]`).
 4. **ATS accounts** `ats_accounts` [`never`]: `never`, `reuse` (the user types passwords), `create`.
