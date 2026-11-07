@@ -56,6 +56,7 @@ export interface AddStageInput {
   note?: string | null
   contacts?: ContactInput[]
   source?: EventSource
+  appliedAt?: string
 }
 
 export interface StagePatch {
@@ -157,6 +158,7 @@ export function addStage(db: Db, applicationId: number, input: AddStageInput): {
   const stageType = checkStageType(input.kind, input.stageType)
   const outcome = checkOutcome(input.outcome === undefined ? (input.kind === 'interviewing' ? 'pending' : null) : input.outcome)
   const scheduledAt = checkScheduledAt(input.scheduledAt ?? null)
+  const appliedAt = input.appliedAt === undefined ? null : checkEventDate(input.appliedAt, 'applied_at')
   const contacts = input.contacts === undefined ? undefined : checkContacts(input.contacts)
   const source = input.source ?? 'agent'
   return transaction(db, () => {
@@ -168,7 +170,7 @@ export function addStage(db: Db, applicationId: number, input: AddStageInput): {
         SET status = ?, pending_reason = ?, applied_at = COALESCE(applied_at, ?), updated_at = ?
         WHERE id = ?
         RETURNING *`),
-      advance ? input.kind : current.status, advance ? null : current.pending_reason, now, now, applicationId)
+      advance ? input.kind : current.status, advance ? null : current.pending_reason, appliedAt, now, applicationId)
     if (!application) throw new Error(`application ${applicationId} not found`)
     const event = one<ApplicationEvent>(db.prepare(`INSERT INTO application_events
         (application_id, from_status, to_status, note, source, metadata, stage_type, scheduled_at, outcome, created_at)
