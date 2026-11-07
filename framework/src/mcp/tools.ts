@@ -477,13 +477,15 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       outcome: Outcome.optional(),
       note: z.string().optional(),
       contacts: Contacts.optional(),
+      applied_at: z.string().optional()
+        .describe('ISO date the user applied; set only when the user states it. Ignored when applied_at is already set.'),
       source: Source.default('agent'),
     },
   }, (args) => run(() => {
     requireTrack()
     return addStage(db, args.application_id, {
       kind: args.kind, stageType: args.stage_type, scheduledAt: args.scheduled_at, outcome: args.outcome,
-      note: args.note, contacts: args.contacts, source: args.source,
+      note: args.note, contacts: args.contacts, source: args.source, appliedAt: args.applied_at,
     })
   }))
 

@@ -433,6 +433,35 @@ test('record_interview, update_interview and delete_interview manage stages; get
   expect((await data('get_application', { id: created.id })).application.status).toBe('interviewing')
 })
 
+test('record_interview leaves applied_at null on saved and pending applications unless given', async () => {
+  enableTrack()
+  const posting = { title: 'Software Engineer', company: 'Example Co' }
+  const { application: saved } = await data('record_application', {
+    ...posting, url: 'https://example.com/jobs/saved', status: 'saved',
+  })
+  const { application: pending } = await data('record_application', {
+    ...posting, url: 'https://example.com/jobs/pending', status: 'pending', pending_reason: 'Answer the form question.',
+  })
+  for (const app of [saved, pending]) {
+    const recorded = await data('record_interview', { application_id: app.id, stage_type: 'phone_screen' })
+    expect(recorded.application).toMatchObject({ status: 'interviewing', applied_at: null })
+    expect((await data('get_application', { id: app.id })).application.applied_at).toBeNull()
+  }
+
+  const { application: dated } = await data('record_application', {
+    ...posting, url: 'https://example.com/jobs/dated', status: 'saved',
+  })
+  const bad = await call('record_interview', { application_id: dated.id, stage_type: 'phone_screen', applied_at: 'yesterday' })
+  expect(bad.isError).toBe(true)
+  expect(bad.content[0]?.text).toContain('applied_at must be an ISO date')
+  expect((await data('get_application', { id: dated.id })).application).toMatchObject({ status: 'saved', applied_at: null })
+  const given = await data('record_interview', { application_id: dated.id, stage_type: 'phone_screen', applied_at: '2026-01-15' })
+  expect(given.application).toMatchObject({ status: 'interviewing', applied_at: '2026-01-15' })
+  const again = await data('record_interview', { application_id: dated.id, stage_type: 'technical', applied_at: '2026-02-01' })
+  expect(again.application.applied_at).toBe('2026-01-15')
+  expect((await data('get_application', { id: dated.id })).application.applied_at).toBe('2026-01-15')
+})
+
 test('interview tools reject mismatched stages, bad values and non-stage events', async () => {
   enableTrack()
   const { application: created } = await data('record_application', application)

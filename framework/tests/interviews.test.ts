@@ -49,8 +49,32 @@ test('addStage advances pending forward and clears its pending_reason', () => {
   expect(pending).toMatchObject({ applied_at: null, pending_reason: 'Answer the visa question on the form.' })
   const first = addStage(db, pending.id, { kind: 'interviewing', stageType: 'information' })
   expect(first.application).toMatchObject({ status: 'interviewing', pending_reason: null })
-  expect(first.application.applied_at).not.toBeNull()
+  expect(first.application.applied_at).toBeNull()
   expect(first.stage.from_status).toBe('pending')
+})
+
+test('addStage writes a supplied applied_at only when none is set', () => {
+  const saved = application('saved')
+  const first = addStage(db, saved.id, { kind: 'interviewing', stageType: 'information', appliedAt: '2026-01-15' })
+  expect(first.application).toMatchObject({ status: 'interviewing', applied_at: '2026-01-15' })
+  const second = addStage(db, saved.id, { kind: 'interviewing', stageType: 'technical', appliedAt: '2026-02-01' })
+  expect(second.application.applied_at).toBe('2026-01-15')
+
+  const applied = application('applied')
+  expect(applied.applied_at).not.toBeNull()
+  expect(addStage(db, applied.id, { kind: 'interviewing', stageType: 'phone_screen' }).application.applied_at)
+    .toBe(applied.applied_at)
+  expect(addStage(db, applied.id, { kind: 'interviewing', stageType: 'technical', appliedAt: '2026-01-15' })
+    .application.applied_at).toBe(applied.applied_at)
+})
+
+test('addStage rejects an invalid applied_at and writes nothing', () => {
+  const saved = application('saved')
+  expect(() => addStage(db, saved.id, { kind: 'interviewing', stageType: 'information', appliedAt: 'last week' }))
+    .toThrow('applied_at must be an ISO date')
+  expect(getApplication(db, saved.id)).toMatchObject({ status: 'saved', applied_at: null })
+  expect(listStages(db, saved.id)).toEqual([])
+  expect(listEvents(db, saved.id)).toHaveLength(1)
 })
 
 test('addStage advances saved and applied forward and never regresses', () => {
@@ -58,7 +82,7 @@ test('addStage advances saved and applied forward and never regresses', () => {
   expect(saved.applied_at).toBeNull()
   const first = addStage(db, saved.id, { kind: 'interviewing', stageType: 'information' }).application
   expect(first.status).toBe('interviewing')
-  expect(first.applied_at).not.toBeNull()
+  expect(first.applied_at).toBeNull()
   const offered = addStage(db, saved.id, { kind: 'offered', stageType: 'verbal' })
   expect(offered.application.status).toBe('offered')
   expect(offered.stage.outcome).toBeNull()
