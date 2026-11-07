@@ -21,12 +21,14 @@ let jobduck: JobduckServer
 let client: Client
 let requests: string[]
 let unexpected: string[]
+let searchHandler: ((url: URL) => Response) | undefined
 
 const fixtureJobs = fixture.pages.flatMap((page) => (page.body as { data: Record<string, unknown>[] }).data)
 
 const fixtureFetch: FetchLike = async (input) => {
   if (input.startsWith(`${FREEHIRE_SEARCH_URL}?`)) {
     requests.push(input)
+    if (searchHandler) return searchHandler(new URL(input))
     const offset = Number(new URL(input).searchParams.get('offset'))
     const page = fixture.pages[offset === 0 ? 0 : 1]!
     return new Response(JSON.stringify(page.body), { status: 200, headers: page.headers })
@@ -49,6 +51,7 @@ beforeEach(async () => {
   box = sandbox()
   requests = []
   unexpected = []
+  searchHandler = undefined
   jobduck = createServer({ home: box.home, fetch: fixtureFetch, lookup: refusingLookup, sleep: async () => {} })
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
   client = new Client({ name: 'jobduck-test', version: '0.0.0' })
@@ -219,8 +222,9 @@ test('search_jobs upserts postings and reports known and application_status', as
   expect(requests).toHaveLength(2)
   expect(new URL(requests[0]!).searchParams.get('countries')).toBe('US')
   expect(new URL(requests[0]!).searchParams.get('posted_within_days')).toBe('7')
-  expect(new URL(requests[0]!).searchParams.get('sort')).toBe('posted_at')
+  expect(new URL(requests[0]!).searchParams.has('sort')).toBe(false)
   expect(first.total).toBe(3)
+  expect(first).toMatchObject({ offset: 0, next_offset: null })
   expect(first.returned).toBe(3)
   expect(first.jobs.every((job: any) => job.known === false && job.application_id === null)).toBe(true)
   expect(first.jobs[0]).toMatchObject({
@@ -248,6 +252,36 @@ test('search_jobs upserts postings and reports known and application_status', as
 
   const tooMany = await call('search_jobs', { max_results: 501 })
   expect(tooMany.isError).toBe(true)
+})
+
+test('search_jobs sends sort only when not relevance and rejects a bad offset', async () => {
+  await data('search_jobs', { q: 'engineer', sort: 'posted_at' })
+  expect(new URL(requests[0]!).searchParams.get('sort')).toBe('posted_at')
+  requests = []
+  await data('search_jobs', { q: 'engineer', sort: 'relevance' })
+  expect(new URL(requests[0]!).searchParams.has('sort')).toBe(false)
+  for (const offset of [-1, 10_000, 1.5]) expect((await call('search_jobs', { offset })).isError).toBe(true)
+})
+
+test('search_jobs pages through 120 matches with offset and next_offset', async () => {
+  const template = fixtureJobs[0]!
+  searchHandler = (url) => {
+    const limit = Number(url.searchParams.get('limit'))
+    const offset = Number(url.searchParams.get('offset'))
+    const count = Math.max(0, Math.min(limit, 120 - offset))
+    const data = Array.from({ length: count }, (_, i) => ({
+      ...template, external_id: `acme:${offset + i}`, url: `https://example.com/jobs/${offset + i}`,
+    }))
+    return Response.json({ data, meta: { limit, offset, total: 120 } })
+  }
+  const first = await data('search_jobs', { q: 'engineer' })
+  expect(first).toMatchObject({ total: 120, offset: 0, next_offset: 50, returned: 50 })
+  const second = await data('search_jobs', { q: 'engineer', offset: first.next_offset })
+  expect(new URL(requests.at(-1)!).searchParams.get('offset')).toBe('50')
+  expect(second).toMatchObject({ offset: 50, next_offset: 100, returned: 50 })
+  const last = await data('search_jobs', { q: 'engineer', offset: second.next_offset })
+  expect(last).toMatchObject({ offset: 100, next_offset: null, returned: 20 })
+  expect(new Set([...first.jobs, ...second.jobs, ...last.jobs].map((job: any) => job.url)).size).toBe(120)
 })
 
 test('find_application by url and by company/title', async () => {
@@ -386,6 +420,35 @@ test('record_interview, update_interview and delete_interview manage stages; get
   expect(deleted.id).toBe(offer.stage.id)
   expect((await data('get_application', { id: created.id })).stages).toHaveLength(1)
   expect((await data('get_application', { id: created.id })).application.status).toBe('interviewing')
+})
+
+test('record_interview leaves applied_at null on saved and pending applications unless given', async () => {
+  enableTrack()
+  const posting = { title: 'Software Engineer', company: 'Example Co' }
+  const { application: saved } = await data('record_application', {
+    ...posting, url: 'https://example.com/jobs/saved', status: 'saved',
+  })
+  const { application: pending } = await data('record_application', {
+    ...posting, url: 'https://example.com/jobs/pending', status: 'pending', pending_reason: 'Answer the form question.',
+  })
+  for (const app of [saved, pending]) {
+    const recorded = await data('record_interview', { application_id: app.id, stage_type: 'phone_screen' })
+    expect(recorded.application).toMatchObject({ status: 'interviewing', applied_at: null })
+    expect((await data('get_application', { id: app.id })).application.applied_at).toBeNull()
+  }
+
+  const { application: dated } = await data('record_application', {
+    ...posting, url: 'https://example.com/jobs/dated', status: 'saved',
+  })
+  const bad = await call('record_interview', { application_id: dated.id, stage_type: 'phone_screen', applied_at: 'yesterday' })
+  expect(bad.isError).toBe(true)
+  expect(bad.content[0]?.text).toContain('applied_at must be an ISO date')
+  expect((await data('get_application', { id: dated.id })).application).toMatchObject({ status: 'saved', applied_at: null })
+  const given = await data('record_interview', { application_id: dated.id, stage_type: 'phone_screen', applied_at: '2026-01-15' })
+  expect(given.application).toMatchObject({ status: 'interviewing', applied_at: '2026-01-15' })
+  const again = await data('record_interview', { application_id: dated.id, stage_type: 'technical', applied_at: '2026-02-01' })
+  expect(again.application.applied_at).toBe('2026-01-15')
+  expect((await data('get_application', { id: dated.id })).application.applied_at).toBe('2026-01-15')
 })
 
 test('interview tools reject mismatched stages, bad values and non-stage events', async () => {

@@ -251,7 +251,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   }))
 
   server.registerTool('search_jobs', {
-    description: 'Search freehire.me job postings, save them locally, and report which are already known or applied to.',
+    description: 'Search freehire.me job postings (relevance order by default), save them locally, and report which are '
+      + 'already known or applied to. next_offset is the offset to page on from, or null when no rows are left.',
     inputSchema: {
       q: z.string().optional(),
       countries: z.array(z.string()).default(['US']),
@@ -261,8 +262,10 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       is_tech: z.string().optional().describe("freehire is_tech class, e.g. 'tech'"),
       seniority: z.string().optional(),
       employment_type: z.string().optional(),
-      sort: z.enum(['posted_at', 'created_at']).default('posted_at'),
+      sort: z.enum(['relevance', 'posted_at', 'created_at']).default('relevance'),
       max_results: z.number().int().positive().max(500).default(50),
+      offset: z.number().int().min(0).max(9_999).default(0)
+        .describe('freehire offset to start at; pass the previous call\'s next_offset to page on'),
     },
   }, (args) => run(async () => {
     const result = await searchJobs(args, { fetch: deps.fetch, sleep: deps.sleep })
@@ -292,7 +295,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         application_status: application?.status ?? null,
       }
     }))
-    return { total: result.total, returned: jobs.length, jobs }
+    return { total: result.total, offset: args.offset, next_offset: result.next_offset, returned: jobs.length, jobs }
   }))
 
   server.registerTool('find_application', {
@@ -471,13 +474,15 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       outcome: Outcome.optional(),
       note: z.string().optional(),
       contacts: Contacts.optional(),
+      applied_at: z.string().optional()
+        .describe('ISO date the user applied; set only when the user states it. Ignored when applied_at is already set.'),
       source: Source.default('agent'),
     },
   }, (args) => run(() => {
     requireTrack()
     return addStage(db, args.application_id, {
       kind: args.kind, stageType: args.stage_type, scheduledAt: args.scheduled_at, outcome: args.outcome,
-      note: args.note, contacts: args.contacts, source: args.source,
+      note: args.note, contacts: args.contacts, source: args.source, appliedAt: args.applied_at,
     })
   }))
 

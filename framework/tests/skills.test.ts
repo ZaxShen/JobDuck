@@ -11,14 +11,14 @@ import { PACKAGE_VERSION, installSkills, skillNames, skillsUpToDate } from '../s
 const skillsDir = () => join(import.meta.dir, '..', 'skills')
 const templatesDir = () => join(import.meta.dir, '..', 'templates')
 
-const SKILLS = ['apply', 'augment', 'cv', 'find', 'interview', 'setup', 'sort-mail', 'track']
+const SKILLS = ['apply', 'augment', 'cv', 'find', 'interview', 'interview-mail', 'setup', 'sort-mail', 'track']
 const read = (name: string) => readFileSync(join(skillsDir(), `${name}.md`), 'utf8')
 
 let box: Sandbox
 beforeEach(() => { box = sandbox() })
 afterEach(() => box.cleanup())
 
-test('the package ships exactly the eight skills', () => {
+test('the package ships exactly the nine skills', () => {
   expect(skillNames()).toEqual(SKILLS)
 })
 
@@ -56,10 +56,15 @@ test('setup has one module section per module and asks every apply manifest key'
   for (const word of ['SQLite', 'jobduck.db', 'consent', 'search_jobs']) expect(cvSection).not.toContain(word)
 })
 
-test('find defaults to 20 results, reads posting text via with_text and keeps unknown pay', () => {
+test('find asks for 100 relevance-ordered results, pages via next_offset, reads posting text via with_text and keeps unknown pay', () => {
   const text = read('find')
-  expect(text).toContain('`max_results` 20')
-  expect(text).not.toMatch(/max_results.{1,3}50 unless/)
+  expect(text).toContain('`max_results` 100')
+  expect(text).not.toContain('`max_results` 20')
+  expect(text).toContain('relevance order')
+  expect(text).toContain('up to 3 adjacent titles')
+  expect(text).toContain('`offset: next_offset`, up to 300 rows per query')
+  expect(text).toContain('Do not pass `seniority`, `skills` or `is_tech` by default')
+  expect(text).toContain('Searched <N> postings across <Q> queries (freehire reported <T> matches).')
   expect(text).toContain('`with_text: true`')
   expect(text).toContain('keep and flag, never drop')
   expect(text).toContain('same company and title')
@@ -112,9 +117,9 @@ test('apply moves to the next form after each submit and never waits on a stop',
 test('installSkills copies the skills privately and stamps the version', () => {
   expect(skillsUpToDate(box.home)).toBe(false)
   const written = installSkills(box.home)
-  expect(written).toHaveLength(8)
+  expect(written).toHaveLength(9)
   const dir = join(box.home, 'skills')
-  expect(readdirSync(dir).sort()).toEqual(['.version', ...SKILLS.map((name) => `${name}.md`)])
+  expect(readdirSync(dir).sort()).toEqual(['.version', ...SKILLS.map((name) => `${name}.md`)].sort())
   for (const name of SKILLS) {
     expect(statSync(join(dir, `${name}.md`)).mode & 0o777).toBe(0o600)
     expect(readFileSync(join(dir, `${name}.md`), 'utf8')).toBe(read(name))
@@ -160,8 +165,26 @@ test('sort-mail carries one rubric block and moves only on a verified quote', ()
   for (const action of ['Delete', 'trash', 'spam', 'reply', 'forward', 'send', 'draft', 'interview']) expect(never).toContain(action)
 })
 
-test('track points mail reading at the opt-in sort-mail skill', () => {
+test('track points mail reading at the opt-in sort-mail and interview-mail skills', () => {
   const text = read('track')
   expect(text).not.toContain('no mail access')
   expect(text).toContain('sort-mail')
+  expect(text).toContain('interview-mail')
+})
+
+test('interview-mail asks before every outward action and never files, opens links or forwards', () => {
+  const text = read('interview-mail')
+  expect(text).toContain('**Always ask first**, each time, never batched or remembered from an earlier OK: sending any reply, accepting, declining or RSVPing any invite, booking a slot.')
+  expect(text).toContain('**One-line confirm before writing**')
+  expect(text).toContain('**No approval**')
+  expect(text).toContain('carry neither `Job Duck/Applications` nor `Job Duck/Rejections`')
+  expect(text).toContain('-label:"Job Duck/Applications" -label:"Job Duck/Rejections"')
+  expect(text).toContain('appears verbatim in the mail')
+  const never = text.slice(text.indexOf('## Never'))
+  for (const action of ['Label', 'archive', 'delete', 'Send', 'accept', 'link', 'Forward']) expect(never).toContain(action)
+})
+
+test('no mail-reading skill claims to be the only one', () => {
+  for (const name of SKILLS) expect(read(name)).not.toMatch(/the only skill that reads/)
+  for (const name of ['sort-mail', 'track', 'interview']) expect(read(name)).toContain('interview-mail')
 })
