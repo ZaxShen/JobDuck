@@ -56,10 +56,15 @@ test('setup has one module section per module and asks every apply manifest key'
   for (const word of ['SQLite', 'jobduck.db', 'consent', 'search_jobs']) expect(cvSection).not.toContain(word)
 })
 
-test('find defaults to 20 results, reads posting text via with_text and keeps unknown pay', () => {
+test('find asks for 100 relevance-ordered results, pages via next_offset, reads posting text via with_text and keeps unknown pay', () => {
   const text = read('find')
-  expect(text).toContain('`max_results` 20')
-  expect(text).not.toMatch(/max_results.{1,3}50 unless/)
+  expect(text).toContain('`max_results` 100')
+  expect(text).not.toContain('`max_results` 20')
+  expect(text).toContain('relevance order')
+  expect(text).toContain('up to 3 adjacent titles')
+  expect(text).toContain('`offset: next_offset`, up to 300 rows per query')
+  expect(text).toContain('Do not pass `seniority`, `skills` or `is_tech` by default')
+  expect(text).toContain('Searched <N> postings across <Q> queries (freehire reported <T> matches).')
   expect(text).toContain('`with_text: true`')
   expect(text).toContain('keep and flag, never drop')
   expect(text).toContain('same company and title')

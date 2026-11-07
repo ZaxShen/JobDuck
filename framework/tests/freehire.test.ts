@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { type FetchLike, type FreehireJob, getJob, searchJobs, USER_AGENT } from '../src/freehire/client'
+import { buildSearchUrl, type FetchLike, type FreehireJob, getJob, searchJobs, USER_AGENT } from '../src/freehire/client'
 import { stripUtmSource, toPostingInput } from '../src/freehire/map'
 
 interface FixturePage { headers: Record<string, string>; body: { data: FreehireJob[]; meta: Record<string, number> } }
@@ -72,6 +72,46 @@ test('never requests past offset + limit = 10000', async () => {
   for (const url of calls) {
     expect(Number(url.searchParams.get('offset')) + Number(url.searchParams.get('limit'))).toBeLessThanOrEqual(10_000)
   }
+})
+
+test('buildSearchUrl omits sort for relevance and sends posted_at or created_at', () => {
+  const sortOf = (sort?: 'relevance' | 'posted_at' | 'created_at') =>
+    new URL(buildSearchUrl({ q: 'engineer', sort, max_results: 10 }, 0, 10)).searchParams.get('sort')
+  expect(sortOf()).toBeNull()
+  expect(sortOf('relevance')).toBeNull()
+  expect(sortOf('posted_at')).toBe('posted_at')
+  expect(sortOf('created_at')).toBe('created_at')
+})
+
+test('next_offset points at the first row not returned and is null once the window is exhausted', async () => {
+  const template = fixture.pages[0]!.body.data[0]!
+  const pagedFetch = (total: number): { fetch: FetchLike; calls: URL[] } => {
+    const calls: URL[] = []
+    const fetch: FetchLike = async (input) => {
+      const url = new URL(input)
+      calls.push(url)
+      const limit = Number(url.searchParams.get('limit'))
+      const offset = Number(url.searchParams.get('offset'))
+      const count = Math.max(0, Math.min(limit, total - offset))
+      const data = Array.from({ length: count }, (_, i) => ({ ...template, external_id: `x:${offset + i}` }))
+      return new Response(JSON.stringify({ data, meta: { limit, offset, total } }), { status: 200 })
+    }
+    return { fetch, calls }
+  }
+  const sleep = async () => {}
+  const paged = pagedFetch(120)
+  const first = await searchJobs({ max_results: 50 }, { fetch: paged.fetch, sleep })
+  expect(first).toMatchObject({ total: 120, next_offset: 50 })
+  const second = await searchJobs({ max_results: 50, offset: 50 }, { fetch: paged.fetch, sleep })
+  expect(paged.calls.at(-1)?.searchParams.get('offset')).toBe('50')
+  expect(second.next_offset).toBe(100)
+  const last = await searchJobs({ max_results: 50, offset: 100 }, { fetch: paged.fetch, sleep })
+  expect(last.jobs).toHaveLength(20)
+  expect(last.next_offset).toBeNull()
+  expect((await searchJobs({ max_results: 120 }, { fetch: pagedFetch(120).fetch, sleep })).next_offset).toBeNull()
+  expect((await searchJobs({ max_results: 50, offset: 200 }, { fetch: pagedFetch(120).fetch, sleep })).next_offset).toBeNull()
+  expect((await searchJobs({ max_results: 70, offset: 9_930 }, { fetch: pagedFetch(50_000).fetch, sleep })).next_offset).toBeNull()
+  expect((await searchJobs({ max_results: 50, offset: 9_900 }, { fetch: pagedFetch(50_000).fetch, sleep })).next_offset).toBe(9_950)
 })
 
 test('retries once after a 429 and throws on other errors', async () => {
