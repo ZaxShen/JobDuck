@@ -9,7 +9,7 @@ const read = (dir: string, name: string) => readFileSync(join(root, dir, name), 
 
 test('every skill on disk is embedded byte-identical', () => {
   const names = filesIn('skills').filter((file) => file.endsWith('.md'))
-  expect(Object.keys(SKILLS).sort()).toEqual(names.map((file) => file.slice(0, -3)))
+  expect(Object.keys(SKILLS).sort()).toEqual(names.map((file) => file.slice(0, -3)).sort())
   for (const file of names) expect(SKILLS[file.slice(0, -3)]).toBe(read('skills', file))
 })
 
