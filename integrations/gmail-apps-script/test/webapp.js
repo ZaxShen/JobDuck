@@ -90,7 +90,7 @@ function outcome(id, receivedAt) {
 
   const pending = post(api, { token: TOKEN, action: 'pending' });
   check('pending responds as JSON', pending.mime === 'application/json');
-  check('pending returns outcomes sorted by receivedAt', pending.json.ok === true && pending.json.scriptVersion === '5.5' &&
+  check('pending returns outcomes sorted by receivedAt', pending.json.ok === true && pending.json.scriptVersion === '5.6' &&
     pending.json.outcomes.map((o) => o.messageId).join(',') === '<a@x>,<b@x>,<c@x>', pending.json);
 
   const ack = post(api, { token: TOKEN, action: 'ack', messageIds: ['<a@x>', '<c@x>', '<unknown@x>'] });
@@ -98,13 +98,13 @@ function outcome(id, receivedAt) {
   check('ack removes exactly the given ids', ack.json.ok === true && ack.json.acked === 2 && left.join(',') === '<b@x>', { ack: ack.json, left });
 
   const status = post(api, { token: TOKEN, action: 'status' });
-  check('status reports mode and pending', status.json.ok === true && status.json.mode === 'serve' && status.json.pending === 1 && status.json.scriptVersion === '5.5', status.json);
+  check('status reports mode and pending', status.json.ok === true && status.json.mode === 'serve' && status.json.pending === 1 && status.json.scriptVersion === '5.6', status.json);
 
   check('bad action → bad_request', post(api, { token: TOKEN, action: 'delete-all' }).json.error === 'bad_request');
   check('ack without messageIds → bad_request', post(api, { token: TOKEN, action: 'ack' }).json.error === 'bad_request');
 
   const page = api.doGet({ parameter: { token: TOKEN } }).getContent();
-  check('doGet is a one-line page without outcome data or token', page === 'Job Duck Gmail script v5.5 — POST only' && !page.includes('<b@x>') && !page.includes(TOKEN), page);
+  check('doGet is a one-line page without outcome data or token', page === 'Job Duck Gmail script v5.6 — POST only' && !page.includes('<b@x>') && !page.includes(TOKEN), page);
 }
 
 {

@@ -1,6 +1,6 @@
 # Job Duck — Gmail automation (Apps Script)
 
-Script v5.5. Rejections are queued inside the script and served to `jobduck sync` by the script itself, deployed as a
+Script v5.6. Rejections are queued inside the script and served to `jobduck sync` by the script itself, deployed as a
 web app; `jobduck sync` records them in your local Job Duck database. Nothing is pushed anywhere.
 
 A Google Apps Script that runs in the user's own Google account. Every 10 minutes it reads each job thread in the
@@ -81,7 +81,8 @@ condition precedes it.
 Only rejections that stand leave the script; nothing else is queued for `jobduck sync`.
 
 The script only ever searches the Inbox (`in:inbox`), plus the `Job Duck/Applications` label when you run
-`previewReaudit` / `reauditApplications`. Other archived mail is never read.
+`previewReaudit` / `reauditApplications` and the `Job Duck/Rejections` label when you run `previewReauditRejections` /
+`reauditRejections`. Other archived mail is never read.
 
 ## What it serves
 
@@ -108,7 +109,7 @@ job link; nothing else leaves Gmail.
 recorded; acknowledged outcomes are deleted from the script. The agent never gets mail access.
 
 1. Open [script.google.com](https://script.google.com/home) and click **New project**; rename it
-   `Job Duck - Gmail Rejection Sync v5.5`. In **Project Settings**, tick **Show "appsscript.json" manifest file in
+   `Job Duck - Gmail Rejection Sync v5.6`. In **Project Settings**, tick **Show "appsscript.json" manifest file in
    editor**. Back in the **Editor**, replace the contents of `appsscript.json` with
    [`appsscript.json`](https://github.com/ZaxShen/JobDuck/blob/main/integrations/gmail-apps-script/appsscript.json)
    and of `Code.gs` with
@@ -138,7 +139,7 @@ On a large Inbox: the trigger only reads Inbox mail from the last 3 days (`CONFI
 once for older mail. Only rejections received in the last 30 days (`CONFIG.SYNC_SINCE`) are queued for
 `jobduck sync`; older ones are labeled and archived but not queued.
 
-The URL alone exposes nothing: a `GET` returns the one line `Job Duck Gmail script v5.5 — POST only`, and every request
+The URL alone exposes nothing: a `GET` returns the one line `Job Duck Gmail script v5.6 — POST only`, and every request
 for data is a `POST` whose JSON body carries the token (`{ token, action, messageIds? }`, actions `pending`, `ack`,
 `status`). The token never goes into a URL. After editing the script, **Deploy → Manage deployments → Edit → Version:
 New version** so the `/exec` URL serves the new code; a deployment keeps running the version it was created with.
@@ -155,9 +156,15 @@ Optional:
 - `reauditApplications` applies those decisions: a rejection gets `Job Duck/Rejections`, loses
   `Job Duck/Applications` and is queued; a kept thread loses `Job Duck/Applications` (and the v5.2 interview label,
   if the thread still has it; that label is never created) and is moved back to the Inbox with no label;
-  non-application mail loses the Applications label only. Both stop after
-  4.5 minutes and remember where they were, so run them again until the log says `complete`. `resetReaudit` starts
-  both over from the newest thread.
+  non-application mail loses the Applications label only.
+- `previewReauditRejections` re-checks every `Job Duck/Rejections` thread, newest first, with the same thread rules as
+  the trigger and logs each thread that is no longer a rejection that stands (`would back` lines). Nothing is changed.
+  Run it first and read the log before you apply.
+- `reauditRejections` applies that: each such thread loses `Job Duck/Rejections`, its still-pending outcome is dropped
+  from the queue, and it is moved back to the Inbox. A rejection that still stands is left as it is.
+
+All four stop after 4.5 minutes and remember where they were, so run them again until the log says `complete`.
+`resetReaudit` starts all four over from the newest thread.
 
 Personal rules (protected labels, excluded domains) are script properties `PROTECTED_LABELS` and `EXCLUDED_DOMAINS`,
 so a fresh copy never needs a code edit; the sync start date lives in `CONFIG`.
@@ -207,6 +214,17 @@ trigger are kept.
 
 ## Changelog
 
+- **v5.6**: New `previewReauditRejections` / `reauditRejections` re-check the `Job Duck/Rejections` label and send
+  every thread that no longer classifies as a rejection back to the Inbox, without the label and its queued outcome.
+  The rejection allowlist stays an allowlist and gains more standard parts that ask nothing of the candidate: thanks
+  for the time and the application, encouragement to apply again or to watch the careers page, a talent community, job
+  alerts or a social link, the resume kept on file, wishes of luck, hiring-volume and decision-difficulty lines, notices
+  that replies are not read, and a status line for other applications. The v5.5 contact rule is narrowed for these
+  shapes only: "we'll reach out if a role opens up that fits", "stay connected with us on LinkedIn" and "we hope our
+  paths cross again" no longer keep a rejection, while a contact word naming a person, a call or a specific role still
+  does. New vetoes keep a rejection in the Inbox whatever its other sentences: a test, assessment, questionnaire or
+  form to complete, anything to upload, sign or submit, a direct question to the candidate, a specific other role to
+  discuss, and a role paused or put on hold (which no longer counts as a decision).
 - **v5.5**: A rejection is denied only when every sentence, once the greeting, sign-off and standard footer are set
   aside, is an allowlisted shape: the decision itself, thanks or appreciation for the application, a wish of luck, a
   pointer to the careers page or future openings that names no person, call or specific role, a status disclaimer for

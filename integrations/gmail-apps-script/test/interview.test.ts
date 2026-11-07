@@ -73,39 +73,54 @@ function store(initial: Record<string, string> = {}) {
   };
 }
 
-function load(threads: FakeThread[], scriptProps: Record<string, string> = {}, existingLabels: string[] = [APPLICATIONS, REJECTIONS]) {
+function load(
+  threads: FakeThread[],
+  scriptProps: Record<string, string> = {},
+  existingLabels: string[] = [APPLICATIONS, REJECTIONS],
+  userProps: Record<string, string> = {},
+) {
   const logs: string[] = [];
   const created: string[] = [];
   const existing = new Set(existingLabels);
   const scriptStore = store(scriptProps);
+  const userStore = store(userProps);
   const sandbox: Record<string, unknown> = {
     Logger: { log: (m: unknown) => logs.push(String(m)) },
-    PropertiesService: { getScriptProperties: () => scriptStore, getUserProperties: () => store() },
+    PropertiesService: { getScriptProperties: () => scriptStore, getUserProperties: () => userStore },
     Session: { getActiveUser: () => ({ getEmail: () => 'me@example.com' }) },
     GmailApp: {
       getUserLabelByName: (name: string) => (existing.has(name) ? label(name) : null),
       createLabel: (name: string) => { created.push(name); existing.add(name); return label(name); },
       search: (query: string, start: number, max: number) =>
         threads
-          .filter((t) => (query.includes(APPLICATIONS) ? t.labels.has(APPLICATIONS) : query.includes('in:inbox') && t.inInbox))
+          .filter((t) =>
+            query.includes(APPLICATIONS)
+              ? t.labels.has(APPLICATIONS)
+              : query.includes(REJECTIONS)
+                ? t.labels.has(REJECTIONS)
+                : query.includes('in:inbox') && t.inInbox,
+          )
           .slice(start, start + max),
     },
   };
   vm.createContext(sandbox);
   vm.runInContext(
     readFileSync(join(import.meta.dir, '..', 'Code.gs'), 'utf8') +
-      '\nthis.__api = { processThread_, reauditApplications, previewReaudit, preview, isInterview, unexplainedRejection_ };',
+      '\nthis.__api = { processThread_, reauditApplications, previewReaudit, reauditRejections, previewReauditRejections, resetReaudit, preview, isInterview, unexplainedRejection_ };',
     sandbox,
   );
   const api = sandbox.__api as {
     processThread_(t: FakeThread): string;
     reauditApplications(): void;
     previewReaudit(): void;
+    reauditRejections(): void;
+    previewReauditRejections(): void;
+    resetReaudit(): void;
     preview(): void;
     isInterview(body: string): boolean;
     unexplainedRejection_(body: string): string | null;
   };
-  return { api, logs, scriptStore, created };
+  return { api, logs, scriptStore, userStore, created };
 }
 
 describe('processThread_ leaves kept mail untouched in the Inbox', () => {
@@ -590,14 +605,11 @@ describe('v5.5: a rejection is denied only when every sentence is an allowlisted
   });
 
   test.each([
-    'We will keep your information on file and reach out if future opportunities arise that match your background.',
     'We will keep your resume on file and contact you should a suitable position open.',
     'We encourage you to stay connected with us through our website for future openings.',
     'Thank you for your interest in Acme and for connecting with us.',
     'We wish you the best of luck in your job search; feel free to book time with Jane.',
     'Thank you for your time, and please schedule a chat with Jane.',
-    'Thank you for taking the time to speak with our team.',
-    'This was not an easy decision, and we had to make some difficult calls.',
   ])('a courtesy sentence holding a contact word stays untouched in the Inbox: %s', (sentence) => {
     const { action, t } = runBody('Hi Dan,\n\n' + CAREFUL + ' ' + sentence + '\n\nBest,\nAcme Recruiting');
     expect(action).toBe('keep');
@@ -815,6 +827,110 @@ describe('reaudit returns archived mail that is not a plain application to the I
     expect(logs.filter((l) => l.startsWith('KEEP ') && l.includes('message besides the rejection'))).toHaveLength(1);
     expect(logs.some((l) => l.includes('1 rejections, 1 job emails kept in the Inbox, 1 application confirmations'))).toBe(true);
     expect(Object.keys(scriptStore.data).filter((k) => k.startsWith('outcome:'))).toHaveLength(0);
+  });
+});
+
+describe('v5.6: reauditRejections sends every Rejections thread that is no longer a rejection back to the Inbox', () => {
+  const OFFER_TO_TALK = 'Hi Danlin,\n\nUnfortunately, we have decided not to move forward with your application. Would you be open to a different position?\n\nAcme Recruiting';
+  const outcomeKey = (m: Message) => 'outcome:' + m.getHeader();
+
+  test('previewReauditRejections logs the thread it would send back and changes nothing', () => {
+    const m = message('Update on your application', OFFER_TO_TALK);
+    const t = thread([REJECTIONS], [m], false);
+    const { api, logs, scriptStore } = load([t], { [outcomeKey(m)]: '{}' });
+    api.previewReauditRejections();
+    expect(t.calls).toEqual([]);
+    expect(t.labels.has(REJECTIONS)).toBe(true);
+    expect(scriptStore.data[outcomeKey(m)]).toBe('{}');
+    expect(logs.some((l) => l.startsWith('would back | ') && l.includes('Update on your application'))).toBe(true);
+    expect(logs.some((l) => l.startsWith('previewReauditRejections complete.') && l.includes('"back":1'))).toBe(true);
+  });
+
+  test('reauditRejections takes the label off, drops the pending outcome and moves the thread to the Inbox; a rejection that stands is untouched', () => {
+    const offer = message('Update on your application', OFFER_TO_TALK);
+    const backThread = thread([REJECTIONS], [offer], false);
+    const plain = message('Update on your application', ACME_REJECTION);
+    const stays = thread([REJECTIONS], [plain], false);
+    const { api, logs, scriptStore, created } = load([backThread, stays], { [outcomeKey(offer)]: '{}', [outcomeKey(plain)]: '{}' });
+    api.reauditRejections();
+    expect(backThread.calls).toEqual(['remove ' + REJECTIONS, 'inbox']);
+    expect(backThread.labels.size).toBe(0);
+    expect(backThread.inInbox).toBe(true);
+    expect(stays.calls).toEqual([]);
+    expect(stays.labels.has(REJECTIONS)).toBe(true);
+    expect(created).toEqual([]);
+    expect(outcomeKey(offer) in scriptStore.data).toBe(false);
+    expect(outcomeKey(plain) in scriptStore.data).toBe(true);
+    expect(logs.some((l) => l.startsWith('back | ') && l.includes('Update on your application'))).toBe(true);
+    expect(logs.some((l) => l.startsWith('reauditRejections complete.') && l.includes('"back":1') && l.includes('"unchanged":1'))).toBe(true);
+  });
+
+  test('resetReaudit clears the Applications and the Rejections cursors', () => {
+    const { api, userStore } = load([], {}, [APPLICATIONS, REJECTIONS], {
+      reauditOffset: '100',
+      previewReauditOffset: '100',
+      reauditRejectionsOffset: '100',
+      previewReauditRejectionsOffset: '100',
+      backfillOffset: '200',
+    });
+    api.resetReaudit();
+    expect(Object.keys(userStore.data)).toEqual(['backfillOffset']);
+  });
+});
+
+describe('v5.6: more standard parts of a rejection are allowlisted, and requests veto it', () => {
+  const D = 'Unfortunately, we have decided not to move forward with your application.';
+  const run = (sentence: string) => {
+    const body = 'Hi Dan,\n\nThank you for your interest in the Backend Engineer role at Acme. ' + D + ' ' + sentence + '\n\nBest,\nAcme Recruiting';
+    const t = thread([], [message('Your application to Acme', body, 'Acme Recruiting <no-reply@greenhouse.io>')]);
+    const { api } = load([t]);
+    return { action: api.processThread_(t), t, api, body };
+  };
+
+  test.each([
+    'There was significant interest in this role.',
+    'We received a large number of applications, making the selection process highly competitive.',
+    'Due to high volumes of applications, we are unable to provide individual feedback at this stage.',
+    'Please be assured that your application was carefully reviewed by our recruiting team.',
+    'We will keep your resume in our database should another opportunity similar to this one open up.',
+    "We'll be sure to reconnect if something opens up that may be a better match.",
+    "We'd welcome the opportunity to stay connected with you.",
+    'Your interest means a lot to us.',
+    'We know that a job search can be a lot of work.',
+    'We hope you will consider us for future opportunities.',
+    'We wish you all the best in the search for your next opportunity.',
+    'We are growing and adding new roles regularly, so we encourage you to explore our careers page.',
+    'This email was automatically generated by Acme.',
+    'We will keep your information on file and reach out if future opportunities arise that match your background.',
+    'Thank you for taking the time to speak with our team.',
+    'This was not an easy decision, and we had to make some difficult calls.',
+  ])('a rejection whose extra sentence is a standard part is denied: %s', (sentence) => {
+    const { action, api, body } = run(sentence);
+    expect(api.unexplainedRejection_(body)).toBeNull();
+    expect(action).toBe('deny');
+  });
+
+  test.each([
+    ['an assessment link', 'Please complete the assessment at https://acme.example.com/test.'],
+    ['a question', 'Would you be open to a different position?'],
+    ['a specific other role', "We'd love to discuss our Staff Engineer opening with you."],
+    ['an on-hold role', 'The role has been put on hold.'],
+    ['an upload request', 'Please upload your portfolio to the candidate portal.'],
+    ['a form', 'Please fill out the short questionnaire below.'],
+    ['a paused role', 'We have paused hiring for this position.'],
+  ])('a rejection with %s stays untouched in the Inbox', (_shape, sentence) => {
+    const { action, t } = run(sentence);
+    expect(action).toBe('keep');
+    expect(t.calls).toEqual([]);
+    expect(t.inInbox).toBe(true);
+  });
+
+  test('a paused role is not a decision on its own', () => {
+    const body = 'Hi Dan,\n\nThank you for applying to the Backend Engineer role at Acme. We have put this role on hold for now.\n\nBest,\nAcme Recruiting';
+    const t = thread([], [message('Your application to Acme', body, 'Acme Recruiting <no-reply@greenhouse.io>')]);
+    const { api } = load([t]);
+    expect(api.processThread_(t)).toBe('keep');
+    expect(t.calls).toEqual([]);
   });
 });
 
