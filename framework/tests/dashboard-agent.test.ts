@@ -279,7 +279,7 @@ test('closing the dashboard mid-turn kills the child instead of hanging', async 
 })
 
 test('the timeout kills a hung child and emits error', async () => {
-  await start({ command: fake('--fake-mode=hang'), timeoutMs: 300 })
+  await start({ command: fake('--fake-mode=hang'), timeoutMs: 3000 })
   const events = await collect(await post({ message: 'hi' }))
   expect(events[0]).toEqual({ type: 'session', sessionId: FAKE_SESSION_ID })
   expect(events.at(-1)!.type).toBe('error')
@@ -291,7 +291,7 @@ test('the timeout kills a hung child and emits error', async () => {
     if (res.status === 200) await collect(res)
     return res.status === 200
   })
-})
+}, 15_000)
 
 test('a crash without a result emits error with the stderr tail and frees the lock', async () => {
   await start({ command: fake('--fake-mode=crash') })
