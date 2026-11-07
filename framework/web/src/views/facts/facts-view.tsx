@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { deleteJSON, patchJSON } from '@/lib/api'
 import type { FactStatus, ProfileFact } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { AgentChatCard } from '@/views/facts/agent-chat-card'
 import { FactRow } from '@/views/facts/fact-row'
 import type { ProfileFacts } from '@/views/facts/use-profile-facts'
 
@@ -56,10 +57,10 @@ function EmptyState() {
   return (
     <SectionCard title="No Experience Facts Yet" className="bg-muted/40">
       <p className="text-sm text-muted-foreground">
-        Tell your agent "augment my profile". Its <code className="rounded bg-muted px-1">augment</code> skill reads the
-        Experience in your profile and proposes atomic facts (one action each, with outcome and metrics) here. Accept the
-        ones that are true: the <code className="rounded bg-muted px-1">cv</code> skill builds your CV bullets only from
-        accepted facts.
+        Ask your agent above to augment your profile, or copy the prompt into your own agent. Its{' '}
+        <code className="rounded bg-muted px-1">augment</code> skill reads the Experience in your profile and proposes
+        atomic facts (one action each, with outcome and metrics) here. Accept the ones that are true: the{' '}
+        <code className="rounded bg-muted px-1">cv</code> skill builds your CV bullets only from accepted facts.
       </p>
     </SectionCard>
   )
@@ -130,7 +131,7 @@ function ProjectGroup({ project, facts, defaultOpen, onReorder, onSave, onDelete
   )
 }
 
-export function FactsView({ facts, loaded, mutate, reorder }: ProfileFacts) {
+export function FactsView({ facts, loaded, mutate, reorder, refresh }: ProfileFacts) {
   const [tab, setTab] = useState<FactStatus>('proposed')
 
   const counts = useMemo(() => Object.fromEntries(TABS.map(({ status }) =>
@@ -154,6 +155,8 @@ export function FactsView({ facts, loaded, mutate, reorder }: ProfileFacts) {
         Atomic facts about your work, proposed by your agent. Your CV is written only from the ones you accept. Drag the
         handle to reorder facts within a project.
       </p>
+
+      <AgentChatCard onDone={() => void refresh()} />
 
       {loaded && facts.length === 0 ? <EmptyState /> : (
         <>
