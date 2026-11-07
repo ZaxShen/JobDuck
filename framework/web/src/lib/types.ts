@@ -86,6 +86,20 @@ export interface Summary {
   needs_match: number
 }
 
+export interface PostingRow {
+  id: number
+  title: string
+  company: string
+  location: string | null
+  work_mode: string | null
+  url: string
+  posted_at: string | null
+  created_at: string
+  application_id: number | null
+  application_status: string | null
+  applied_at: string | null
+}
+
 export interface Statuses {
   statuses: string[]
   terminal: string[]

@@ -1,6 +1,6 @@
 import type { ProfileView } from './types'
 
-export const VIEWS = ['applications', 'profile', 'settings', 'welcome'] as const
+export const VIEWS = ['applications', 'jobs', 'profile', 'settings', 'welcome'] as const
 export type View = (typeof VIEWS)[number]
 
 export interface Route {

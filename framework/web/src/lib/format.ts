@@ -1,4 +1,4 @@
-import type { ApplicationRow } from '@/lib/types'
+import type { ApplicationRow } from './types'
 
 export const statusLabel = (status: string) => status.replace(/_/g, ' ')
 export const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString() : '')
