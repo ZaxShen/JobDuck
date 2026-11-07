@@ -8,7 +8,7 @@ const REJECTIONS = 'Job Duck/Rejections';
 const LEGACY_INTERVIEWS = 'Job Duck/Interviews';
 
 const INVITE_BODY =
-  "Hi Danlin,\n\nExcited to kick off the interview process with you - before we schedule anything, I'd love for you to fill out a quick questionnaire.\n\nThe Salient Hiring Team";
+  "Hi Danlin,\n\nExcited to kick off the interview process with you - before we schedule anything, I'd love for you to fill out a quick questionnaire.\n\nThe Yoyodyne Hiring Team";
 const CONFIRMATION_BODY =
   'Hi Danlin,\n\nThank you for applying to the Platform Engineer position at Globex. We have received your application.\n\nGlobex Careers';
 const REJECTION_BODY =
@@ -125,7 +125,7 @@ function load(
 
 describe('processThread_ leaves kept mail untouched in the Inbox', () => {
   test('interview mail gets no label and is not archived', () => {
-    const t = thread([], [message('Salient | A few things to know before your interview...', INVITE_BODY, 'The Salient Hiring Team <no-reply@ashbyhq.com>')]);
+    const t = thread([], [message('Yoyodyne | A few things to know before your interview...', INVITE_BODY, 'The Yoyodyne Hiring Team <no-reply@ashbyhq.com>')]);
     const { api, created } = load([t]);
     expect(api.processThread_(t)).toBe('keep');
     expect(t.calls).toEqual([]);
