@@ -904,6 +904,8 @@ describe('v5.6: more standard parts of a rejection are allowlisted, and requests
     'We will keep your information on file and reach out if future opportunities arise that match your background.',
     'Thank you for taking the time to speak with our team.',
     'This was not an easy decision, and we had to make some difficult calls.',
+    'We would appreciate your feedback on your application experience through this optional survey.',
+    'You may receive a brief, optional survey about your candidate experience.',
   ])('a rejection whose extra sentence is a standard part is denied: %s', (sentence) => {
     const { action, api, body } = run(sentence);
     expect(api.unexplainedRejection_(body)).toBeNull();
@@ -918,6 +920,9 @@ describe('v5.6: more standard parts of a rejection are allowlisted, and requests
     ['an upload request', 'Please upload your portfolio to the candidate portal.'],
     ['a form', 'Please fill out the short questionnaire below.'],
     ['a paused role', 'We have paused hiring for this position.'],
+    ['a required survey', 'Please complete the required survey by Friday.'],
+    ['a survey with a deadline', 'You may receive a brief, optional survey about your candidate experience, due by Friday.'],
+    ['a survey about interview availability', 'Please complete this survey about your availability for an interview.'],
   ])('a rejection with %s stays untouched in the Inbox', (_shape, sentence) => {
     const { action, t } = run(sentence);
     expect(action).toBe('keep');

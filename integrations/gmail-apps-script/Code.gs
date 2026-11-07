@@ -1874,8 +1874,17 @@ var RJ_NOTICES = [
   'if contacted by a suspicious (?:profile|person|account|message|recruiter)(?:,? or if something (?:feels|seems) off)?,? (?:don\'t|do not) engage(?: ?[—–-] ?|, | )email us (?:at )?(?:URL|EMAIL) to verify',
   'always (?:confirm|verify)(?: or apply for)? (?:any )?(?:open )?(?:roles|positions|jobs|opportunities) directly (?:on|through|via) (?:the |our )?(?:official )?' + RJ_PLACE
 ];
+// An optional survey about the application or candidate experience; a required one, a deadline or any other topic
+// matches no shape.
+var RJ_EXPERIENCE = '(?:your |the |our )?(?:application|candidate|applicant|recruiting|hiring)(?: process)? experience(?: with (?:us|' + RJ_NAME + '))?';
+var RJ_OPTIONAL_SURVEY = '(?:(?:brief|short|quick|anonymous),? )?(?:optional|voluntary),? (?:(?:brief|short|quick|anonymous) )?survey(?: \\( URL \\)| URL)?';
+var RJ_SURVEY = [
+  'we(?:\'d| would) (?:(?:greatly|really|also) )?(?:appreciate|love|welcome|value) (?:your |any )?(?:feedback|input|thoughts) (?:on|about|regarding) ' + RJ_EXPERIENCE +
+    ' (?:through|via|in|with) (?:this|a|an|our) ' + RJ_OPTIONAL_SURVEY,
+  'you (?:may|might|will) (?:also )?receive (?:a|an) ' + RJ_OPTIONAL_SURVEY + ' (?:about|on|regarding) ' + RJ_EXPERIENCE
+];
 var RJ_CLAUSES = [RJ_DECISION_SENTENCE, RJ_REVIEWED_CLAUSE, RJ_PRAISE_CLAUSE, RJ_OPENING, RJ_THANKS, RJ_THANKS_MORE, RJ_APPRECIATE, RJ_APPRECIATE_WHAT, RJ_WISH,
-  ACK_THANKS, ACK_APPRECIATE, ACK_WISH, ACK_THANKS_TIME].concat(RJ_FUTURE_SENTENCES, RJ_FUTURE_CONTACT, RJ_STATUS, RJ_POOL, RJ_NOTICES, NOTICE_CLAUSES);
+  ACK_THANKS, ACK_APPRECIATE, ACK_WISH, ACK_THANKS_TIME].concat(RJ_FUTURE_SENTENCES, RJ_FUTURE_CONTACT, RJ_STATUS, RJ_POOL, RJ_NOTICES, RJ_SURVEY, NOTICE_CLAUSES);
 var RJ_MAX_REPEAT = 8;
 
 /** The pattern with every repeated group that holds a name slot written out copy by copy, an unbounded one up to

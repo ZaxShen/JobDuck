@@ -219,7 +219,8 @@ trigger are kept.
   The rejection allowlist stays an allowlist and gains more standard parts that ask nothing of the candidate: thanks
   for the time and the application, encouragement to apply again or to watch the careers page, a talent community, job
   alerts or a social link, the resume kept on file, wishes of luck, hiring-volume and decision-difficulty lines, notices
-  that replies are not read, and a status line for other applications. The v5.5 contact rule is narrowed for these
+  that replies are not read, a status line for other applications, and an optional survey about the application or
+  candidate experience (a required survey, one with a deadline or one on any other topic still keeps it). The v5.5 contact rule is narrowed for these
   shapes only: "we'll reach out if a role opens up that fits", "stay connected with us on LinkedIn" and "we hope our
   paths cross again" no longer keep a rejection, while a contact word naming a person, a call or a specific role still
   does. New vetoes keep a rejection in the Inbox whatever its other sentences: a test, assessment, questionnaire or
