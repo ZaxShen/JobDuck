@@ -76,6 +76,18 @@ test('apply records every EXTRACTED v3 key', () => {
   for (const key of EXTRACTED_KEYS) expect(text).toContain(`\`${key}\``)
 })
 
+test('apply checks the page for a confirmation before the gate and before Submit', () => {
+  const text = read('apply')
+  const gate = text.slice(text.indexOf('### 6. Approval gate'), text.indexOf('### 7. Record'))
+  const record = text.slice(text.indexOf('### 7. Record'), text.indexOf('### 8. Report'))
+  expect(gate).toContain('check the open page for a submission confirmation')
+  expect(gate).toContain('`Approval: already submitted`')
+  expect(gate).toContain('immediately before every Submit click')
+  expect(gate).toContain('A missing Submit button alone is not proof')
+  expect(gate).toContain('`Approval: already submitted` does not count')
+  expect(record).toContain('Confirmation: <confirmation page URL>')
+})
+
 test('installSkills copies the skills privately and stamps the version', () => {
   expect(skillsUpToDate(box.home)).toBe(false)
   const written = installSkills(box.home)

@@ -83,17 +83,19 @@ Use the host's browser tool in a new tab. Read each field label before filling i
 
 ### 6. Approval gate
 
+First check the open page for a submission confirmation: a URL or page title saying confirmation, thank-you, submitted or application received, or page text such as "Thank you for applying" or "your application has been received". When it shows one, the form is already submitted: skip the gate and the click, record it per step 7 with `Approval: already submitted` and `Confirmation: <confirmation page URL>`, tell the user it was already submitted, and move on. A missing Submit button alone is not proof (multi-page forms, validation errors, lazy loading): re-read the page; if still unclear, ask the user, and never record it as applied. Repeat this check immediately before every Submit click, so a page that changed while the user was reviewing is never resubmitted.
+
 Present, per application: company, title, URL, location / mode, posted pay, CV (stock or tailored), uploads, every answer that did not come straight from the profile, all free text, consents ticked. Take a screenshot of the filled form if your browser tool can.
 
 - `confirm_each`: wait for the user's OK on this one form, then click Submit once.
 - `confirm_batch`: fill up to five forms in separate tabs, present them together, submit only those the user approves by name.
-- `auto_after_approvals`: count applications whose note contains `Approval: as filled` (`list_applications`). Below `approvals_before_auto`, or with any `Approval: corrected` among the latest `approvals_before_auto`, behave as `confirm_each`. Otherwise submit, still stopping for CAPTCHAs, codes, unasked questions and false consents.
+- `auto_after_approvals`: count applications whose note contains `Approval: as filled` (`list_applications`; `Approval: already submitted` does not count). Below `approvals_before_auto`, or with any `Approval: corrected` among the latest `approvals_before_auto`, behave as `confirm_each`. Otherwise submit, still stopping for CAPTCHAs, codes, unasked questions and false consents.
 A correction is applied, re-presented, and counted as `Approval: corrected`. An earlier approval never covers a later form.
 When the user declines a form, leave it unsubmitted and call `update_status` with `status: "deny_by_candidate"` and the reason as `note`, so the next run does not resume it as `saved`.
 
 ### 7. Record
 
-Only after the employer's confirmation page or email: call `update_status` with step 3's `id`, `status: "applied"`, `source: "agent"` and `note`: `Applied via <ATS>. CV: <file or tailored>. Approval: <as filled | corrected | auto>.` plus anything the user should double-check.
+Only after the employer's confirmation page or email: call `update_status` with step 3's `id`, `status: "applied"`, `source: "agent"` and `note`: `Applied via <ATS>. CV: <file or tailored>. Approval: <as filled | corrected | auto>. Confirmation: <confirmation page URL>.` (the `Confirmation:` part whenever the browser lands on a confirmation page) plus anything the user should double-check.
 If `marker = true`, no marker was pasted before submitting, and the submitted application still has an editable field (a candidate portal), paste step 3's `marker` line there. A failed submission is reported, never recorded as applied.
 
 ### 8. Report
