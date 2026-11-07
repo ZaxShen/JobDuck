@@ -10,6 +10,7 @@ import { PROFILE_DOC, SETTINGS_DOC } from '@/lib/docs'
 import { hashFor, landingRoute } from '@/lib/routing'
 import type { PermissionsView, ProfileView as ProfileDoc, Statuses } from '@/lib/types'
 import { ApplicationsView } from '@/views/applications/applications-view'
+import { JobsView } from '@/views/jobs/jobs-view'
 import { ProfileView } from '@/views/profile/profile-view'
 import { SettingsView } from '@/views/settings/settings-view'
 import { WelcomeView } from '@/views/welcome/welcome-view'
@@ -84,6 +85,9 @@ export function App() {
           <Main>
             <div hidden={view !== 'applications'}>
               <ApplicationsView active={view === 'applications'} statuses={statuses.statuses} terminal={statuses.terminal} />
+            </div>
+            <div hidden={view !== 'jobs'}>
+              <JobsView active={view === 'jobs'} statuses={statuses.statuses} />
             </div>
             <div hidden={view !== 'profile'}>
               <ProfileView form={profile} active={view === 'profile'} section={route.section} />
