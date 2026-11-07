@@ -156,10 +156,11 @@ Skills are plain markdown workflows any agent can follow. `init` copies them to 
 | `find` | "find jobs" | `search_jobs` with your profile's filters, hard filters, a fit score, and a shortlist that marks postings you already track. |
 | `apply` | "apply to jobs" / "apply to <url>" | Dedupes, picks your CV, fills the form with your browser tool, stops at the approval gate set by `[apply] autonomy`, submits, and records the application. CAPTCHAs and verification codes always stop for you. |
 | `track` | "show my applications" | Lists applications, updates statuses when you report news, and runs `jobduck sync` for rejection emails. No mail access. |
-| `sort-mail` | "sort my job mail" | Opt-in, and the only skill that reads mail, through your agent host's mail tool. The host's smallest model classifies each Inbox job thread on its own; a plain application confirmation or a clear rejection gets `Job Duck/Applications` or `Job Duck/Rejections` and is archived only when the model's quoted evidence sentence appears verbatim in the email. Everything else, and every thread where you sent the last message, stays in the Inbox untouched. It never deletes, replies or sends. |
+| `sort-mail` | "sort my job mail" | Opt-in, and with `interview-mail` the only skills that read mail, through your agent host's mail tool. The host's smallest model classifies each Inbox job thread on its own; a plain application confirmation or a clear rejection gets `Job Duck/Applications` or `Job Duck/Rejections` and is archived only when the model's quoted evidence sentence appears verbatim in the email. Everything else, and every thread where you sent the last message, stays in the Inbox untouched. It never deletes, replies or sends. |
 | `cv` | "tailor my CV for <role>" | Writes `cv/<slug>.md` in the workspace within `[cv] page_limit`, with a fact-check list. Bullets come from your accepted profile facts (`list_profile_facts`, one fact per bullet, metrics copied exactly); contact details, titles, employers, dates, education and skills come from `profile.md`. With no accepted facts it uses the profile's Experience bullets. To tailor for a tracked application it reads the posting with `get_application`. |
 | `augment` | "augment my profile" | Splits each role in `profile.md` into projects and writes atomic facts (one action each, metrics exactly as written, stated or inferred with a confidence and a rationale) via `save_profile_facts` as `proposed`; you accept or archive each one in the dashboard (Profile, Experience facts) or by asking your agent (`update_profile_fact`). |
 | `interview` | "prep me for my interview at <company>" | Prep pack from the posting and your profile, mock interview, each round and offer via `record_interview` / `update_interview`, offer pay via `update_application`, the final result via `update_status`. |
+| `interview-mail` | "check my interview mail" / "schedule my interview" | Opt-in, and with `sort-mail` the only skills that read mail, through your agent host's mail tool. Finds Inbox threads without a `Job Duck/` label that wait on you (scheduling asks, invites, booking links, assessment deadlines, recruiter questions, offers), matches each to a tracked application, proposes times from your calendar's free slots or your stated availability with a reply draft, and records rounds via `record_interview` / `update_interview`. It asks before every send, accept, decline, RSVP or booking, confirms drafts, holds and records in one line, and never labels, archives, deletes or forwards mail or opens its links. |
 
 Skills are owned by the package; your answers live in `profile.md` and `permissions.toml`, so upgrading never loses them. Questions the `apply` skill meets on a form and cannot answer from your profile are asked once and saved under `[apply.answers]`.
 
@@ -246,7 +247,7 @@ jobduck sync --json      # same, as JSON
 
 `sync` uses the home of the current folder, or of `--workspace <dir>`.
 
-Rejection emails reach Job Duck through the Job Duck Gmail Apps Script running in your own Google account, deployed as a web app (its README, "Serve mode"). Set `[track] sync_url` to the `/exec` URL and `sync_token` to the token `generateSyncToken` logged; the `setup` skill's track module walks you through it. This path gives Job Duck no mail access (only the opt-in `sort-mail` skill reads mail, through your host's mail tool): the script sorts your mail and queues one small record per rejection (date, sender domain, subject, company, title, job URL or reference, and the application marker when there is one).
+Rejection emails reach Job Duck through the Job Duck Gmail Apps Script running in your own Google account, deployed as a web app (its README, "Serve mode"). Set `[track] sync_url` to the `/exec` URL and `sync_token` to the token `generateSyncToken` logged; the `setup` skill's track module walks you through it. This path gives Job Duck no mail access (only the opt-in `sort-mail` and `interview-mail` skills read mail, through your host's mail tool): the script sorts your mail and queues one small record per rejection (date, sender domain, subject, company, title, job URL or reference, and the application marker when there is one).
 
 `sync` POSTs `{ token, action }` to that URL (the token is in the body, never in a URL or log line), stores each queued rejection once per message id, and matches it to an open application, in this order:
 
@@ -273,7 +274,7 @@ Exit codes: `0` done; `1` network error, rejected token (`sync_token rejected; r
                        Writing style, Facts never to change
     permissions.toml   [modules] switches (all off by default), the [apply] manifest,
                        [track] and [cv] settings
-    skills/            the eight skills and a .version stamp (package-owned)
+    skills/            the nine skills and a .version stamp (package-owned)
     dashboard.json     the running dashboard's pid, port, URL and workspace (while it runs)
     imports.json       the SHA-256, name and time of every file an agent imported
   .mcp.json            the Claude Code server entry
