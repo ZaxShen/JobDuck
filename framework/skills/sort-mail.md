@@ -7,7 +7,7 @@ model: small
 
 # Sort job mail
 
-Opt-in: this skill and interview-mail are the only skills that read the user's mail, both only through the host's mail tool when the user asks. Each Inbox job thread is classified by the smallest model the host offers. A thread gets the label `Job Duck/Applications` or `Job Duck/Rejections` and leaves the Inbox only when the model is certain and its quoted evidence sentence appears verbatim in the email. Everything else is left exactly as it was. A wrong move hides mail the user needs, so a miss is always the better outcome.
+Opt-in: this skill, interview-mail and follow-up are the only skills that read the user's mail, all only through the host's mail tool when the user asks. Each Inbox job thread is classified by the smallest model the host offers. A thread gets the label `Job Duck/Applications` or `Job Duck/Rejections` and leaves the Inbox only when the model is certain and its quoted evidence sentence appears verbatim in the email. Everything else is left exactly as it was. A wrong move hides mail the user needs, so a miss is always the better outcome.
 
 ## When
 

@@ -16,6 +16,7 @@ import {
   ContactsSchema, INTERVIEW_STAGES, OFFER_STAGES, STAGE_KINDS, STAGE_OUTCOMES, STAGE_TYPES, addStage, deleteStage,
   getStage, listStages, updateStage,
 } from '../db/interviews'
+import { followUpsDue } from '../db/follow-ups'
 import {
   FACT_BASES, FACT_CATEGORIES, FACT_CONFIDENCES, FACT_STATUSES, MAX_TAG_LENGTH, MAX_TAGS, SlugConflict, deleteFact,
   getFact, listFacts, updateFact,
@@ -425,6 +426,7 @@ const routes: { method: string; pattern: RegExp; handler: Handler }[] = [
     method: 'GET', pattern: /^\/api\/stage-types$/,
     handler: () => ({ interviewing: INTERVIEW_STAGES, offered: OFFER_STAGES, outcomes: STAGE_OUTCOMES }),
   },
+  { method: 'GET', pattern: /^\/api\/follow-ups$/, handler: ({ db }) => followUpsDue(db) },
   {
     method: 'GET', pattern: /^\/api\/applications$/,
     handler: ({ db }, req) => listApplicationsWithPostings(db, { limit: 500, ...parse(listQuerySchema, queryObject(req.query)) }),

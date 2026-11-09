@@ -36,6 +36,7 @@ export const GUIDE_SKILLS: GuideSkill[] = [
   { skill: 'track', title: 'Track', purpose: 'Show your pipeline and update application statuses.', prompts: ['Show my pipeline', 'Mark <company> as rejected'] },
   { skill: 'interview', title: 'Interview', purpose: 'Prepare for an interview and record how it went.', prompts: ['Prep me for my interview at <company>', 'Mock interview'] },
   { skill: 'interview-mail', title: 'Interview Mail', purpose: 'Find interview mail and draft replies for your OK.', prompts: ['Check my interview mail', 'Any interview invites?'] },
+  { skill: 'follow-up', title: 'Follow-Up', purpose: 'Draft thank-you notes and follow-ups for you to send.', prompts: ['Any follow-ups due?', 'Draft a thank-you note'] },
   { skill: 'sort-mail', title: 'Sort Mail', purpose: 'Label and archive clear confirmations and rejections.', prompts: ['Sort my job mail', 'File my rejections'] },
 ]
 

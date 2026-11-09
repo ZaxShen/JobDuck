@@ -44,4 +44,5 @@ When a request matches a trigger, read the skill file and follow it.
 | augment | "augment my profile", "enrich my experience", "break my experience into facts" | `{{home}}/skills/augment.md` |
 | interview | "prep me for my interview at <company>", "I got an offer", "record the outcome" | `{{home}}/skills/interview.md` |
 | interview-mail | "check my interview mail", "any interview invites?", "reply to the recruiter at <company>", "schedule my interview" | `{{home}}/skills/interview-mail.md` |
+| follow-up | "any follow-ups due?", "draft a thank-you note", "follow up with <company>" | `{{home}}/skills/follow-up.md` |
 <!-- jobduck:end -->

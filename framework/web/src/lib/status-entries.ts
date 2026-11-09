@@ -90,7 +90,8 @@ export function timelineOrder<T extends ApplicationEvent>(events: readonly T[]):
 export const isEditableEntry = (event: ApplicationEvent) => !isStageEntry(event)
 
 export function undoableEntryId(events: readonly ApplicationEvent[]): number | null {
-  const newest = events.reduce<ApplicationEvent | null>((latest, event) => (latest === null || event.id > latest.id ? event : latest), null)
+  const newest = events.reduce<ApplicationEvent | null>(
+    (latest, event) => (event.kind === null && (latest === null || event.id > latest.id) ? event : latest), null)
   if (newest === null || isStageEntry(newest) || newest.from_status === null) return null
   return newest.id
 }

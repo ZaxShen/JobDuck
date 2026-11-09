@@ -8,6 +8,7 @@ import { INBOX_TYPES, MAX_UPLOAD_BYTES } from '../web/src/lib/inbox'
 import type { Db } from '../src/db/client'
 import { createApplication, getApplication, listEvents, updateApplicationFields } from '../src/db/applications'
 import { insertOutcome, listOutcomes } from '../src/db/outcomes'
+import { setFollowUpWait } from '../src/db/follow-ups'
 import { addStage } from '../src/db/interviews'
 import { getFact, saveFacts, updateFact } from '../src/db/profile-facts'
 import { upsertPosting } from '../src/db/postings'
@@ -125,6 +126,24 @@ test('summary and statuses describe the board', async () => {
   expect(statuses.statuses.slice(0, 3)).toEqual(['saved', 'pending', 'applied'])
   expect(statuses.statuses).toContain('deny_by_employer')
   expect(statuses.terminal).toEqual(['accepted', 'deny_by_employer', 'deny_by_candidate', 'no_response'])
+})
+
+test('GET /api/follow-ups lists due thank-yous and follow-ups with the wait, read-only without the header', async () => {
+  expect((await get('/api/follow-ups')).body).toEqual({ wait_business_days: 3, items: [] })
+  const anHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+  const { stage } = addStage(db, ids.acme, { kind: 'interviewing', stageType: 'phone_screen', scheduledAt: anHourAgo })
+  setFollowUpWait(db, 4)
+  const { res, body } = await get('/api/follow-ups')
+  expect(res.status).toBe(200)
+  expect(body).toEqual({
+    wait_business_days: 4,
+    items: [{
+      kind: 'thank_you', application_id: ids.acme, round_id: stage.id, company: 'Acme', title: 'AI Engineer',
+      stage_type: 'phone_screen', round_at: anHourAgo, due_at: new Date(Date.parse(anHourAgo) + 24 * 60 * 60 * 1000).toISOString(),
+      follow_ups_sent: 0, suggest_ghosted: false,
+    }],
+  })
+  expect((await mutate('POST', '/api/follow-ups', {})).res.status).toBe(405)
 })
 
 test('GET /api/applications filters by status and q', async () => {

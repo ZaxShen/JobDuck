@@ -11,14 +11,14 @@ import { PACKAGE_VERSION, installSkills, skillNames, skillsUpToDate } from '../s
 const skillsDir = () => join(import.meta.dir, '..', 'skills')
 const templatesDir = () => join(import.meta.dir, '..', 'templates')
 
-const SKILLS = ['apply', 'augment', 'cv', 'find', 'interview', 'interview-mail', 'setup', 'sort-mail', 'track']
+const SKILLS = ['apply', 'augment', 'cv', 'find', 'follow-up', 'interview', 'interview-mail', 'setup', 'sort-mail', 'track']
 const read = (name: string) => readFileSync(join(skillsDir(), `${name}.md`), 'utf8')
 
 let box: Sandbox
 beforeEach(() => { box = sandbox() })
 afterEach(() => box.cleanup())
 
-test('the package ships exactly the nine skills', () => {
+test('the package ships exactly the ten skills', () => {
   expect(skillNames()).toEqual(SKILLS)
 })
 
@@ -124,7 +124,7 @@ test('apply moves to the next form after each submit and never waits on a stop',
 test('installSkills copies the skills privately and stamps the version', () => {
   expect(skillsUpToDate(box.home)).toBe(false)
   const written = installSkills(box.home)
-  expect(written).toHaveLength(9)
+  expect(written).toHaveLength(10)
   const dir = join(box.home, 'skills')
   expect(readdirSync(dir).sort()).toEqual(['.version', ...SKILLS.map((name) => `${name}.md`)].sort())
   for (const name of SKILLS) {
@@ -194,4 +194,33 @@ test('interview-mail asks before every outward action and never files, opens lin
 test('no mail-reading skill claims to be the only one', () => {
   for (const name of SKILLS) expect(read(name)).not.toMatch(/the only skill that reads/)
   for (const name of ['sort-mail', 'track', 'interview']) expect(read(name)).toContain('interview-mail')
+  for (const name of ['sort-mail', 'interview-mail', 'track']) expect(read(name)).toContain('follow-up')
+})
+
+test('track mentions the follow-ups due in one line and offers the follow-up skill', () => {
+  const show = read('track').split('\n').find((line) => line.startsWith('1. **Show.**'))!
+  expect(show).toContain('`list_follow_ups_due`')
+  expect(show).toContain('in one line how many thank-you notes and follow-ups are due')
+  expect(show).toContain('offer the follow-up skill')
+})
+
+test('follow-up checks for a reply, drafts from known facts on a confirm, never sends and leaves ghosted to the user', () => {
+  const text = read('follow-up')
+  for (const tool of ['list_follow_ups_due', 'record_follow_up', 'set_follow_up_wait', 'update_interview', 'list_profile_facts', 'get_application', 'find_application', 'get_permissions']) {
+    expect(text).toContain(`\`${tool}\``)
+  }
+  expect(text).toContain('A company reply suppresses the nudge')
+  expect(text).toContain('Draft only from the posting, the round and these accepted facts')
+  expect(text).toContain('Invent nothing')
+  expect(text).toContain('**One-line confirm before writing**: creating a mail draft, `record_follow_up`')
+  expect(text).toContain('**Never**: sending any note.')
+  expect(text).toContain('`suggest_ghosted: true` (2 follow-ups sent, no reply), suggest marking the round `ghosted`')
+  expect(text).toContain('The user decides; never set it on your own.')
+  expect(text).toContain('Only when the user says they sent the note, or chose to skip it')
+  expect(text).toContain('There is no background daemon')
+  expect(text).toContain('A scheduled run is drafting only')
+  const never = text.slice(text.indexOf('## Never'))
+  expect(never).toContain('Send, forward or schedule-send any mail')
+  expect(never).toContain('`record_follow_up` before the user says the note was sent or skipped')
+  expect(never).toContain('`ghosted`')
 })

@@ -4,6 +4,7 @@ import { handleApi } from '../src/dashboard/api'
 import type { Db } from '../src/db/client'
 import { createApplication, getApplication, listEvents } from '../src/db/applications'
 import { INTERVIEW_STAGES, OFFER_STAGES, STAGE_OUTCOMES } from '../src/db/interviews'
+import { recordFollowUp } from '../src/db/follow-ups'
 import { upsertPosting } from '../src/db/postings'
 import { statusActions } from '../web/src/lib/board'
 import {
@@ -16,7 +17,7 @@ const types: StageTypes = { interviewing: [...INTERVIEW_STAGES], offered: [...OF
 
 const event = (id: number, patch: Partial<ApplicationEvent> = {}): ApplicationEvent => ({
   id, from_status: 'saved', to_status: 'applied', note: null, source: 'dashboard', stage_type: null, scheduled_at: null,
-  outcome: null, occurred_at: null, created_at: '2026-01-01T12:00:00.000Z', ...patch,
+  outcome: null, occurred_at: null, kind: null, round_id: null, created_at: '2026-01-01T12:00:00.000Z', ...patch,
 })
 
 describe('dialogScope', () => {
@@ -118,6 +119,17 @@ describe('timeline helpers', () => {
     expect(undoableEntryId([])).toBeNull()
   })
 
+  test('follow-up rows are skipped, so undo targets the newest status entry as the server does', () => {
+    const created = event(1, { from_status: null, to_status: 'saved' })
+    const applied = event(2, { occurred_at: '2026-01-01' })
+    const thankYou = event(3, { from_status: 'applied', to_status: 'applied', kind: 'thank_you_sent', round_id: 2 })
+    const followUp = event(4, { from_status: 'applied', to_status: 'applied', kind: 'follow_up_sent', round_id: 2 })
+    expect(undoableEntryId([created, applied, thankYou, followUp])).toBe(2)
+    expect(undoableEntryId([followUp, applied, created])).toBe(2)
+    expect(undoableEntryId([created, thankYou, followUp])).toBeNull()
+    expect(undoableEntryId([thankYou, followUp])).toBeNull()
+  })
+
   test('undoing a move out of pending goes back to saved', () => {
     expect(revertsTo(event(1, { from_status: 'pending' }))).toBe('saved')
     expect(revertsTo(event(1, { from_status: 'interviewing', to_status: 'offered' }))).toBe('interviewing')
@@ -169,6 +181,24 @@ describe('requests the dialog builds are accepted by the API', () => {
     const undo = undoableEntryId(listEvents(db, id) as ApplicationEvent[])!
     expect(call('DELETE', `/api/events/${undo}`, { expected_updated_at: getApplication(db, id)!.updated_at }).status).toBe(200)
     expect(getApplication(db, id)!.status).toBe('offered')
+  })
+
+  test('after a recorded follow-up, undo targets the newest status entry and the API accepts it', () => {
+    const posting = upsertPosting(db, { source: 'manual', url: 'https://acme.com/jobs/3', title: 'Engineer', company: 'Acme' })
+    const { id } = createApplication(db, { postingId: posting.id, status: 'applied' })
+    for (const [target, choice, date] of [['interviewing', 'technical', '2026-05-01'], ['deny_by_employer', 'deny_by_employer', '2026-05-04']]) {
+      const request = statusRequest(id, dialogScope(target!, types), { choice: choice!, date: date!, note: '' }, getApplication(db, id)!.updated_at)
+      expect(call(request.method, request.path, request.body).status).toBe(200)
+    }
+    const round = listEvents(db, id).find((entry) => entry.stage_type === 'technical')!
+    const denied = listEvents(db, id).at(-1)!
+    const followUp = recordFollowUp(db, { roundId: round.id, kind: 'follow_up_sent', sentAt: '2026-05-05' })
+
+    const undo = undoableEntryId(listEvents(db, id) as ApplicationEvent[])
+    expect(undo).not.toBe(followUp.id)
+    expect(undo).toBe(denied.id)
+    expect(call('DELETE', `/api/events/${undo}`, { expected_updated_at: getApplication(db, id)!.updated_at }).status).toBe(200)
+    expect(getApplication(db, id)!.status).toBe('interviewing')
   })
 
   test('a bulk status change to interviewing PATCHes with occurred_at', () => {
