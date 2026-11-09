@@ -1,4 +1,4 @@
-import type { StageKind } from '@/lib/types'
+import type { StageKind } from './types'
 
 const STAGE_LABELS: Record<string, string> = {
   information: 'Information',

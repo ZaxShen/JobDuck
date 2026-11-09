@@ -14,12 +14,14 @@ import { useVisiblePoll } from '@/hooks/use-visible-poll'
 import { applicationsPath, deleteJSON, errorMessage, fetchJSON, isConflict } from '@/lib/api'
 import { MOVE_REFUSED, type StageMove, type StatusAction, stageColumns } from '@/lib/board'
 import { bulkSummary } from '@/lib/bulk'
+import { FOLLOW_UPS_PATH } from '@/lib/follow-ups'
 import { statusLabel } from '@/lib/format'
 import { BULK_TARGETS, type DialogScope, type StatusEntry, statusRequest } from '@/lib/status-entries'
-import type { ApplicationRow, Outcome, StageTypes, Summary } from '@/lib/types'
+import type { ApplicationRow, FollowUps, Outcome, StageTypes, Summary } from '@/lib/types'
 import { ApplicationBoard } from '@/views/applications/application-board'
 import { ApplicationList } from '@/views/applications/application-list'
 import { ApplicationSheet } from '@/views/applications/application-sheet'
+import { FollowUpsCard } from '@/views/applications/follow-ups-card'
 import { OutcomeItem } from '@/views/applications/outcome-item'
 import { SelectionToolbar } from '@/views/applications/selection-toolbar'
 import { StatusDialog, type StatusDialogRequest, sendStatus } from '@/views/applications/status-dialog'
@@ -104,6 +106,7 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
   const [failed, setFailed] = useState(false)
   const [summary, setSummary] = useState<Summary | null>(null)
   const [outcomes, setOutcomes] = useState<Outcome[]>([])
+  const [followUps, setFollowUps] = useState<FollowUps | null>(null)
   const [selected, setSelected] = useState<number | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set())
@@ -117,6 +120,7 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
 
   const refresh = useCallback(async () => {
     try {
+      void fetchJSON<FollowUps>(FOLLOW_UPS_PATH).then(setFollowUps, () => setFollowUps(null))
       const [nextSummary, nextRows, nextOutcomes] = await Promise.all([
         fetchJSON<Summary>('/api/summary'),
         fetchJSON<ApplicationRow[]>(applicationsPath({ status: filter, q })),
@@ -275,6 +279,7 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
     <div className="flex flex-col gap-6 animate-in fade-in duration-500">
       <p className="text-sm text-muted-foreground">Everything your agent saved, applied to or is waiting on you for, newest first.</p>
       <OnboardingBanner page="applications" active={active} />
+      <FollowUpsCard data={followUps} onOpen={setSelected} />
 
       <div className="flex flex-wrap items-center gap-3">
         <Select items={items} value={filter} onValueChange={(value: string | null) => setFilter(value ?? '')}>

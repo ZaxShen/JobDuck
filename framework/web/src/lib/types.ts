@@ -48,7 +48,31 @@ export interface ApplicationEvent {
   scheduled_at: string | null
   outcome: string | null
   occurred_at: string | null
+  kind: FollowUpEventKind | null
+  round_id: number | null
   created_at: string
+}
+
+export type FollowUpEventKind = 'thank_you_sent' | 'follow_up_sent'
+
+export type FollowUpKind = 'thank_you' | 'follow_up'
+
+export interface FollowUpItem {
+  kind: FollowUpKind
+  application_id: number
+  round_id: number
+  company: string
+  title: string
+  stage_type: string
+  round_at: string
+  due_at: string
+  follow_ups_sent: number
+  suggest_ghosted: boolean
+}
+
+export interface FollowUps {
+  wait_business_days: number
+  items: FollowUpItem[]
 }
 
 export interface Contact {

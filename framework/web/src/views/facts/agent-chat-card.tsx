@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { BotIcon, CheckIcon, CopyIcon, LoaderCircleIcon, MessageSquarePlusIcon, SendIcon, SquareIcon, WrenchIcon } from 'lucide-react'
+import { BotIcon, LoaderCircleIcon, MessageSquarePlusIcon, SendIcon, SquareIcon, WrenchIcon } from 'lucide-react'
+import { CopyPromptButton } from '@/components/composed/copy-prompt-button'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
-import { useFlash } from '@/hooks/use-flash'
 import {
   AGENT_STATUS_PATH,
   COPY_PROMPT,
@@ -18,38 +18,10 @@ import {
   type AgentStatus,
   type ChatMessage,
 } from '@/lib/agent-chat'
-import { errorMessage, fetchJSON } from '@/lib/api'
+import { fetchJSON } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
-const COPIED_MS = 2000
 const STICK_PX = 48
-
-function CopyPromptButton() {
-  const flash = useFlash()
-  const [copied, setCopied] = useState(false)
-
-  useEffect(() => {
-    if (!copied) return
-    const timer = setTimeout(() => setCopied(false), COPIED_MS)
-    return () => clearTimeout(timer)
-  }, [copied])
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(COPY_PROMPT)
-      setCopied(true)
-    } catch (error) {
-      flash(`Could not copy the prompt: ${errorMessage(error)}`, true)
-    }
-  }
-
-  return (
-    <Button type="button" variant="outline" size="sm" onClick={() => void copy()}>
-      {copied ? <CheckIcon data-icon="inline-start" aria-hidden="true" /> : <CopyIcon data-icon="inline-start" aria-hidden="true" />}
-      <span aria-live="polite">{copied ? 'Prompt Copied' : 'Copy Prompt'}</span>
-    </Button>
-  )
-}
 
 function AgentReply({ message }: { message: AgentMessage }) {
   const waiting = message.pending && message.text === ''
@@ -209,7 +181,7 @@ function Chat({ status, onDone }: { status: AgentStatus; onDone: () => void }) {
             <MessageSquarePlusIcon data-icon="inline-start" aria-hidden="true" />
             New Chat
           </Button>
-          <CopyPromptButton />
+          <CopyPromptButton prompt={COPY_PROMPT} />
           <span className="ml-auto hidden text-xs text-muted-foreground sm:inline">Enter to send, Shift+Enter for a new line</span>
         </div>
       </form>
@@ -223,7 +195,7 @@ function Fallback() {
       <p className="text-sm text-muted-foreground">
         Open Claude Code, Codex or Gemini CLI in your Job Duck workspace folder and paste this prompt to have it propose facts here.
       </p>
-      <CopyPromptButton />
+      <CopyPromptButton prompt={COPY_PROMPT} />
     </div>
   )
 }

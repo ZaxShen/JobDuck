@@ -14,6 +14,7 @@ import { StatusBadge } from '@/components/status-badge'
 import { useFlash } from '@/hooks/use-flash'
 import { POLL_MS, isVisible } from '@/hooks/use-visible-poll'
 import { type SaveResult, deleteJSON, errorMessage, fetchJSON, isConflict, patchJSON, postJSON } from '@/lib/api'
+import { followUpSentLabel } from '@/lib/follow-ups'
 import { postingPay, safeUrl, statusLabel } from '@/lib/format'
 import { kindLabel, outcomeLabel, stageTypeLabel } from '@/lib/stages'
 import { type DialogScope, type StatusEntry, statusRequest, timelineOrder, undoableEntryId } from '@/lib/status-entries'
@@ -61,6 +62,7 @@ const isStageEvent = (event: ApplicationEvent) =>
   event.stage_type !== null && (event.to_status === 'interviewing' || event.to_status === 'offered')
 
 function eventLabel(event: ApplicationEvent): string {
+  if (event.kind !== null) return followUpSentLabel(event.kind)
   if (isStageEvent(event)) {
     return [kindLabel(event.to_status as StageKind), stageTypeLabel(event.stage_type ?? ''), event.outcome && outcomeLabel(event.outcome)]
       .filter(Boolean).join(' · ')
