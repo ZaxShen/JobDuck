@@ -24,6 +24,7 @@ import skillApply from '../skills/apply.md' with { type: 'text' }
 import skillAugment from '../skills/augment.md' with { type: 'text' }
 import skillCv from '../skills/cv.md' with { type: 'text' }
 import skillFind from '../skills/find.md' with { type: 'text' }
+import skillFollowUp from '../skills/follow-up.md' with { type: 'text' }
 import skillInterview from '../skills/interview.md' with { type: 'text' }
 import skillInterviewMail from '../skills/interview-mail.md' with { type: 'text' }
 import skillSetup from '../skills/setup.md' with { type: 'text' }
@@ -38,6 +39,7 @@ export const SKILLS: Record<string, string> = {
   augment: skillAugment,
   cv: skillCv,
   find: skillFind,
+  'follow-up': skillFollowUp,
   interview: skillInterview,
   'interview-mail': skillInterviewMail,
   setup: skillSetup,
