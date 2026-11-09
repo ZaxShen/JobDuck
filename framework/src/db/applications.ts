@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { type Db, nowIso, one, transaction } from './client'
 import { checkEventDate } from './dates'
+import type { FollowUpKind } from './follow-ups'
 
 export const APPLICATION_STATUSES = [
   'saved', 'pending', 'applied', 'interviewing', 'offered',
@@ -81,6 +82,8 @@ export interface ApplicationEvent {
   scheduled_at: string | null
   outcome: string | null
   occurred_at: string | null
+  kind: FollowUpKind | null
+  round_id: number | null
   created_at: string
 }
 
@@ -120,12 +123,13 @@ function insertEvent(db: Db, applicationId: number, from: ApplicationStatus | nu
 }
 
 const hasEventTo = (db: Db, applicationId: number, status: ApplicationStatus) =>
-  one(db.prepare('SELECT 1 FROM application_events WHERE application_id = ? AND to_status = ? LIMIT 1'),
+  one(db.prepare('SELECT 1 FROM application_events WHERE application_id = ? AND to_status = ? AND kind IS NULL LIMIT 1'),
     applicationId, status) !== undefined
 
 const latestEventId = (db: Db, applicationId: number, status?: ApplicationStatus) =>
   one<{ id: number | null }>(db.prepare(`SELECT MAX(id) AS id FROM application_events
-      WHERE application_id = ? AND (? IS NULL OR to_status = ?)`), applicationId, status ?? null, status ?? null)?.id ?? null
+      WHERE application_id = ? AND kind IS NULL AND (? IS NULL OR to_status = ?)`),
+    applicationId, status ?? null, status ?? null)?.id ?? null
 
 function checkForward(db: Db, current: Application, target: ApplicationStatus): void {
   const { id, status } = current
@@ -233,7 +237,7 @@ export function updateEvent(db: Db, eventId: number, patch: EventPatch): Applica
     if (!updated) throw new Error(`event ${eventId} not found`)
     const application = getApplication(db, event.application_id)
     if (!application) throw new Error(`application ${event.application_id} not found`)
-    const syncApplied = occurredAt !== undefined && event.to_status === 'applied'
+    const syncApplied = occurredAt !== undefined && event.kind === null && event.to_status === 'applied'
     const syncClosed = occurredAt !== undefined && isTerminal(application.status) && event.to_status === application.status
       && latestEventId(db, application.id, application.status) === event.id
     db.prepare(`UPDATE applications
@@ -257,7 +261,7 @@ export function revertRemovedEvent(db: Db, removed: ApplicationEvent): void {
   }
   const from = removed.from_status !== removed.to_status ? removed.from_status
     : one<{ to_status: ApplicationStatus }>(db.prepare(`SELECT to_status FROM application_events
-        WHERE application_id = ? ORDER BY id DESC LIMIT 1`), application.id)?.to_status ?? 'saved'
+        WHERE application_id = ? AND kind IS NULL ORDER BY id DESC LIMIT 1`), application.id)?.to_status ?? 'saved'
   const status = from === 'pending' ? 'saved' : from
   const leavingTerminal = isTerminal(application.status) && !isTerminal(status)
   db.prepare(`UPDATE applications

@@ -11,16 +11,16 @@ afterEach(() => box.cleanup())
 
 test('migrations apply once and are idempotent', () => {
   const db = migratedDb(box.home)
-  expect(currentVersion(db)).toBe(6)
+  expect(currentVersion(db)).toBe(7)
   expect(migrate(db)).toEqual([])
-  expect(currentVersion(db)).toBe(6)
+  expect(currentVersion(db)).toBe(7)
   const rows = db.prepare('SELECT version FROM schema_migrations').all()
-  expect(rows).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }])
+  expect(rows).toEqual([1, 2, 3, 4, 5, 6, 7].map((version) => ({ version })))
   db.close()
 })
 
 test('migration files are numbered and ordered', () => {
-  expect(loadMigrations().map((m) => m.version)).toEqual([1, 2, 3, 4, 5, 6])
+  expect(loadMigrations().map((m) => m.version)).toEqual([1, 2, 3, 4, 5, 6, 7])
   const loaded = loadMigrations([
     { name: '010_ten.sql', sql: 'ten' }, { name: 'notes.txt', sql: 'x' }, { name: '002_two.sql', sql: 'two' },
   ])
@@ -59,17 +59,18 @@ const POSTING_COLUMNS = ['seniority', 'education_level', 'min_experience_years',
 const APPLICATION_COLUMNS = ['salary_min', 'salary_max', 'salary_offered', 'rsu', 'options', 'bonus', 'sign_on',
   'relocation_fee', 'currency', 'country_override', 'state_override', 'city_override']
 
-test('a fresh database reaches version 6 with the stage, pay, pending, profile fact, posting field and occurred_at columns', () => {
+test('a fresh database reaches version 7 with the stage, pay, pending, profile fact, posting field, occurred_at and follow-up columns', () => {
   const db = migratedDb(box.home)
-  expect(currentVersion(db)).toBe(6)
+  expect(currentVersion(db)).toBe(7)
   expect(columns(db, 'applications')).toContain('pending_reason')
   for (const column of STAGE_COLUMNS) expect(columns(db, 'application_events')).toContain(column)
-  expect(columns(db, 'application_events')).toContain('occurred_at')
+  for (const column of ['occurred_at', 'kind', 'round_id']) expect(columns(db, 'application_events')).toContain(column)
   for (const column of APPLICATION_COLUMNS) expect(columns(db, 'applications')).toContain(column)
   for (const column of POSTING_COLUMNS) expect(columns(db, 'postings')).toContain(column)
   const indexes = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all() as { name: string }[])
     .map((row) => row.name)
   expect(indexes).toContain('application_events_scheduled')
+  expect(indexes).toContain('application_events_round')
   expect(indexes).toContain('profile_facts_status')
   expect(columns(db, 'profile_facts')).toEqual(FACT_COLUMNS)
   db.close()
@@ -117,11 +118,38 @@ test('a version 5 database with events migrates to version 6 with a null occurre
     VALUES (1, 1, 'saved', 'applied', 'user', ?)`).run(now)
   const before = db.prepare('SELECT * FROM application_events').all() as Record<string, unknown>[]
 
-  expect(migrate(db)).toEqual([6])
+  expect(migrate(db, loadMigrations().filter((m) => m.version <= 6))).toEqual([6])
   expect(currentVersion(db)).toBe(6)
   expect(db.prepare('SELECT * FROM application_events').all()).toEqual(before.map((row) => ({ ...row, occurred_at: null })))
   db.prepare("UPDATE application_events SET occurred_at = '2026-01-01' WHERE id = 1").run()
   expect(db.prepare('SELECT occurred_at FROM application_events WHERE id = 1').get()).toEqual({ occurred_at: '2026-01-01' })
+  db.close()
+})
+
+test('a version 6 database migrates to version 7 with null kind and round_id, checked and cascading', () => {
+  mkdirSync(box.home, { recursive: true })
+  const db = openDb(dbPath(box.home))
+  expect(migrate(db, loadMigrations().filter((m) => m.version <= 6))).toEqual([1, 2, 3, 4, 5, 6])
+  const now = '2026-01-02T03:04:05.000Z'
+  db.prepare(`INSERT INTO postings (id, source, url, url_key, title, company, created_at, updated_at)
+    VALUES (1, 'manual', 'https://acme.com/jobs/1', 'acme.com/jobs/1', 'Engineer', 'Acme', ?, ?)`).run(now, now)
+  db.prepare(`INSERT INTO applications (id, posting_id, status, applied_at, created_at, updated_at)
+    VALUES (1, 1, 'interviewing', ?, ?, ?)`).run(now, now, now)
+  db.prepare(`INSERT INTO application_events (id, application_id, from_status, to_status, source, stage_type, outcome, created_at)
+    VALUES (1, 1, 'applied', 'interviewing', 'user', 'technical', 'pending', ?)`).run(now)
+  const before = db.prepare('SELECT * FROM application_events').all() as Record<string, unknown>[]
+
+  expect(migrate(db)).toEqual([7])
+  expect(currentVersion(db)).toBe(7)
+  expect(db.prepare('SELECT * FROM application_events').all()).toEqual(before.map((row) => ({ ...row, kind: null, round_id: null })))
+  const followUp = (kind: string, roundId: number) => db.prepare(`INSERT INTO application_events
+    (application_id, from_status, to_status, source, kind, round_id, created_at)
+    VALUES (1, 'interviewing', 'interviewing', 'agent', ?, ?, ?)`).run(kind, roundId, now)
+  expect(() => followUp('nudge', 1)).toThrow()
+  expect(() => followUp('follow_up_sent', 99)).toThrow()
+  followUp('follow_up_sent', 1)
+  db.prepare('DELETE FROM application_events WHERE id = 1').run()
+  expect(db.prepare('SELECT COUNT(*) AS n FROM application_events').get()).toEqual({ n: 0 })
   db.close()
 })
 

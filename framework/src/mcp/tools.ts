@@ -14,6 +14,10 @@ import {
   addStage, deleteStage, listStages, MAX_CONTACTS, SCHEDULED_AT, SCHEDULED_AT_MESSAGE, STAGE_KINDS, STAGE_OUTCOMES,
   STAGE_TYPES, updateStage,
 } from '../db/interviews'
+import {
+  FOLLOW_UP_KINDS, followUpsDue, GHOSTED_AFTER_FOLLOW_UPS, MAX_FOLLOW_UP_WAIT, MIN_FOLLOW_UP_WAIT, recordFollowUp,
+  setFollowUpWait,
+} from '../db/follow-ups'
 import { findPostingByUrl, getPosting, type Posting, postingFields, upsertPosting } from '../db/postings'
 import {
   deleteFact, FACT_BASES, FACT_CATEGORIES, FACT_CONFIDENCES, FACT_STATUSES, listFacts, MAX_TAG_LENGTH, MAX_TAGS, saveFacts,
@@ -41,6 +45,7 @@ export const TOOL_NAMES = [
   'get_profile', 'update_profile', 'get_permissions', 'search_jobs', 'find_application',
   'record_application', 'resolve_posting', 'update_status', 'list_applications', 'get_application', 'update_application',
   'record_interview', 'update_interview', 'delete_interview',
+  'list_follow_ups_due', 'record_follow_up', 'set_follow_up_wait',
   'list_profile_facts', 'save_profile_facts', 'update_profile_fact', 'delete_profile_fact',
   'get_onboarding_status', 'mark_imported',
 ] as const
@@ -520,6 +525,46 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   }, ({ event_id: eventId }) => run(() => {
     requireTrack()
     return { deleted: deleteStage(db, eventId) }
+  }))
+
+  server.registerTool('list_follow_ups_due', {
+    description: 'List interview rounds that need a note from the user now, soonest due first. thank_you: the round '
+      + 'happened in the last 24 hours and no thank-you is recorded. follow_up: the round outcome is still pending and '
+      + 'wait_business_days business days (Mon-Fri, UTC) passed since the round or the application\'s latest newer '
+      + `event, such as a sent follow-up. suggest_ghosted is true after ${GHOSTED_AFTER_FOLLOW_UPS} follow-ups: offer `
+      + 'to set the round outcome to ghosted instead of drafting another. Closed applications and future rounds are '
+      + 'never listed.',
+    annotations: { readOnlyHint: true },
+  }, () => run(() => ({ ...followUpsDue(db) })))
+
+  server.registerTool('record_follow_up', {
+    description: 'Record that a thank-you note or follow-up for an interview round was sent (requires the track '
+      + 'module). Call it only after the user confirms they sent the draft, or chose to skip it; never because you '
+      + 'drafted one. round_id is the interview round\'s event_id. The application status does not change.',
+    inputSchema: {
+      round_id: Id,
+      kind: z.enum(FOLLOW_UP_KINDS),
+      sent_at: EventDate.optional().describe('ISO date (YYYY-MM-DD) or timestamp the note was sent; defaults to now'),
+      note: z.string().optional(),
+      source: Source.default('agent'),
+    },
+  }, (args) => run(() => {
+    requireTrack()
+    return {
+      event: recordFollowUp(db, {
+        roundId: args.round_id, kind: args.kind, sentAt: args.sent_at, note: args.note, source: args.source,
+      }),
+    }
+  }))
+
+  server.registerTool('set_follow_up_wait', {
+    description: 'Set how many business days to wait after an interview round, or after the last follow-up, before '
+      + 'list_follow_ups_due lists a follow-up (requires the track module). Default 3.',
+    inputSchema: { business_days: z.number().int().min(MIN_FOLLOW_UP_WAIT).max(MAX_FOLLOW_UP_WAIT) },
+    annotations: { idempotentHint: true },
+  }, ({ business_days: days }) => run(() => {
+    requireTrack()
+    return { wait_business_days: setFollowUpWait(db, days) }
   }))
 
   server.registerTool('list_profile_facts', {

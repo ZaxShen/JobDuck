@@ -133,7 +133,7 @@ function getStageEvent(db: Db, eventId: number): ApplicationEvent {
       JOIN applications a ON a.id = e.application_id
       WHERE e.id = ? AND a.deleted_at IS NULL`), eventId)
   if (!event) throw new Error(`event ${eventId} not found`)
-  if (event.stage_type === null || !isStageKind(event.to_status)) {
+  if (event.stage_type === null || event.kind !== null || !isStageKind(event.to_status)) {
     throw new Error(`event ${eventId} is not an interview or offer stage`)
   }
   return event
@@ -145,7 +145,7 @@ export function getStage(db: Db, eventId: number): Stage {
 
 export function listStages(db: Db, applicationId: number): Stage[] {
   return (db.prepare(`SELECT * FROM application_events
-      WHERE application_id = ? AND stage_type IS NOT NULL AND to_status IN ('interviewing', 'offered')
+      WHERE application_id = ? AND stage_type IS NOT NULL AND kind IS NULL AND to_status IN ('interviewing', 'offered')
       ORDER BY COALESCE(scheduled_at, created_at), id`)
     .all(applicationId) as ApplicationEvent[]).map(toStage)
 }

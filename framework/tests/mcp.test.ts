@@ -384,6 +384,8 @@ test('interview and application writers are gated on track', async () => {
     ['update_interview', { event_id: 1, outcome: 'advanced' }],
     ['delete_interview', { event_id: 1 }],
     ['update_application', { id: 1, salary_offered: 1000 }],
+    ['record_follow_up', { round_id: 1, kind: 'thank_you_sent' }],
+    ['set_follow_up_wait', { business_days: 5 }],
   ]
   for (const [name, args] of writers) {
     const refused = await call(name, args)
@@ -431,6 +433,46 @@ test('record_interview, update_interview and delete_interview manage stages; get
   expect(deleted.id).toBe(offer.stage.id)
   expect((await data('get_application', { id: created.id })).stages).toHaveLength(1)
   expect((await data('get_application', { id: created.id })).application.status).toBe('interviewing')
+})
+
+test('list_follow_ups_due, record_follow_up and set_follow_up_wait list, record and tune follow-ups', async () => {
+  expect(await data('list_follow_ups_due')).toEqual({ wait_business_days: 3, items: [] })
+  enableTrack()
+  const { application: created } = await data('record_application', application)
+  const anHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+  const { stage } = await data('record_interview', { application_id: created.id, stage_type: 'technical', scheduled_at: anHourAgo })
+  const due = await data('list_follow_ups_due')
+  expect(due.items).toEqual([expect.objectContaining({
+    kind: 'thank_you', application_id: created.id, round_id: stage.id, company: 'Acme', title: 'Staff Engineer',
+    stage_type: 'technical', round_at: anHourAgo, follow_ups_sent: 0, suggest_ghosted: false,
+  })])
+
+  const before = await data('get_application', { id: created.id })
+  let statusEventId = 0
+  inspect((db) => { statusEventId = listEvents(db, created.id)[0]!.id })
+  for (const roundId of [statusEventId, 9999]) {
+    const bad = await call('record_follow_up', { round_id: roundId, kind: 'thank_you_sent' })
+    expect(bad.isError).toBe(true)
+    expect(bad.content[0]?.text).toBe(`event ${roundId} is not an interview round`)
+  }
+  expect((await call('record_follow_up', { round_id: stage.id, kind: 'nudge' })).isError).toBe(true)
+
+  const { event } = await data('record_follow_up', { round_id: stage.id, kind: 'thank_you_sent', note: 'sent by email' })
+  expect(event).toMatchObject({ kind: 'thank_you_sent', round_id: stage.id, to_status: 'interviewing', note: 'sent by email' })
+  expect((await data('list_follow_ups_due')).items).toEqual([])
+  const after = await data('get_application', { id: created.id })
+  expect(after.application.status).toBe(before.application.status)
+  expect(after.stages).toEqual(before.stages)
+  expect(after.stages).toHaveLength(1)
+
+  expect(await data('set_follow_up_wait', { business_days: 5 })).toEqual({ wait_business_days: 5 })
+  expect((await data('list_follow_ups_due')).wait_business_days).toBe(5)
+  for (const businessDays of [0, 31, 2.5]) {
+    expect((await call('set_follow_up_wait', { business_days: businessDays })).isError).toBe(true)
+  }
+  expect((await data('list_follow_ups_due')).wait_business_days).toBe(5)
+  const { tools } = await client.listTools()
+  expect(tools.find((tool) => tool.name === 'list_follow_ups_due')?.annotations?.readOnlyHint).toBe(true)
 })
 
 test('record_interview leaves applied_at null on saved and pending applications unless given', async () => {
