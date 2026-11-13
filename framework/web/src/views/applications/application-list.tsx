@@ -15,6 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Table, TableBody, TableHeader, TableRow } from '@/components/ui/table'
 import { useColumnOrder } from '@/hooks/use-column-order'
 import { appliedAtSortValue } from '@/lib/applied-sort'
+import { pageSelection, togglePageSelection } from '@/lib/bulk'
 import { columnDefIds, moveColumn, sameOrder } from '@/lib/column-order'
 import { day } from '@/lib/format'
 import type { ApplicationRow } from '@/lib/types'
@@ -51,21 +52,22 @@ export function ApplicationList({
 }: ApplicationListProps) {
   const [sorting, setSorting] = useState<SortingState>([{ id: 'appliedAt', desc: true }])
 
-  const selectedCount = rows.filter((row) => selectedIds.has(row.id)).length
-  const allSelected = rows.length > 0 && selectedCount === rows.length
-
   const columns = useMemo<ColumnDef<ApplicationRow>[]>(
     () => [
       {
         id: 'select',
-        header: () => (
-          <Checkbox
-            checked={allSelected}
-            indeterminate={selectedCount > 0 && !allSelected}
-            onCheckedChange={(checked) => onSelectionChange(checked ? new Set(rows.map((row) => row.id)) : new Set())}
-            aria-label="Select all"
-          />
-        ),
+        header: ({ table }) => {
+          const pageIds = table.getRowModel().rows.map((row) => row.original.id)
+          const state = pageSelection(pageIds, selectedIds)
+          return (
+            <Checkbox
+              checked={state.checked}
+              indeterminate={state.indeterminate}
+              onCheckedChange={(checked) => onSelectionChange(togglePageSelection(selectedIds, pageIds, checked === true))}
+              aria-label="Select all on this page"
+            />
+          )
+        },
         cell: ({ row }) => (
           <div onClick={stop} onMouseDown={stop} onKeyDown={stop}>
             <Checkbox
@@ -147,7 +149,7 @@ export function ApplicationList({
         meta: { className: 'hidden lg:table-cell', label: 'Updated' },
       },
     ],
-    [rows, selectedIds, selectedCount, allSelected, onSelectionChange],
+    [selectedIds, onSelectionChange],
   )
 
   const defaultColumnOrder = useMemo(() => columnDefIds(columns), [columns])

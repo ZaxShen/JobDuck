@@ -3,7 +3,7 @@ import { TERMINAL_STATUSES } from '../src/db/applications'
 import { ApiError } from '../web/src/lib/api'
 import { appliedAtSortValue } from '../web/src/lib/applied-sort'
 import { MOVE_REFUSED, stageMove } from '../web/src/lib/board'
-import { bulkSummary } from '../web/src/lib/bulk'
+import { bulkSummary, pageSelection, togglePageSelection } from '../web/src/lib/bulk'
 import {
   columnDefIds,
   columnOrderKey,
@@ -177,5 +177,30 @@ describe('bulkSummary', () => {
     expect(bulkSummary('Deleted', [broken, conflict])).toEqual({
       text: 'Deleted 0 · 1 changed elsewhere, refreshed · 1 failed: disk full', isError: true, failed: [0, 1],
     })
+  })
+})
+
+describe('page selection', () => {
+  const page2 = [51, 52, 53]
+
+  test('header state counts only the current page', () => {
+    expect(pageSelection(page2, new Set([1, 2, 3]))).toEqual({ checked: false, indeterminate: false })
+    expect(pageSelection(page2, new Set([1, 52]))).toEqual({ checked: false, indeterminate: true })
+    expect(pageSelection(page2, new Set([1, 51, 52, 53]))).toEqual({ checked: true, indeterminate: false })
+    expect(pageSelection([], new Set([1]))).toEqual({ checked: false, indeterminate: false })
+  })
+
+  test('select all adds only the current page and keeps other pages', () => {
+    expect([...togglePageSelection(new Set([1, 2]), page2, true)].sort((a, b) => a - b)).toEqual([1, 2, 51, 52, 53])
+  })
+
+  test('clear removes only the current page and keeps other pages', () => {
+    expect([...togglePageSelection(new Set([1, 51, 53]), page2, false)]).toEqual([1])
+  })
+
+  test('does not mutate the given set', () => {
+    const selected = new Set([1])
+    togglePageSelection(selected, page2, true)
+    expect([...selected]).toEqual([1])
   })
 })
