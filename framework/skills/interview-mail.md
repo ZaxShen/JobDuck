@@ -7,7 +7,7 @@ model: medium
 
 # Interview mail
 
-Opt-in: this skill, sort-mail and follow-up are the only skills that read the user's mail, all only through the host's mail tool and only when the user asks. It finds the Inbox threads that wait on the user for an interview (a scheduling ask, an invite, a booking link, an assessment, a recruiter question or an offer), matches each to a tracked application, and proposes replies, calendar holds and round records. Nothing goes out and nothing is written without the user's OK.
+Opt-in: this skill, sort-mail and follow-up are the only skills that read the user's mail, all only through the host's mail tool and only when the user asks; apply also reads the one code an open form just emailed when `[apply] email_codes = "auto_from_mail"`. It finds the Inbox threads that wait on the user for an interview (a scheduling ask, an invite, a booking link, an assessment, a recruiter question or an offer), matches each to a tracked application, and proposes replies, calendar holds and round records. Nothing goes out and nothing is written without the user's OK.
 
 Approval tiers:
 
