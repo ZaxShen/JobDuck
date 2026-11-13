@@ -28,6 +28,17 @@ export const appliedText = (row: Pick<PostingRow, 'applied_at'>) => (row.applied
 
 export const postedText = (row: Pick<PostingRow, 'posted_at'>) => (row.posted_at ? day(row.posted_at) : NO_DATE)
 
-export function postingsPath(status: string): string {
-  return status ? `/api/postings?${new URLSearchParams({ status }).toString()}` : '/api/postings'
+export const JOBS_PAGE_SIZE = 50
+
+export function postingsPath(status: string, offset = 0, limit = JOBS_PAGE_SIZE): string {
+  const params = new URLSearchParams()
+  if (status) params.set('status', status)
+  if (offset > 0) params.set('offset', String(offset))
+  params.set('limit', String(limit))
+  return `/api/postings?${params.toString()}`
+}
+
+export function pageRangeText(offset: number, count: number, total: number): string {
+  if (total === 0 || count === 0) return 'No jobs'
+  return `Showing ${(offset + 1).toLocaleString('en-US')}–${(offset + count).toLocaleString('en-US')} of ${total.toLocaleString('en-US')}`
 }

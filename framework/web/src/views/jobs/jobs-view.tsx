@@ -3,12 +3,15 @@ import { SearchIcon } from 'lucide-react'
 import { LoadError, LoadSkeleton } from '@/components/load-states'
 import { StatusBadge } from '@/components/status-badge'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useVisiblePoll } from '@/hooks/use-visible-poll'
 import { errorMessage, fetchJSON } from '@/lib/api'
 import { safeUrl } from '@/lib/format'
-import { ALL_JOBS, NOT_APPLIED_LABEL, appliedText, jobFilterOptions, postedText, postingsPath } from '@/lib/jobs'
+import {
+  ALL_JOBS, JOBS_PAGE_SIZE, NOT_APPLIED_LABEL, appliedText, jobFilterOptions, pageRangeText, postedText, postingsPath,
+} from '@/lib/jobs'
 import type { PostingRow } from '@/lib/types'
 
 interface JobsViewProps {
@@ -72,22 +75,64 @@ function JobsTable({ rows }: { rows: PostingRow[] }) {
   )
 }
 
+interface PostingsPage {
+  postings: PostingRow[]
+  total: number
+  limit: number
+  offset: number
+}
+
+function Pager({ offset, count, total, onPage }: {
+  offset: number
+  count: number
+  total: number
+  onPage: (offset: number) => void
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <p className="text-sm text-muted-foreground" aria-live="polite">{pageRangeText(offset, count, total)}</p>
+      <div className="flex items-center gap-2">
+        <Button type="button" variant="outline" size="sm" disabled={offset === 0}
+          onClick={() => onPage(Math.max(offset - JOBS_PAGE_SIZE, 0))}>
+          Previous
+        </Button>
+        <Button type="button" variant="outline" size="sm" disabled={offset + count >= total}
+          onClick={() => onPage(offset + JOBS_PAGE_SIZE)}>
+          Next
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export function JobsView({ active, statuses }: JobsViewProps) {
   const [filter, setFilter] = useState(ALL_JOBS)
+  const [offset, setOffset] = useState(0)
   const [rows, setRows] = useState<PostingRow[]>([])
+  const [total, setTotal] = useState(0)
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     try {
-      const { postings } = await fetchJSON<{ postings: PostingRow[] }>(postingsPath(filter))
-      setRows(postings)
+      const page = await fetchJSON<PostingsPage>(postingsPath(filter, offset, JOBS_PAGE_SIZE))
+      if (page.postings.length === 0 && page.total > 0 && offset > 0) {
+        setOffset(Math.floor((page.total - 1) / JOBS_PAGE_SIZE) * JOBS_PAGE_SIZE)
+        return
+      }
+      setRows(page.postings)
+      setTotal(page.total)
       setLoaded(true)
       setError(null)
     } catch (failure) {
       setError(errorMessage(failure))
     }
-  }, [filter])
+  }, [filter, offset])
+
+  const changeFilter = (value: string) => {
+    setFilter(value)
+    setOffset(0)
+  }
 
   useEffect(() => {
     if (active) void refresh()
@@ -100,14 +145,19 @@ export function JobsView({ active, statuses }: JobsViewProps) {
   const content = () => {
     if (!loaded) return error ? null : <LoadSkeleton />
     if (rows.length === 0) return <EmptyState filtered={filter !== ALL_JOBS} />
-    return <JobsTable rows={rows} />
+    return (
+      <>
+        <JobsTable rows={rows} />
+        <Pager offset={offset} count={rows.length} total={total} onPage={setOffset} />
+      </>
+    )
   }
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-500">
       <p className="text-sm text-muted-foreground">Every job your agent fetched or saved, and whether you applied, newest first.</p>
       <div className="flex flex-wrap items-center gap-3">
-        <Select items={items} value={filter} onValueChange={(value: string | null) => setFilter(value ?? ALL_JOBS)}>
+        <Select items={items} value={filter} onValueChange={(value: string | null) => changeFilter(value ?? ALL_JOBS)}>
           <SelectTrigger aria-label="Status">
             <SelectValue />
           </SelectTrigger>

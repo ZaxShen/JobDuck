@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { APPLICATION_STATUSES } from '../src/db/applications'
 import { day } from '../web/src/lib/format'
 import {
-  NOT_APPLIED, appliedText, jobFilterOptions, jobStatusLabel, postedText, postingsPath,
+  JOBS_PAGE_SIZE, NOT_APPLIED, appliedText, jobFilterOptions, jobStatusLabel, pageRangeText, postedText, postingsPath,
 } from '../web/src/lib/jobs'
 import { VIEWS, hashFor, routeFromHash } from '../web/src/lib/routing'
 
@@ -47,8 +47,22 @@ describe('row helpers', () => {
     expect(postedText({ posted_at: null })).toBe('—')
   })
 
-  test('postingsPath adds the status only when one is chosen', () => {
-    expect(postingsPath('')).toBe('/api/postings')
-    expect(postingsPath('not_applied')).toBe('/api/postings?status=not_applied')
+  test('postingsPath adds the status only when one is chosen, the offset past the first page, and the limit', () => {
+    expect(postingsPath('')).toBe(`/api/postings?limit=${JOBS_PAGE_SIZE}`)
+    expect(postingsPath('not_applied')).toBe(`/api/postings?status=not_applied&limit=${JOBS_PAGE_SIZE}`)
+    expect(postingsPath('', 500, 50)).toBe('/api/postings?offset=500&limit=50')
+    expect(postingsPath('applied', 100, 25)).toBe('/api/postings?status=applied&offset=100&limit=25')
+  })
+})
+
+describe('pageRangeText', () => {
+  test('shows the 1-based range and the grouped total', () => {
+    expect(pageRangeText(0, 50, 1158)).toBe('Showing 1–50 of 1,158')
+    expect(pageRangeText(1150, 8, 1158)).toBe('Showing 1,151–1,158 of 1,158')
+    expect(pageRangeText(0, 3, 3)).toBe('Showing 1–3 of 3')
+  })
+
+  test('reads No jobs when there is nothing to show', () => {
+    expect(pageRangeText(0, 0, 0)).toBe('No jobs')
   })
 })
