@@ -473,23 +473,42 @@ export interface PostingWithApplication {
 export interface ListPostingsWithApplicationsFilter {
   status?: PostingStatusFilter
   limit?: number
+  offset?: number
+}
+
+const POSTINGS_FROM = 'FROM postings p LEFT JOIN applications a ON a.posting_id = p.id AND a.deleted_at IS NULL'
+
+function postingsWhere(status: PostingStatusFilter | undefined): { clause: string; params: unknown[] } {
+  if (status === undefined) return { clause: '', params: [] }
+  if (status === NOT_APPLIED) return { clause: 'WHERE a.id IS NULL', params: [] }
+  return { clause: 'WHERE a.status = ?', params: [status] }
 }
 
 export function listPostingsWithApplications(db: Db, filter: ListPostingsWithApplicationsFilter = {}): PostingWithApplication[] {
-  const where: string[] = []
-  const params: unknown[] = []
-  if (filter.status === NOT_APPLIED) where.push('a.id IS NULL')
-  else if (filter.status !== undefined) {
-    where.push('a.status = ?')
-    params.push(filter.status)
-  }
-  params.push(filter.limit ?? 500)
+  const { clause, params } = postingsWhere(filter.status)
   return db.prepare(`SELECT p.id, p.title, p.company, p.location, p.work_mode, p.url, p.posted_at, p.created_at,
       a.id AS application_id, a.status AS application_status, a.applied_at AS applied_at
-    FROM postings p LEFT JOIN applications a ON a.posting_id = p.id AND a.deleted_at IS NULL
-    ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
-    ORDER BY COALESCE(p.posted_at, p.created_at) DESC, p.id DESC LIMIT ?`)
-    .all(...params) as PostingWithApplication[]
+    ${POSTINGS_FROM} ${clause}
+    ORDER BY COALESCE(p.posted_at, p.created_at) DESC, p.id DESC LIMIT ? OFFSET ?`)
+    .all(...params, filter.limit ?? 500, filter.offset ?? 0) as PostingWithApplication[]
+}
+
+export const POSTINGS_PAGE_DEFAULT_LIMIT = 50
+export const POSTINGS_PAGE_MAX_LIMIT = 200
+
+export interface PostingsPage {
+  postings: PostingWithApplication[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export function listPostingsPage(db: Db, filter: ListPostingsWithApplicationsFilter = {}): PostingsPage {
+  const limit = Math.min(Math.max(Math.trunc(filter.limit ?? POSTINGS_PAGE_DEFAULT_LIMIT), 1), POSTINGS_PAGE_MAX_LIMIT)
+  const offset = Math.max(Math.trunc(filter.offset ?? 0), 0)
+  const { clause, params } = postingsWhere(filter.status)
+  const total = one<{ total: number }>(db.prepare(`SELECT COUNT(*) AS total ${POSTINGS_FROM} ${clause}`), ...params)?.total ?? 0
+  return { postings: listPostingsWithApplications(db, { status: filter.status, limit, offset }), total, limit, offset }
 }
 
 export function getApplicationWithPosting(db: Db, id: number): ApplicationWithPosting | undefined {

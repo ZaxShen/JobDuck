@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { type Sandbox, migratedDb, sandbox } from './helpers'
 import type { Db } from '../src/db/client'
-import { createApplication, listApplications, listEvents, setStatus } from '../src/db/applications'
+import {
+  createApplication, listApplications, listEvents, listPostingsPage, listPostingsWithApplications, setStatus,
+} from '../src/db/applications'
 import { findPostingByUrl, upsertPosting } from '../src/db/postings'
 
 let box: Sandbox
@@ -120,4 +122,54 @@ test('setStatus appends its note to the application note in order and keeps it o
     status: 'saved', note: 'full note',
   })
   expect(setStatus(db, withNote.id, 'applied', { note: 'Approval: ok' }).note).toBe('full note\nApproval: ok')
+})
+
+const seedPostings = (count: number) => {
+  const base = Date.parse('2026-01-01T00:00:00.000Z')
+  for (let i = 0; i < count; i++) {
+    const id = upsertPosting(db, {
+      source: 'manual', url: `https://jobs.example.com/${i}`, title: `Engineer ${i}`, company: 'Acme',
+      posted_at: new Date(base + i * 60_000).toISOString(),
+    }).id
+    if (i % 2 === 0) createApplication(db, { postingId: id, status: 'applied' })
+  }
+}
+
+test('listPostingsPage counts every posting and reaches the oldest past 500', () => {
+  seedPostings(520)
+  const all = listPostingsWithApplications(db, { limit: 1000 }).map((row) => row.id)
+  expect(all).toHaveLength(520)
+  const first = listPostingsPage(db)
+  expect(first.total).toBe(520)
+  expect(first.limit).toBe(50)
+  expect(first.offset).toBe(0)
+  expect(first.postings.map((row) => row.id)).toEqual(all.slice(0, 50))
+  const last = listPostingsPage(db, { offset: 500, limit: 50 })
+  expect(last).toMatchObject({ total: 520, limit: 50, offset: 500 })
+  expect(last.postings.map((row) => row.id)).toEqual(all.slice(500))
+  expect(last.postings).toHaveLength(20)
+  expect(listPostingsPage(db, { offset: 520 }).postings).toEqual([])
+})
+
+test('listPostingsPage applies a status filter to total and to every page', () => {
+  seedPostings(520)
+  for (const status of ['not_applied', 'applied'] as const) {
+    const expected = listPostingsWithApplications(db, { status, limit: 1000 }).map((row) => row.id)
+    expect(expected).toHaveLength(260)
+    const seen: number[] = []
+    for (let offset = 0; offset < 260; offset += 100) {
+      const page = listPostingsPage(db, { status, offset, limit: 100 })
+      expect(page.total).toBe(260)
+      seen.push(...page.postings.map((row) => row.id))
+    }
+    expect(seen).toEqual(expected)
+  }
+  expect(listPostingsPage(db, { status: 'interviewing' })).toMatchObject({ total: 0, postings: [] })
+})
+
+test('listPostingsPage caps limit at 200', () => {
+  seedPostings(520)
+  const page = listPostingsPage(db, { limit: 1000 })
+  expect(page.limit).toBe(200)
+  expect(page.postings).toHaveLength(200)
 })

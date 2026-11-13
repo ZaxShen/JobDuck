@@ -8,7 +8,7 @@ import {
   APPLICATION_STATUSES, type ApplicationFields, PAY_FIELDS, PENDING_REASON_ONLY_PENDING, PENDING_REASON_REQUIRED,
   PendingReasonSchema, type PayField, TERMINAL_STATUSES, deleteEvent, getApplication,
   POSTING_STATUS_FILTERS, getApplicationWithPosting, getEvent, listApplicationsWithPostings, listEvents,
-  listPostingsWithApplications, setStatus, softDeleteApplication,
+  POSTINGS_PAGE_MAX_LIMIT, listPostingsPage, setStatus, softDeleteApplication,
   updateApplicationFields, updateEvent,
 } from '../db/applications'
 import { type Db, transaction } from '../db/client'
@@ -110,7 +110,11 @@ const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(5000).optional(),
 })
 
-const postingsQuerySchema = z.object({ status: z.enum(POSTING_STATUS_FILTERS).optional() })
+const postingsQuerySchema = z.object({
+  status: z.enum(POSTING_STATUS_FILTERS).optional(),
+  limit: z.coerce.number().int().min(1).max(POSTINGS_PAGE_MAX_LIMIT).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+})
 
 const factsQuerySchema = z.object({ status: z.enum(FACT_STATUSES).optional() })
 
@@ -433,9 +437,7 @@ const routes: { method: string; pattern: RegExp; handler: Handler }[] = [
   },
   {
     method: 'GET', pattern: /^\/api\/postings$/,
-    handler: ({ db }, req) => ({
-      postings: listPostingsWithApplications(db, { limit: 500, ...parse(postingsQuerySchema, queryObject(req.query)) }),
-    }),
+    handler: ({ db }, req) => listPostingsPage(db, parse(postingsQuerySchema, queryObject(req.query))),
   },
   {
     method: 'GET', pattern: /^\/api\/applications\/(\d+)$/,

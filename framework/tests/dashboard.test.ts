@@ -161,6 +161,24 @@ test('GET /api/applications filters by status and q', async () => {
   expect((await get('/api/applications?limit=1')).body).toHaveLength(1)
 })
 
+test('GET /api/postings pages past 500 with a total and rejects out-of-range limit and offset with 400', async () => {
+  for (let n = 100; n < 616; n++) {
+    upsertPosting(db, { source: 'manual', url: `https://jobs.example.com/${n}`, title: `Engineer ${n}`, company: 'Acme' })
+  }
+  const first = (await get('/api/postings')).body
+  expect(first).toMatchObject({ total: 520, limit: 50, offset: 0 })
+  expect(first.postings).toHaveLength(50)
+  const tail = await get('/api/postings?offset=500')
+  expect(tail.res.status).toBe(200)
+  expect(tail.body).toMatchObject({ total: 520, limit: 50, offset: 500 })
+  expect(tail.body.postings).toHaveLength(20)
+  expect((await get('/api/postings?limit=200')).body.postings).toHaveLength(200)
+  expect((await get('/api/postings?status=saved&offset=0&limit=10')).body).toMatchObject({ total: 1, limit: 10 })
+  for (const query of ['limit=0', 'limit=201', 'offset=-1', 'limit=abc']) {
+    expect((await get(`/api/postings?${query}`)).res.status).toBe(400)
+  }
+})
+
 test('mutations without the dashboard header or from a foreign origin get 403', async () => {
   const bare = await fetch(`${dash.url}/api/applications/${ids.acme}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'offered' }),
