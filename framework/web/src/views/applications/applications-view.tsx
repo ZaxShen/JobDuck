@@ -1,6 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useState } from 'react'
 import {
-  AlertCircleIcon, ClipboardListIcon, EyeIcon, EyeOffIcon, KanbanIcon, ListIcon, SearchIcon, XCircleIcon,
+  AlertCircleIcon, ClipboardListIcon, EyeIcon, EyeOffIcon, KanbanIcon, ListIcon, Rows2Icon, Rows4Icon, SearchIcon, XCircleIcon,
 } from 'lucide-react'
 import { SectionCard } from '@/components/composed/section-card'
 import { OnboardingBanner } from '@/components/onboarding-banner'
@@ -11,8 +11,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useFlash } from '@/hooks/use-flash'
 import { useVisiblePoll } from '@/hooks/use-visible-poll'
-import { applicationsPath, deleteJSON, errorMessage, fetchJSON, isConflict } from '@/lib/api'
+import { APPLICATIONS_FETCH_LIMIT, applicationsPath, deleteJSON, errorMessage, fetchJSON, isConflict } from '@/lib/api'
 import { MOVE_REFUSED, type StageMove, type StatusAction, stageColumns } from '@/lib/board'
+import { type Density, readDensity, saveDensity } from '@/lib/board-density'
 import { bulkSummary } from '@/lib/bulk'
 import { FOLLOW_UPS_PATH } from '@/lib/follow-ups'
 import { statusLabel } from '@/lib/format'
@@ -97,8 +98,10 @@ function ListSkeleton() {
 export function ApplicationsView({ active, statuses, terminal }: ApplicationsViewProps) {
   const flash = useFlash()
   const [view, setView] = useState<ViewMode>(readViewMode)
+  const [density, setDensity] = useState<Density>(readDensity)
   const [filter, setFilter] = useState('')
   const [search, setSearch] = useState('')
+  const [pageIndex, setPageIndex] = useState(0)
   const [q, setQ] = useState('')
   const [showHidden, setShowHidden] = useState(false)
   const [rows, setRows] = useState<ApplicationRow[]>([])
@@ -123,7 +126,7 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
       void fetchJSON<FollowUps>(FOLLOW_UPS_PATH).then(setFollowUps, () => setFollowUps(null))
       const [nextSummary, nextRows, nextOutcomes] = await Promise.all([
         fetchJSON<Summary>('/api/summary'),
-        fetchJSON<ApplicationRow[]>(applicationsPath({ status: filter, q })),
+        fetchJSON<ApplicationRow[]>(applicationsPath({ status: filter, q, limit: APPLICATIONS_FETCH_LIMIT })),
         fetchJSON<Outcome[]>('/api/outcomes?status=needs_match'),
       ])
       setSummary(nextSummary)
@@ -160,6 +163,23 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
     saveViewMode(next)
   }
 
+  const chooseDensity = (value: string[]) => {
+    const next = value[0]
+    if (next !== 'comfortable' && next !== 'compact') return
+    setDensity(next)
+    saveDensity(next)
+  }
+
+  const changeFilter = (value: string) => {
+    setFilter(value)
+    setPageIndex(0)
+  }
+
+  const changeSearch = (value: string) => {
+    setSearch(value)
+    setPageIndex(0)
+  }
+
   const runAction = (row: ApplicationRow, action: StatusAction) =>
     setDialog({ request: { target: action.target, title: action.label, subject: row.company }, rows: [row] })
 
@@ -191,6 +211,7 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
     setFilter('')
     setSearch('')
     setQ('')
+    setPageIndex(0)
   }
 
   const total = summary ? Object.values(summary.counts).reduce((a, b) => a + b, 0) : 0
@@ -256,6 +277,7 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
         <ApplicationBoard
           rows={rows}
           terminal={terminal}
+          density={density}
           busyId={busyId}
           onOpen={setSelected}
           onAction={runAction}
@@ -271,6 +293,8 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
         selectedIds={selectedIds}
         onSelectionChange={setSelectedIds}
         onOpen={setSelected}
+        pageIndex={pageIndex}
+        onPageIndexChange={setPageIndex}
       />
     )
   }
@@ -282,7 +306,7 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
       <FollowUpsCard data={followUps} onOpen={setSelected} />
 
       <div className="flex flex-wrap items-center gap-3">
-        <Select items={items} value={filter} onValueChange={(value: string | null) => setFilter(value ?? '')}>
+        <Select items={items} value={filter} onValueChange={(value: string | null) => changeFilter(value ?? '')}>
           <SelectTrigger aria-label="Status">
             <SelectValue />
           </SelectTrigger>
@@ -300,7 +324,7 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
             placeholder="Search company, title, location…"
             aria-label="Search applications"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => changeSearch(event.target.value)}
           />
         </div>
         {view === 'list' && loaded && !closedFilter && (
@@ -310,7 +334,10 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
             size="sm"
             className="rounded-full text-muted-foreground"
             aria-pressed={showHidden}
-            onClick={() => setShowHidden((current) => !current)}
+            onClick={() => {
+              setShowHidden((current) => !current)
+              setPageIndex(0)
+            }}
           >
             {showHidden ? <EyeOffIcon data-icon="inline-start" aria-hidden /> : <EyeIcon data-icon="inline-start" aria-hidden />}
             Showing {activeRows.length} active · {hiddenCount} hidden (closed) — {showHidden ? 'Hide' : 'Show hidden'}
@@ -322,6 +349,26 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
             <XCircleIcon data-icon="inline-end" aria-hidden />
           </Button>
         )}
+        {view === 'board' && (
+          <ToggleGroup
+            variant="outline"
+            size="sm"
+            spacing={0}
+            value={[density]}
+            onValueChange={chooseDensity}
+            aria-label="Card density"
+            className="sm:ml-auto"
+          >
+            <ToggleGroupItem value="comfortable" aria-label="Comfortable cards">
+              <Rows2Icon data-icon="inline-start" aria-hidden />
+              Comfortable
+            </ToggleGroupItem>
+            <ToggleGroupItem value="compact" aria-label="Compact cards">
+              <Rows4Icon data-icon="inline-start" aria-hidden />
+              Compact
+            </ToggleGroupItem>
+          </ToggleGroup>
+        )}
         <ToggleGroup
           variant="outline"
           size="sm"
@@ -329,7 +376,7 @@ export function ApplicationsView({ active, statuses, terminal }: ApplicationsVie
           value={[view]}
           onValueChange={chooseView}
           aria-label="View"
-          className="sm:ml-auto"
+          className={view === 'board' ? undefined : 'sm:ml-auto'}
         >
           <ToggleGroupItem value="board" aria-label="Board view">
             <KanbanIcon data-icon="inline-start" aria-hidden />
