@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { SearchIcon } from 'lucide-react'
 import { LoadError, LoadSkeleton } from '@/components/load-states'
+import { Pager } from '@/components/pager'
 import { StatusBadge } from '@/components/status-badge'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useVisiblePoll } from '@/hooks/use-visible-poll'
 import { errorMessage, fetchJSON } from '@/lib/api'
 import { safeUrl } from '@/lib/format'
 import {
-  ALL_JOBS, JOBS_PAGE_SIZE, NOT_APPLIED_LABEL, appliedText, jobFilterOptions, pageRangeText, postedText, postingsPath,
+  ALL_JOBS, JOBS_PAGE_SIZE, NOT_APPLIED_LABEL, appliedText, jobFilterOptions, postedText, postingsPath,
 } from '@/lib/jobs'
 import type { PostingRow } from '@/lib/types'
 
@@ -82,29 +82,6 @@ interface PostingsPage {
   offset: number
 }
 
-function Pager({ offset, count, total, onPage }: {
-  offset: number
-  count: number
-  total: number
-  onPage: (offset: number) => void
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <p className="text-sm text-muted-foreground" aria-live="polite">{pageRangeText(offset, count, total)}</p>
-      <div className="flex items-center gap-2">
-        <Button type="button" variant="outline" size="sm" disabled={offset === 0}
-          onClick={() => onPage(Math.max(offset - JOBS_PAGE_SIZE, 0))}>
-          Previous
-        </Button>
-        <Button type="button" variant="outline" size="sm" disabled={offset + count >= total}
-          onClick={() => onPage(offset + JOBS_PAGE_SIZE)}>
-          Next
-        </Button>
-      </div>
-    </div>
-  )
-}
-
 export function JobsView({ active, statuses }: JobsViewProps) {
   const [filter, setFilter] = useState(ALL_JOBS)
   const [offset, setOffset] = useState(0)
@@ -148,7 +125,7 @@ export function JobsView({ active, statuses }: JobsViewProps) {
     return (
       <>
         <JobsTable rows={rows} />
-        <Pager offset={offset} count={rows.length} total={total} onPage={setOffset} />
+        <Pager offset={offset} count={rows.length} total={total} pageSize={JOBS_PAGE_SIZE} onPage={setOffset} />
       </>
     )
   }

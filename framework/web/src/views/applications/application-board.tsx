@@ -15,8 +15,9 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ExternalLinkIcon, GripVerticalIcon } from 'lucide-react'
+import { ChevronRightIcon, ExternalLinkIcon, GripVerticalIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   type StageColumn,
   type StageKey,
@@ -28,7 +29,17 @@ import {
   stageMove,
   stageOf,
 } from '@/lib/board'
-import { safeUrl } from '@/lib/format'
+import {
+  CARD_CAP,
+  type Density,
+  type PreInterviewGroup,
+  type PreInterviewStatus,
+  preInterviewGroups,
+  readCollapsed,
+  saveCollapsed,
+  visibleCards,
+} from '@/lib/board-density'
+import { day, safeUrl } from '@/lib/format'
 import type { ApplicationRow } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { StatusActionsMenu } from '@/views/applications/status-actions-menu'
@@ -42,6 +53,7 @@ interface CardActions {
 interface ApplicationBoardProps extends CardActions {
   rows: ApplicationRow[]
   terminal: string[]
+  density: Density
   onMove: (row: ApplicationRow, move: StageMove) => void
 }
 
@@ -52,8 +64,17 @@ const INSTRUCTIONS = {
     'To move an application, press Space on its handle, use the arrow keys to reach another column, then press Space again to drop it or Escape to cancel.',
 }
 
-export function ApplicationBoard({ rows, terminal, onMove, ...actions }: ApplicationBoardProps) {
+export function ApplicationBoard({ rows, terminal, density, onMove, ...actions }: ApplicationBoardProps) {
   const [activeId, setActiveId] = useState<number | null>(null)
+  const [collapsed, setCollapsed] = useState<PreInterviewStatus[]>(readCollapsed)
+  const [shown, setShown] = useState<Record<string, number>>({})
+
+  const toggleGroup = (status: PreInterviewStatus) => {
+    const next = collapsed.includes(status) ? collapsed.filter((item) => item !== status) : [...collapsed, status]
+    setCollapsed(next)
+    saveCollapsed(next)
+  }
+  const showMore = (key: string, next: number) => setShown((current) => ({ ...current, [key]: next }))
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -69,6 +90,8 @@ export function ApplicationBoard({ rows, terminal, onMove, ...actions }: Applica
   const columnOf = (over: Over | null): StageKey | null => {
     if (!over) return null
     if (isStageKey(over.id)) return over.id
+    const groupColumn = over.data.current?.column
+    if (isStageKey(groupColumn)) return groupColumn
     const container = over.data.current?.sortable?.containerId
     if (isStageKey(container)) return container
     const row = rowOf(over.id)
@@ -112,19 +135,42 @@ export function ApplicationBoard({ rows, terminal, onMove, ...actions }: Applica
     >
       <div className="relative flex gap-4 overflow-x-auto pb-4">
         {columns.map((column) => (
-          <BoardColumn key={column.key} column={column} rows={grouped.get(column.key) ?? []} {...actions} />
+          <BoardColumn
+            key={column.key}
+            column={column}
+            rows={grouped.get(column.key) ?? []}
+            density={density}
+            collapsed={collapsed}
+            shown={shown}
+            onToggleGroup={toggleGroup}
+            onShowMore={showMore}
+            {...actions}
+          />
         ))}
       </div>
       <DragOverlay>
-        {activeRow ? <CardBody row={activeRow} dragging /> : null}
+        {activeRow
+          ? density === 'compact' ? <CompactCardBody row={activeRow} dragging /> : <CardBody row={activeRow} dragging />
+          : null}
       </DragOverlay>
     </DndContext>
   )
 }
 
-function BoardColumn({ column, rows, ...actions }: CardActions & { column: StageColumn; rows: ApplicationRow[] }) {
+interface ColumnProps extends CardActions {
+  column: StageColumn
+  rows: ApplicationRow[]
+  density: Density
+  collapsed: readonly PreInterviewStatus[]
+  shown: Record<string, number>
+  onToggleGroup: (status: PreInterviewStatus) => void
+  onShowMore: (key: string, next: number) => void
+}
+
+function BoardColumn({ column, rows, density, collapsed, shown, onToggleGroup, onShowMore, ...actions }: ColumnProps) {
   const headingId = useId()
   const { setNodeRef, isOver } = useDroppable({ id: column.key })
+  const cards = { density, shown, onShowMore, ...actions }
   return (
     <section aria-labelledby={headingId} className="flex min-w-[250px] flex-1 flex-col gap-2">
       <div className="flex items-center gap-2 px-1">
@@ -141,24 +187,121 @@ function BoardColumn({ column, rows, ...actions }: CardActions & { column: Stage
           isOver ? 'bg-muted/60' : 'bg-muted/20',
         )}
       >
-        <SortableContext id={column.key} items={rows.map((row) => row.id)} strategy={verticalListSortingStrategy}>
-          {rows.length === 0
-            ? <p className="py-4 text-center text-xs text-muted-foreground">No applications</p>
-            : (
-              <ul className="flex flex-col gap-2">
-                {rows.map((row) => <li key={row.id}><SortableCard row={row} {...actions} /></li>)}
-              </ul>
-            )}
-        </SortableContext>
+        {column.key === 'pre_interview'
+          ? preInterviewGroups(rows).map((group) => (
+            <BoardGroup
+              key={group.status}
+              column={column.key}
+              group={group}
+              open={!collapsed.includes(group.status)}
+              onToggle={() => onToggleGroup(group.status)}
+              {...cards}
+            />
+          ))
+          : <CardStack containerId={column.key} shownKey={column.key} rows={rows} {...cards} />}
       </div>
     </section>
   )
 }
 
-function SortableCard({ row, busyId, onOpen, onAction }: CardActions & { row: ApplicationRow }) {
+interface CardStackProps extends CardActions {
+  containerId: string
+  shownKey: string
+  rows: ApplicationRow[]
+  density: Density
+  shown: Record<string, number>
+  onShowMore: (key: string, next: number) => void
+}
+
+function CardStack({ containerId, shownKey, rows, density, shown, onShowMore, ...actions }: CardStackProps) {
+  const { visible, more } = visibleCards(rows, shown[shownKey] ?? CARD_CAP)
+  return (
+    <SortableContext id={containerId} items={visible.map((row) => row.id)} strategy={verticalListSortingStrategy}>
+      {rows.length === 0
+        ? <p className="py-4 text-center text-xs text-muted-foreground">No applications</p>
+        : (
+          <ul className={cn('flex flex-col', density === 'compact' ? 'gap-1' : 'gap-2')}>
+            {visible.map((row) => <li key={row.id}><SortableCard row={row} density={density} {...actions} /></li>)}
+          </ul>
+        )}
+      {more > 0 && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground"
+          onClick={() => onShowMore(shownKey, visible.length + more)}
+        >
+          Show {more} more
+        </Button>
+      )}
+    </SortableContext>
+  )
+}
+
+interface BoardGroupProps extends Omit<CardStackProps, 'containerId' | 'shownKey' | 'rows'> {
+  column: StageKey
+  group: PreInterviewGroup<ApplicationRow>
+  open: boolean
+  onToggle: () => void
+}
+
+function BoardGroup({ column, group, open, onToggle, ...cards }: BoardGroupProps) {
+  const contentId = useId()
+  const { setNodeRef, isOver } = useDroppable({ id: `group-${group.status}`, data: { column } })
+  return (
+    <section ref={setNodeRef} aria-label={`${group.label}, ${group.count} applications`} className={cn('flex flex-col gap-1 rounded-md', isOver && 'bg-muted/60')}>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={contentId}
+        onClick={onToggle}
+        className="flex items-center gap-1.5 rounded-sm px-1 py-0.5 text-left text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        <ChevronRightIcon className={cn('size-3.5 transition-transform duration-150', open && 'rotate-90')} aria-hidden />
+        {group.label}
+        <span className="tabular-nums">· {group.count}</span>
+      </button>
+      {open && (
+        <div id={contentId} className="flex flex-col gap-2">
+          <CardStack containerId={`group-${group.status}-cards`} shownKey={`${column}:${group.status}`} rows={group.rows} {...cards} />
+        </div>
+      )}
+    </section>
+  )
+}
+
+function SortableCard({ row, density, busyId, onOpen, onAction }: CardActions & { row: ApplicationRow; density: Density }) {
   const busy = busyId === row.id
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
     useSortable({ id: row.id, disabled: busy })
+
+  const handle = (
+    <button
+      ref={setActivatorNodeRef}
+      type="button"
+      {...attributes}
+      onKeyDown={(event) => listeners?.onKeyDown?.(event)}
+      aria-pressed={undefined}
+      aria-label={`Move ${row.company}`}
+      disabled={busy}
+      className={cn(
+        'relative -mr-1 shrink-0 cursor-grab rounded-sm p-0.5 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50',
+        density === 'comfortable' && '-mt-0.5',
+      )}
+    >
+      <GripVerticalIcon className="size-4" aria-hidden />
+    </button>
+  )
+  const heading = (
+    <button
+      type="button"
+      className="block max-w-full truncate rounded-sm text-left text-sm leading-snug font-semibold outline-none after:absolute after:inset-0 after:rounded-lg focus-visible:ring-3 focus-visible:ring-ring/50"
+      onClick={() => onOpen(row.id)}
+    >
+      {row.company}
+    </button>
+  )
 
   return (
     <div
@@ -167,34 +310,37 @@ function SortableCard({ row, busyId, onOpen, onAction }: CardActions & { row: Ap
       onPointerDown={(event) => listeners?.onPointerDown?.(event)}
       aria-busy={busy || undefined}
     >
-      <CardBody
-        row={row}
-        handle={
-          <button
-            ref={setActivatorNodeRef}
-            type="button"
-            {...attributes}
-            onKeyDown={(event) => listeners?.onKeyDown?.(event)}
-            aria-pressed={undefined}
-            aria-label={`Move ${row.company}`}
-            disabled={busy}
-            className="relative -mt-0.5 -mr-1 shrink-0 cursor-grab rounded-sm p-0.5 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
-          >
-            <GripVerticalIcon className="size-4" aria-hidden />
-          </button>
-        }
-        heading={
-          <button
-            type="button"
-            className="block max-w-full truncate rounded-sm text-left text-sm leading-snug font-semibold outline-none after:absolute after:inset-0 after:rounded-lg focus-visible:ring-3 focus-visible:ring-ring/50"
-            onClick={() => onOpen(row.id)}
-          >
-            {row.company}
-          </button>
-        }
-        actions={<StatusActionsMenu row={row} busy={busy} onAction={onAction} className="relative mt-2 flex justify-end" />}
-      />
+      {density === 'compact'
+        ? <CompactCardBody row={row} handle={handle} heading={heading} />
+        : (
+          <CardBody
+            row={row}
+            handle={handle}
+            heading={heading}
+            actions={<StatusActionsMenu row={row} busy={busy} onAction={onAction} className="relative mt-2 flex justify-end" />}
+          />
+        )}
     </div>
+  )
+}
+
+function CompactCardBody({ row, dragging = false, handle, heading }: Omit<CardBodyProps, 'actions'>) {
+  const applied = day(row.applied_at)
+  return (
+    <article
+      className={cn(
+        'relative flex cursor-grab items-center gap-2 rounded-md border border-border bg-card px-2 py-1 select-none',
+        'transition-all duration-150',
+        dragging ? 'cursor-grabbing opacity-80 shadow-lg' : 'hover:bg-card/80 hover:shadow-sm',
+      )}
+    >
+      <div className="max-w-[45%] shrink-0">
+        {heading ?? <p className="truncate text-sm leading-snug font-semibold">{row.company}</p>}
+      </div>
+      <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={row.title}>{row.title}</p>
+      {applied && <span className="shrink-0 text-xs text-muted-foreground/70 tabular-nums">{applied}</span>}
+      {handle}
+    </article>
   )
 }
 

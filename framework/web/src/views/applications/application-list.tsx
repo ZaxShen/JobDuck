@@ -3,16 +3,19 @@ import {
   type ColumnDef,
   type SortingState,
   getCoreRowModel,
+  getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table'
 import { RotateCcwIcon } from 'lucide-react'
+import { Pager } from '@/components/pager'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Table, TableBody, TableHeader, TableRow } from '@/components/ui/table'
 import { useColumnOrder } from '@/hooks/use-column-order'
 import { appliedAtSortValue } from '@/lib/applied-sort'
+import { pageSelection, togglePageSelection } from '@/lib/bulk'
 import { columnDefIds, moveColumn, sameOrder } from '@/lib/column-order'
 import { day } from '@/lib/format'
 import type { ApplicationRow } from '@/lib/types'
@@ -36,28 +39,35 @@ interface ApplicationListProps {
   selectedIds: ReadonlySet<number>
   onSelectionChange: (ids: Set<number>) => void
   onOpen: (id: number) => void
+  pageIndex: number
+  onPageIndexChange: (pageIndex: number) => void
 }
+
+const LIST_PAGE_SIZE = 50
 
 const stop = (event: { stopPropagation: () => void }) => event.stopPropagation()
 
-export function ApplicationList({ rows, open, selectedIds, onSelectionChange, onOpen }: ApplicationListProps) {
+export function ApplicationList({
+  rows, open, selectedIds, onSelectionChange, onOpen, pageIndex, onPageIndexChange,
+}: ApplicationListProps) {
   const [sorting, setSorting] = useState<SortingState>([{ id: 'appliedAt', desc: true }])
-
-  const selectedCount = rows.filter((row) => selectedIds.has(row.id)).length
-  const allSelected = rows.length > 0 && selectedCount === rows.length
 
   const columns = useMemo<ColumnDef<ApplicationRow>[]>(
     () => [
       {
         id: 'select',
-        header: () => (
-          <Checkbox
-            checked={allSelected}
-            indeterminate={selectedCount > 0 && !allSelected}
-            onCheckedChange={(checked) => onSelectionChange(checked ? new Set(rows.map((row) => row.id)) : new Set())}
-            aria-label="Select all"
-          />
-        ),
+        header: ({ table }) => {
+          const pageIds = table.getRowModel().rows.map((row) => row.original.id)
+          const state = pageSelection(pageIds, selectedIds)
+          return (
+            <Checkbox
+              checked={state.checked}
+              indeterminate={state.indeterminate}
+              onCheckedChange={(checked) => onSelectionChange(togglePageSelection(selectedIds, pageIds, checked === true))}
+              aria-label="Select all on this page"
+            />
+          )
+        },
         cell: ({ row }) => (
           <div onClick={stop} onMouseDown={stop} onKeyDown={stop}>
             <Checkbox
@@ -139,7 +149,7 @@ export function ApplicationList({ rows, open, selectedIds, onSelectionChange, on
         meta: { className: 'hidden lg:table-cell', label: 'Updated' },
       },
     ],
-    [rows, selectedIds, selectedCount, allSelected, onSelectionChange],
+    [selectedIds, onSelectionChange],
   )
 
   const defaultColumnOrder = useMemo(() => columnDefIds(columns), [columns])
@@ -149,16 +159,27 @@ export function ApplicationList({ rows, open, selectedIds, onSelectionChange, on
   )
   const [columnOrder, setColumnOrder, resetColumnOrder] = useColumnOrder('applications', defaultColumnOrder, PINNED_COLUMNS)
 
+  const lastPage = Math.max(Math.ceil(rows.length / LIST_PAGE_SIZE) - 1, 0)
+  const currentPage = Math.min(pageIndex, lastPage)
+  const pagination = { pageIndex: currentPage, pageSize: LIST_PAGE_SIZE }
+
   const table = useReactTable({
     data: rows,
     columns,
-    state: { sorting, columnOrder },
+    state: { sorting, columnOrder, pagination },
     onSortingChange: setSorting,
     onColumnOrderChange: setColumnOrder,
+    onPaginationChange: (updater) =>
+      onPageIndexChange((typeof updater === 'function' ? updater(pagination) : updater).pageIndex),
+    autoResetPageIndex: false,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
     getRowId: (row) => String(row.id),
   })
+
+  const pageRows = table.getRowModel().rows
+  const offset = currentPage * LIST_PAGE_SIZE
 
   const sortableColumnIds = table
     .getVisibleLeafColumns()
@@ -197,7 +218,7 @@ export function ApplicationList({ rows, open, selectedIds, onSelectionChange, on
               ))}
             </TableHeader>
             <TableBody>
-              {table.getRowModel().rows.map((row) => (
+              {pageRows.map((row) => (
                 <TableRow
                   key={row.id}
                   data-state={row.original.id === open ? 'selected' : undefined}
@@ -217,6 +238,14 @@ export function ApplicationList({ rows, open, selectedIds, onSelectionChange, on
           </Table>
         </div>
       </ColumnDndContext>
+      <Pager
+        offset={offset}
+        count={pageRows.length}
+        total={rows.length}
+        pageSize={LIST_PAGE_SIZE}
+        emptyLabel="No applications"
+        onPage={(next) => onPageIndexChange(Math.floor(next / LIST_PAGE_SIZE))}
+      />
     </div>
   )
 }

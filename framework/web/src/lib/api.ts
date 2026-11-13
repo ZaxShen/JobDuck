@@ -32,6 +32,8 @@ export const isConflict = (error: unknown) => error instanceof ApiError && error
 
 export type SaveResult = 'saved' | 'reloaded' | 'failed'
 
+export const APPLICATIONS_FETCH_LIMIT = '5000'
+
 export function applicationsPath(params: Record<string, string | undefined>): string {
   const query = new URLSearchParams()
   for (const [key, value] of Object.entries(params)) if (value) query.set(key, value)

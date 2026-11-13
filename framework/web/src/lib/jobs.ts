@@ -38,7 +38,7 @@ export function postingsPath(status: string, offset = 0, limit = JOBS_PAGE_SIZE)
   return `/api/postings?${params.toString()}`
 }
 
-export function pageRangeText(offset: number, count: number, total: number): string {
-  if (total === 0 || count === 0) return 'No jobs'
+export function pageRangeText(offset: number, count: number, total: number, emptyLabel = 'No jobs'): string {
+  if (total === 0 || count === 0) return emptyLabel
   return `Showing ${(offset + 1).toLocaleString('en-US')}–${(offset + count).toLocaleString('en-US')} of ${total.toLocaleString('en-US')}`
 }

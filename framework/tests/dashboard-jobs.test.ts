@@ -65,4 +65,9 @@ describe('pageRangeText', () => {
   test('reads No jobs when there is nothing to show', () => {
     expect(pageRangeText(0, 0, 0)).toBe('No jobs')
   })
+
+  test('takes a custom empty label for other tabs', () => {
+    expect(pageRangeText(0, 0, 0, 'No applications')).toBe('No applications')
+    expect(pageRangeText(50, 50, 120, 'No applications')).toBe('Showing 51–100 of 120')
+  })
 })
