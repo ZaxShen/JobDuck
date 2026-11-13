@@ -127,16 +127,17 @@ The `[apply]` manifest in `permissions.toml`; defaults in brackets. The dashboar
 2. **Consents** `[apply.consents]` [false each]: `privacy_policy`, `terms`, `arbitration`, `background_check`, `e_signature`, `marketing_opt_in`. False means "ask me each time", not "refuse".
 3. **Demographic questions** `eeo` [`decline`]: `decline`, or `from_profile` (answers go in `[apply.answers]`).
 4. **ATS accounts** `ats_accounts` [`never`]: `never`, `reuse` (the user types passwords), `create`.
-5. **Salary fields** `salary_mode` [`leave_blank`]: `posting_range_upper` (never below `salary_floor`, which defaults to the profile's `pay_floor`), `fixed` (`salary_fixed_total` / `salary_fixed_base`), `leave_blank` (skip when optional, ask when required).
-6. **Uploads** `uploads` [`["cv"]`]: any of `cv`, `cover_letter`, `portfolio`, `transcript`; paths other than CVs go in `[apply.answers]` (`portfolio_path`, `transcript_path`).
-7. **Cover letter** `cover_letter` [`only_when_required`]: `only_when_required`, `never`, `always`.
-8. **CV tailoring** `tailor_cv` [`never`]: `never`, `when_bottleneck` (only when the stock CV hides a must-have the user really has), `always`.
-9. **Free-text questions** `free_text` [`draft_for_approval`]: `never`, `draft_for_approval`, `auto_from_profile`.
-10. **Companies to skip** `skip_companies`; **applications per run** `max_per_run` [10].
-11. **Marker** `marker` [true]: paste the `JobDuck-Application-Id` line into an optional free-text field so a later email can be matched.
-12. **Recurring answers** `[apply.answers]`, string values: at least `relocation`, `non_compete`, `heard_about_us`, `notice_period`, `sponsorship_detail`, `government_official`. Experience, education, start date and sponsorship come from the profile; do not ask them again.
+5. **Emailed verification codes** `email_codes` [`ask`]: `ask` (stop and ask the user), `auto_from_mail` (the apply skill reads a code the open form just emailed with the host's own mail tool, when the host has one; it never asks for mail access or a password).
+6. **Salary fields** `salary_mode` [`leave_blank`]: `posting_range_upper` (never below `salary_floor`, which defaults to the profile's `pay_floor`), `fixed` (`salary_fixed_total` / `salary_fixed_base`), `leave_blank` (skip when optional, ask when required).
+7. **Uploads** `uploads` [`["cv"]`]: any of `cv`, `cover_letter`, `portfolio`, `transcript`; paths other than CVs go in `[apply.answers]` (`portfolio_path`, `transcript_path`).
+8. **Cover letter** `cover_letter` [`only_when_required`]: `only_when_required`, `never`, `always`.
+9. **CV tailoring** `tailor_cv` [`never`]: `never`, `when_bottleneck` (only when the stock CV hides a must-have the user really has), `always`.
+10. **Free-text questions** `free_text` [`draft_for_approval`]: `never`, `draft_for_approval`, `auto_from_profile`.
+11. **Companies to skip** `skip_companies`; **applications per run** `max_per_run` [10].
+12. **Marker** `marker` [true]: paste the `JobDuck-Application-Id` line into an optional free-text field so a later email can be matched.
+13. **Recurring answers** `[apply.answers]`, string values: at least `relocation`, `non_compete`, `heard_about_us`, `notice_period`, `sponsorship_detail`, `government_official`. Experience, education, start date and sponsorship come from the profile; do not ask them again.
 
-State plainly, without asking: CAPTCHAs and email or SMS verification codes always stop for the user. That is not configurable.
+State plainly, without asking: CAPTCHAs and SMS verification codes always stop for the user. That is not configurable. Emailed codes stop too unless `email_codes = "auto_from_mail"`.
 
 ## Module: interview
 

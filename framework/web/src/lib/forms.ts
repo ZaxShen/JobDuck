@@ -141,6 +141,7 @@ export const SETTINGS_GROUPS: Group[] = [
       { key: 'apply.free_text', label: 'Free-Text Questions', type: 'select', options: [['draft_for_approval', 'Draft an answer for me to approve'], ['auto_from_profile', 'Answer from my profile'], ['never', 'Stop and ask me']] },
       { key: 'apply.eeo', label: 'Demographic Questions', type: 'select', options: [['decline', 'Decline to self-identify'], ['from_profile', 'Answer from my saved answers']] },
       { key: 'apply.ats_accounts', label: 'Job-Site Accounts', type: 'select', options: [['never', 'Stop when a site needs an account'], ['reuse', 'I sign in to accounts I already have'], ['create', 'Create one with my email; I set the password']] },
+      { key: 'apply.email_codes', label: 'Emailed Verification Codes', type: 'select', options: [['ask', 'Stop and ask me'], ['auto_from_mail', 'Read the code from my mail']], help: "Uses your agent's own mail tool, only for a code the open form just sent. SMS codes and CAPTCHAs always stop for you." },
       { key: 'apply.marker', label: 'Add A Tracking Line To An Optional Free-Text Field', type: 'checkbox', help: 'Lets a later email be matched to the application.' },
       { key: 'apply.skip_companies', label: 'Companies Never To Apply To', type: 'tags', wide: true },
     ],

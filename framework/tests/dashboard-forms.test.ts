@@ -38,6 +38,14 @@ describe('profile target fields', () => {
   })
 })
 
+describe('settings apply fields', () => {
+  test('apply.email_codes is a select offering ask first, then auto_from_mail', () => {
+    const field = SETTINGS_GROUPS.flatMap((group) => group.fields).find((f) => f.key === 'apply.email_codes')
+    expect(field?.type).toBe('select')
+    expect(field?.options).toEqual([['ask', 'Stop and ask me'], ['auto_from_mail', 'Read the code from my mail']])
+  })
+})
+
 describe('check group helpers', () => {
   test('allChecked is true only when every known option is on', () => {
     expect(allChecked(['hybrid', 'remote', 'onsite'], MODES)).toBe(true)
