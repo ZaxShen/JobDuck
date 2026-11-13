@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { readFileSync, statSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { type Sandbox, sandbox } from './helpers'
-import { MODULES, type Permissions, isModuleEnabled, loadPermissions, parsePermissions } from '../src/config/permissions'
+import {
+  ApplyManifest, MODULES, type Permissions, isModuleEnabled, loadPermissions, parsePermissions, serializePermissions,
+} from '../src/config/permissions'
 import { ProfileFrontMatter, loadProfile, parseProfile } from '../src/config/profile'
 import { ensureHome, permissionsPath, profilePath } from '../src/paths'
 
@@ -13,6 +16,7 @@ const SAFE_APPLY: Permissions['apply'] = {
   },
   eeo: 'decline',
   ats_accounts: 'never',
+  email_codes: 'ask',
   salary_mode: 'leave_blank',
   salary_floor: 0,
   salary_fixed_total: 0,
@@ -103,6 +107,29 @@ test('apply manifest rejects unknown keys and bad values', () => {
     '[apply.answers]\nrelocation = true\n',
     '[modules]\nteleport = true\n',
   ]) expect(() => parsePermissions(bad)).toThrow()
+})
+
+test('email_codes defaults to ask', () => {
+  expect(ApplyManifest.parse({}).email_codes).toBe('ask')
+  expect(parsePermissions('[apply]\n').apply.email_codes).toBe('ask')
+})
+
+test('email_codes = "auto_from_mail" round-trips through serializePermissions with its comment', () => {
+  const permissions = parsePermissions('[apply]\nemail_codes = "auto_from_mail"\n')
+  expect(permissions.apply.email_codes).toBe('auto_from_mail')
+  const text = serializePermissions(permissions)
+  expect(text).toContain('email_codes = "auto_from_mail"  # ask | auto_from_mail\n')
+  expect(parsePermissions(text).apply.email_codes).toBe('auto_from_mail')
+})
+
+test('email_codes rejects an unknown value', () => {
+  for (const bad of ['always', 'sms', '', true]) expect(() => ApplyManifest.parse({ email_codes: bad })).toThrow()
+  expect(() => parsePermissions('[apply]\nemail_codes = "auto"\n')).toThrow()
+})
+
+test('the template documents email_codes = "ask" with its options', () => {
+  const text = readFileSync(join(import.meta.dir, '..', 'templates', 'permissions.toml'), 'utf8')
+  expect(text).toMatch(/^email_codes = "ask" +# ask \| auto_from_mail$/m)
 })
 
 test('profile template parses front matter and keeps the body', () => {

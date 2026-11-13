@@ -30,6 +30,7 @@ export const ApplyManifest = z.object({
   consents: Consents.default(() => Consents.parse({})),
   eeo: z.enum(['decline', 'from_profile']).default('decline'),
   ats_accounts: z.enum(['never', 'reuse', 'create']).default('never'),
+  email_codes: z.enum(['ask', 'auto_from_mail']).default('ask'),
   salary_mode: z.enum(['posting_range_upper', 'fixed', 'leave_blank']).default('leave_blank'),
   salary_floor: Amount,
   salary_fixed_total: Amount,
@@ -76,7 +77,7 @@ export function isModuleEnabled(name: ModuleName, path = permissionsPath()): boo
 
 const HEADER = [
   '# Job Duck permissions. Edit them in the dashboard (jobduck dashboard, then Settings) or by hand.',
-  '# Nothing runs until its module is switched on. CAPTCHAs and verification codes always stop for you.',
+  '# Nothing runs until its module is switched on. CAPTCHAs and SMS codes always stop for you; emailed codes do too unless email_codes = "auto_from_mail".',
 ]
 
 const COMMENTS: Record<string, string> = {
@@ -84,6 +85,7 @@ const COMMENTS: Record<string, string> = {
   'apply.approvals_before_auto': 'approved submissions before auto_after_approvals takes over',
   'apply.eeo': 'decline | from_profile',
   'apply.ats_accounts': 'never | reuse | create',
+  'apply.email_codes': 'ask | auto_from_mail',
   'apply.salary_mode': 'posting_range_upper | fixed | leave_blank',
   'apply.uploads': 'cv, cover_letter, portfolio, transcript',
   'apply.cover_letter': 'only_when_required | never | always',
