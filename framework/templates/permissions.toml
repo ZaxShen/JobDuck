@@ -1,5 +1,5 @@
 # Job Duck permissions. The setup skill fills this in; edit by hand any time.
-# Nothing runs until its module is switched on. CAPTCHAs and verification codes always stop for you.
+# Nothing runs until its module is switched on. CAPTCHAs and SMS codes always stop for you; emailed codes do too unless email_codes = "auto_from_mail".
 
 [modules]
 cv = false
@@ -13,6 +13,7 @@ autonomy = "confirm_each"           # confirm_each | confirm_batch | auto_after_
 approvals_before_auto = 10          # approved submissions before auto_after_approvals takes over
 eeo = "decline"                     # decline | from_profile
 ats_accounts = "never"              # never | reuse | create
+email_codes = "ask"                 # ask | auto_from_mail
 salary_mode = "leave_blank"         # posting_range_upper | fixed | leave_blank
 salary_floor = 0
 salary_fixed_total = 0
