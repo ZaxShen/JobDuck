@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import { SENIORITIES } from '../src/posting/fields'
 import { allChecked, setAllChecked, toggleChecked } from '../web/src/lib/checks'
-import { CV_FILES, PROFILE_GROUPS, SENIORITY, SETTINGS_GROUPS, type Field, type Group } from '../web/src/lib/forms'
+import { CV_FILES, PROFILE_GROUPS, SENIORITY, SETTINGS_GROUPS, visibleFields, type Field, type Group } from '../web/src/lib/forms'
+import { SELF_ID_CHOICES, SELF_ID_KEYS, type SelfIdKey } from '../src/config/permissions'
 
 const titleCased = (text: string) =>
   text.split(/[\s-]+/).filter((word) => /^\p{L}/u.test(word)).every((word) => /^\p{Lu}/u.test(word))
@@ -43,6 +44,27 @@ describe('settings apply fields', () => {
     const field = SETTINGS_GROUPS.flatMap((group) => group.fields).find((f) => f.key === 'apply.email_codes')
     expect(field?.type).toBe('select')
     expect(field?.options).toEqual([['ask', 'Stop and ask me'], ['auto_from_mail', 'Read the code from my mail']])
+  })
+})
+
+describe('settings self-identification fields', () => {
+  const applying = SETTINGS_GROUPS.find((group) => group.title === 'Applying')!
+  const selfIdField = (key: SelfIdKey) => applying.fields.find((f) => f.key === `apply.self_id.${key}`)
+  const draft = (eeo: string) => ({ modules: { apply: true }, apply: { eeo } })
+
+  test('each field offers exactly the schema choices, Prefer not to disclose first', () => {
+    for (const key of SELF_ID_KEYS) {
+      const field = selfIdField(key)
+      expect(field?.type).toBe('select')
+      expect(field?.options?.map(([value]) => value)).toEqual([...SELF_ID_CHOICES[key]])
+      expect(field?.options?.[0]).toEqual(['decline', 'Prefer not to disclose'])
+    }
+  })
+
+  test('the fields show only when demographic questions are answered from settings', () => {
+    const shown = (eeo: string) => visibleFields(applying, draft(eeo)).map((f) => f.key).filter((k) => k.startsWith('apply.self_id.'))
+    expect(shown('decline')).toEqual([])
+    expect(shown('from_profile')).toEqual(SELF_ID_KEYS.map((key) => `apply.self_id.${key}`))
   })
 })
 

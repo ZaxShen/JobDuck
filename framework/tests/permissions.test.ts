@@ -15,6 +15,7 @@ const SAFE_APPLY: Permissions['apply'] = {
     privacy_policy: false, terms: false, arbitration: false, background_check: false, e_signature: false, marketing_opt_in: false,
   },
   eeo: 'decline',
+  self_id: { gender: 'decline', veteran_status: 'decline', disability_status: 'decline' },
   ats_accounts: 'never',
   email_codes: 'ask',
   salary_mode: 'leave_blank',
@@ -94,6 +95,10 @@ test('apply manifest rejects unknown keys and bad values', () => {
     '[apply]\nautonomy = "yolo"\n',
     '[apply]\nunknown_key = 1\n',
     '[apply]\neeo = "always"\n',
+    '[apply.self_id]\ngender = "unknown"\n',
+    '[apply.self_id]\nveteran_status = true\n',
+    '[apply.self_id]\ndisability_status = "maybe"\n',
+    '[apply.self_id]\nrace = "decline"\n',
     '[apply]\nats_accounts = "sometimes"\n',
     '[apply]\nsalary_mode = "max"\n',
     '[apply]\nuploads = ["selfie"]\n',
@@ -107,6 +112,23 @@ test('apply manifest rejects unknown keys and bad values', () => {
     '[apply.answers]\nrelocation = true\n',
     '[modules]\nteleport = true\n',
   ]) expect(() => parsePermissions(bad)).toThrow()
+})
+
+test('self_id defaults every field to decline', () => {
+  expect(ApplyManifest.parse({}).self_id).toEqual({ gender: 'decline', veteran_status: 'decline', disability_status: 'decline' })
+})
+
+test('self_id keeps answered and declined fields apart and round-trips with comments', () => {
+  const permissions = parsePermissions([
+    '[apply]', 'eeo = "from_profile"',
+    '[apply.self_id]', 'gender = "non_binary"', 'veteran_status = "not_veteran"',
+  ].join('\n'))
+  expect(permissions.apply.self_id).toEqual({ gender: 'non_binary', veteran_status: 'not_veteran', disability_status: 'decline' })
+  const text = serializePermissions(permissions)
+  expect(text).toContain('[apply.self_id]')
+  expect(text).toContain('gender = "non_binary"  # decline | female | male | non_binary')
+  expect(text).toContain('disability_status = "decline"  # decline | no | yes')
+  expect(parsePermissions(text).apply.self_id).toEqual(permissions.apply.self_id)
 })
 
 test('email_codes defaults to ask', () => {

@@ -11,7 +11,7 @@ interview = false
 [apply]
 autonomy = "confirm_each"           # confirm_each | confirm_batch | auto_after_approvals
 approvals_before_auto = 10          # approved submissions before auto_after_approvals takes over
-eeo = "decline"                     # decline | from_profile
+eeo = "decline"                     # decline | from_profile (from_profile answers with [apply.self_id])
 ats_accounts = "never"              # never | reuse | create
 email_codes = "ask"                 # ask | auto_from_mail
 salary_mode = "leave_blank"         # posting_range_upper | fixed | leave_blank
@@ -33,6 +33,12 @@ arbitration = false
 background_check = false
 e_signature = false
 marketing_opt_in = false
+
+[apply.self_id]
+# Voluntary self-identification. "decline" picks the form's prefer-not-to-say option.
+gender = "decline"                  # decline | female | male | non_binary
+veteran_status = "decline"          # decline | not_veteran | veteran
+disability_status = "decline"       # decline | no | yes
 
 [apply.answers]
 

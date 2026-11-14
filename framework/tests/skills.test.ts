@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { type Sandbox, sandbox } from './helpers'
-import { ApplyManifest, CONSENT_KEYS, MODULES } from '../src/config/permissions'
+import { ApplyManifest, CONSENT_KEYS, MODULES, SELF_ID_KEYS } from '../src/config/permissions'
 import { parseProfile } from '../src/config/profile'
 import { skillFrontMatter } from '../src/hosts'
 import { EXTRACTED_KEYS, TOOL_NAMES } from '../src/mcp/tools'
@@ -48,7 +48,7 @@ test('setup has one module section per module and asks every apply manifest key'
   const sections = [...text.matchAll(/^## Module: (\w+)$/gm)].map((m) => m[1])
   expect(sections).toEqual([...MODULES])
   const applySection = text.slice(text.indexOf('## Module: apply'), text.indexOf('## Module: interview'))
-  for (const key of [...Object.keys(ApplyManifest.shape), ...CONSENT_KEYS]) {
+  for (const key of [...Object.keys(ApplyManifest.shape), ...CONSENT_KEYS, ...SELF_ID_KEYS]) {
     if (key === 'consents' || key === 'answers') continue
     expect(applySection).toContain(`\`${key}\``)
   }

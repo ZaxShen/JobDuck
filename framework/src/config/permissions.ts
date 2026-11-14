@@ -22,6 +22,20 @@ const Consents = z.object(
   >,
 ).strict()
 
+export const SELF_ID_CHOICES = {
+  gender: ['decline', 'female', 'male', 'non_binary'],
+  veteran_status: ['decline', 'not_veteran', 'veteran'],
+  disability_status: ['decline', 'no', 'yes'],
+} as const
+export type SelfIdKey = keyof typeof SELF_ID_CHOICES
+export const SELF_ID_KEYS = Object.keys(SELF_ID_CHOICES) as SelfIdKey[]
+
+const SelfId = z.object({
+  gender: z.enum(SELF_ID_CHOICES.gender).default('decline'),
+  veteran_status: z.enum(SELF_ID_CHOICES.veteran_status).default('decline'),
+  disability_status: z.enum(SELF_ID_CHOICES.disability_status).default('decline'),
+}).strict()
+
 const Amount = z.number().int().nonnegative().default(0)
 
 export const ApplyManifest = z.object({
@@ -29,6 +43,7 @@ export const ApplyManifest = z.object({
   approvals_before_auto: z.number().int().positive().default(10),
   consents: Consents.default(() => Consents.parse({})),
   eeo: z.enum(['decline', 'from_profile']).default('decline'),
+  self_id: SelfId.default(() => SelfId.parse({})),
   ats_accounts: z.enum(['never', 'reuse', 'create']).default('never'),
   email_codes: z.enum(['ask', 'auto_from_mail']).default('ask'),
   salary_mode: z.enum(['posting_range_upper', 'fixed', 'leave_blank']).default('leave_blank'),
@@ -83,8 +98,11 @@ const HEADER = [
 const COMMENTS: Record<string, string> = {
   'apply.autonomy': 'confirm_each | confirm_batch | auto_after_approvals',
   'apply.approvals_before_auto': 'approved submissions before auto_after_approvals takes over',
-  'apply.eeo': 'decline | from_profile',
+  'apply.eeo': 'decline | from_profile (from_profile answers with [apply.self_id])',
   'apply.ats_accounts': 'never | reuse | create',
+  'apply.self_id.gender': 'decline | female | male | non_binary',
+  'apply.self_id.veteran_status': 'decline | not_veteran | veteran',
+  'apply.self_id.disability_status': 'decline | no | yes',
   'apply.email_codes': 'ask | auto_from_mail',
   'apply.salary_mode': 'posting_range_upper | fixed | leave_blank',
   'apply.uploads': 'cv, cover_letter, portfolio, transcript',

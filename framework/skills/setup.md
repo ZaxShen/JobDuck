@@ -125,7 +125,11 @@ The `[apply]` manifest in `permissions.toml`; defaults in brackets. The dashboar
 
 1. **Autonomy** `autonomy` [`confirm_each`]: `confirm_each` (approve each submit; the agent moves on to the next form by itself), `confirm_batch` (approve a filled batch by name), `auto_after_approvals` (confirm each until `approvals_before_auto` [10] approvals with no corrections, then submit without asking).
 2. **Consents** `[apply.consents]` [false each]: `privacy_policy`, `terms`, `arbitration`, `background_check`, `e_signature`, `marketing_opt_in`. False means "ask me each time", not "refuse".
-3. **Demographic questions** `eeo` [`decline`]: `decline`, or `from_profile` (answers go in `[apply.answers]`).
+3. **Demographic questions** `eeo` [`decline`] and `self_id` (`[apply.self_id]`, [`decline`] each): almost every application asks these. Say first that answering is voluntary, that the answers stay in `permissions.toml` on this machine, and that "prefer not to disclose" is always fine. Then ask the three in one message, each with its choices:
+   - `gender`: `female`, `male`, `non_binary`, or `decline`;
+   - `veteran_status`: `not_veteran`, `veteran`, or `decline`;
+   - `disability_status`: `no`, `yes`, or `decline`.
+   Save each answer under `[apply.self_id]`; a skipped or declined one is `decline`. Set `eeo = "from_profile"` when any is answered, else `eeo = "decline"`. Never repeat these answers back in a summary, a note or a report.
 4. **ATS accounts** `ats_accounts` [`never`]: `never`, `reuse` (the user types passwords), `create`.
 5. **Emailed verification codes** `email_codes` [`ask`]: `ask` (stop and ask the user), `auto_from_mail` (the apply skill reads a code the open form just emailed with the host's own mail tool, when the host has one; it never asks for mail access or a password).
 6. **Salary fields** `salary_mode` [`leave_blank`]: `posting_range_upper` (never below `salary_floor`, which defaults to the profile's `pay_floor`), `fixed` (`salary_fixed_total` / `salary_fixed_base`), `leave_blank` (skip when optional, ask when required).
