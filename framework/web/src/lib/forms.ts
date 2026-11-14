@@ -116,6 +116,7 @@ const flag = (path: string) => (draft: Draft) => {
 }
 const applyOn = flag('modules.apply')
 const applyValue = (draft: Draft, key: string) => (draft.apply as Draft | undefined)?.[key]
+const selfIdOn = (draft: Draft) => applyValue(draft, 'eeo') === 'from_profile'
 
 export const SETTINGS_GROUPS: Group[] = [
   {
@@ -139,7 +140,10 @@ export const SETTINGS_GROUPS: Group[] = [
       { key: 'apply.cover_letter', label: 'Cover Letters', type: 'select', options: [['only_when_required', 'Only when required'], ['never', 'Never'], ['always', 'Always']] },
       { key: 'apply.tailor_cv', label: 'Tailor The CV', type: 'select', options: [['never', 'Never, use my stock CV'], ['when_bottleneck', 'Only when the stock CV hides a must-have'], ['always', 'Always']] },
       { key: 'apply.free_text', label: 'Free-Text Questions', type: 'select', options: [['draft_for_approval', 'Draft an answer for me to approve'], ['auto_from_profile', 'Answer from my profile'], ['never', 'Stop and ask me']] },
-      { key: 'apply.eeo', label: 'Demographic Questions', type: 'select', options: [['decline', 'Decline to self-identify'], ['from_profile', 'Answer from my saved answers']] },
+      { key: 'apply.eeo', label: 'Demographic Questions', type: 'select', options: [['decline', 'Decline to self-identify'], ['from_profile', 'Answer with my self-identification below']], help: 'Voluntary. Answers stay on this computer.' },
+      { key: 'apply.self_id.gender', label: 'Gender', type: 'select', when: selfIdOn, options: [['decline', 'Prefer not to disclose'], ['female', 'Female'], ['male', 'Male'], ['non_binary', 'Non-binary']] },
+      { key: 'apply.self_id.veteran_status', label: 'Veteran Status', type: 'select', when: selfIdOn, options: [['decline', 'Prefer not to disclose'], ['not_veteran', 'I am not a protected veteran'], ['veteran', 'I identify as a protected veteran']] },
+      { key: 'apply.self_id.disability_status', label: 'Disability Status', type: 'select', when: selfIdOn, options: [['decline', 'Prefer not to disclose'], ['no', 'I do not have a disability'], ['yes', 'I have a disability']] },
       { key: 'apply.ats_accounts', label: 'Job-Site Accounts', type: 'select', options: [['never', 'Stop when a site needs an account'], ['reuse', 'I sign in to accounts I already have'], ['create', 'Create one with my email; I set the password']] },
       { key: 'apply.email_codes', label: 'Emailed Verification Codes', type: 'select', options: [['ask', 'Stop and ask me'], ['auto_from_mail', 'Read the code from my mail']], help: "Uses your agent's own mail tool, only for a code the open form just sent. SMS codes and CAPTCHAs always stop for you." },
       { key: 'apply.marker', label: 'Add A Tracking Line To An Optional Free-Text Field', type: 'checkbox', help: 'Lets a later email be matched to the application.' },
